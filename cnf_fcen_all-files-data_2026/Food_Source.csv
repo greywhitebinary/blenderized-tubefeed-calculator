@@ -1,0 +1,17 @@
+﻿Food_Source_Code,Food_Source_Description_EN,Food_Source_Description_FR
+0,Food based on data from USDA: No changes,Aliment basé sur le USDA: aucune modification apportée
+1,Food based on data from USDA: some nutrients changed to meet Canadian regulations,Aliment basé sur le USDA: certains éléments nutritifs ont été modifiés pour se conformer à la réglementation canadienne
+3,Food based on data from USDA: some nutrients analyzed in the Canadian product,Aliment basé sur le USDA: certains éléments nutritifs ont été analysés dans le produit canadien
+4,Food based on data from USDA: some nutrients calculated in the Canadian product,Aliment basé sur le USDA: certains éléments nutritifs ont été calculés dans le produit canadien
+6,Food based on data from USDA: some values supplied by manufacturers of the Canadian product,Aliment basé sur le USDA: certaines valeurs ont été fournies par le manufacturier du produit canadien
+9,Data supplied by an international database other than USDA,Données provenant d'une base de données autre que le USDA
+10,Food based on data from USDA: some nutrient analyzed in the Canadian product. Food has been deleted from USDA,Aliment basé sur le USDA: la valeur de certains éléments nutritifs a été analysée dans le produit canadien. Aliment retiré de l'USDA.
+11,Food based on data from USDA. Food has been deleted from USDA,Aliment basé sur le USDA. Aliment retiré de l'USDA
+12,Food based on data from USDA: information from USDA survey files,Aliment basé sur le USDA: information provient des fichiers des enquêtes
+20,"Food available in the Canadian food supply, but not found in the USDA: no changes from Nutrition Canada Survey (1970–1972)","Aliment disponible sur le marché canadien, mais non retrouvé dans le USDA: aucune modification à la base de données de l'Enquête nationale de Nutrition Canada (1970–1972)"
+23,"Food available in the Canadian food supply, major nutrients analyzed in the Canadian product","Aliment disponible sur le marché canadien, la valeur des principaux éléments nutritifs a été analysée dans le produit canadien"
+24,Major nutrients calculated in the Canadian product; not a SNAP-CAN food,Éléments nutritifs principaux calculés dans le produit canadien; n'est pas un aliment de SNAP-CAN
+26,"Food available in the Canadian food supply, but not found in USDA: nutrient values supplied by manufacturers of the Canadian product","Aliment disponible sur le marché canadien, mais non retrouvé dans le USDA: la valeur des éléments nutritifs a été fournie par les manufacturiers du produit"
+28,Traditional food,Aliment traditionnel
+35,CNF recipe compilation,Compilation de recettes FCÉN
+37,CNF Sampling and Analysis Program (SNAP-CAN),Programme d'échantillonage et d'analyse du FCÉN (PÉAÉN-CAN)
