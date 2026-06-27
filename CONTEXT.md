@@ -175,7 +175,7 @@ merges, dtype gotchas, off-by-100 unit conversion).
 
 ## 9. Current status
 
-- [ ] Phase 1 setup — IN PROGRESS
+- [x] Phase 1 setup — COMPLETE (venv, requirements.txt, .gitignore, git init, first commit 852cc9e)
 - [ ] Phase 2 data_loader — NOT STARTED
 - [ ] Phase 3 calculator — NOT STARTED
 - [ ] Phase 4 measures — NOT STARTED
