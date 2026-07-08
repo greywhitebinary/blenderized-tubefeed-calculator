@@ -9,15 +9,47 @@
 
 ## 1. Project goal
 
-A clinical nutrition tool that lets a dietitian enter a recipe of real
-foods (by household measure or grams) and returns the full nutrient
-profile of the blend, plus a check against tube-feeding nutrient targets
-(calories, protein g/kg, fluid, fibre, sodium, potassium, key
-micronutrients), flagging shortfalls.
+A clinical nutrition tool that **characterizes a real, working
+blenderized tube-feed (BTF) recipe** — one already known to flow through
+the tube because someone is living on it — and helps navigate changes
+to it. (Design reframed 2026-07-08; full rationale in
+`~/Documents/Projects/CNF_project_ideas.md`, Project 1.)
+
+Three design commitments that follow from "the recipe already works":
+
+1. **Per-mL is the primary lens, not per-recipe.** The outputs that
+   matter are densities — kcal/mL, protein/mL, free-water fraction.
+   Totals matter only once multiplied by actual daily mL intake.
+2. **Final blend volume is a measured input, not computed.** Blending,
+   air, and rinse water make volume incalculable from ingredient
+   weights — but the user *knows* it (they poured it into a container).
+   Ingredients give nutrient totals; measured volume gives the
+   denominator.
+3. **The core feature is the water trade-off what-if.** "Add 150 mL
+   water → kcal/mL drops 1.3 → 1.1 → hitting 1,800 kcal now takes
+   1,640 mL/day — within tolerance?" The tool never judges thinness
+   (that stays human, hands-on-blender knowledge); it shows what a
+   thinning decision *costs*.
+
+It also reports adequacy vs. tube-feeding targets (calories, protein
+g/kg, fluid, fibre, sodium, potassium, and the micros that actually go
+wrong in BTF: calcium, iron, zinc, vitamin D, B12), plus a
+**commercial-formula benchmark row** (e.g. "vs 1.5 kcal/mL standard
+formula per 1000 mL") — how RDs actually reason about BTF adequacy.
+
+**Out of scope, permanently (fixed caution notes, never computed):**
+osmolality (a footnote for this population, not a headline), viscosity /
+tube-flow behaviour, nutrient losses from blending and holding, food
+safety. **Identity from day one: "for RD use, estimates only"** — not a
+family-facing tool.
 
 Built on the **Canadian Nutrient File (CNF) 2026 edition** — a public
 Government of Canada dataset of ~5,993 foods × ~173 nutrients, all values
-expressed **per 100 g of edible food**.
+expressed **per 100 g of edible food**. CNF catalogues single/generic
+foods, not prepared dishes — a limitation for menu analysis but a
+perfect fit for BTF, which is built from single whole foods. CNF's
+per-food moisture values make **free water** a first-class computed
+output, not an afterthought.
 
 ---
 
@@ -56,6 +88,14 @@ expressed **per 100 g of edible food**.
 
 Deliberately NOT yet included: database, FastAPI, React. Those are the
 Phase 6+ graduation path — see §6.
+
+**UI decision recorded 2026-07-08:** the idea-bank doc
+(`Projects/CNF_project_ideas.md`) argues for Flask everywhere; per
+direct human-mentor advice, *this* project stays **Streamlit**. The
+author is not attached either way, so the tiebreak stands. Flask gets
+learned later on the lower-stakes Epicure similarity explorer (idea
+bank, Project 6b). Don't relitigate without new information.
+
 ---
 
 ## 4. Folder structure
@@ -68,18 +108,24 @@ blenderized-tubefeed-calculator/
 │   └── targets/                     # SME-authored DRI / tube-feed targets
 ├── src/
 │   ├── __init__.py
-│   ├── data_loader.py               # CSV → pandas DataFrames
-│   ├── build_parquet.py             # one-time: CSV → parquet
+│   ├── data_loader.py               # CSV → pandas DataFrames (scaffolded, buggy)
+│   ├── build_parquet.py             # one-time: CSV → parquet (scaffolded, buggy)
 │   ├── models.py                    # @dataclass Ingredient, Recipe, Profile
 │   ├── calculator.py               # core math: recipe → nutrient profile
 │   ├── measures.py                  # household-measure → grams
 │   ├── targets.py                   # load DRI / tube-feed targets
 │   └── report.py                    # profile + targets → gap report
+├── reference/                        # bug-free reference solutions (per phase)
+│   ├── __init__.py
+│   ├── data_loader.py               # Phase 2 reference (verified working)
+│   ├── build_parquet.py             # Phase 2 reference (verified working)
+│   └── README.md
 ├── app/
 │   └── streamlit_app.py             # the UI
 ├── tests/
 ├── notebooks/
-│   └── 00_explore_cnf.ipynb         # data-exploration sandbox
+│   ├── 00_explore_cnf.ipynb         # data-exploration sandbox
+│   └── PHASE2_SPEC.md               # spec, hint list, verification for Phase 2
 ├── CONTEXT.md                       # this file
 ├── requirements.txt
 └── .gitignore
@@ -97,12 +143,16 @@ Relational database delivered as CSVs. All nutrient amounts are
 | Food_Name.csv                 | ~5,993  | Food_Code (PK), descriptions, group code  |
 | Nutrient_Name.csv             | ~173    | Nutrient_Code (PK), name, unit, Tagname   |
 | Nutrient_Amount.csv           | ~565,409| Food_Code (FK), Nutrient_Code (FK), amount|
-| Measure_Name.csv              | ~1,496  | Measure_Code (PK), description ("1 cup")  |
+| Measure_Name.csv              | ~1,494  | Measure_Code (PK), description ("1 cup")  |
 | Measure_Weight_Conversion.csv | ~29,868 | Food_Code + Measure_Code → grams          |
 | Measure_Type.csv              | 3       | 3=Refuse, 6=User-defined, 9=Yield         |
 | CNF_Food_Group.csv            | 23      | group code → description                 |
 
 Key arithmetic: `nutrient_from_ingredient = grams × (amount / 100)`.
+
+**Gotcha:** Several CNF CSVs have a UTF-8 BOM (`\ufeff`). Must use
+`encoding="utf-8-sig"` in `pd.read_csv()` to strip it, or the first
+column name becomes `\ufeffNutrient_Code` and merges silently fail.
 
 ---
 
@@ -113,13 +163,20 @@ Key arithmetic: `nutrient_from_ingredient = grams × (amount / 100)`.
 - **Phase 2 — data_loader.py.** Typed, reusable loading functions;
   one-time CSV→parquet build script.
 - **Phase 3 — models.py + calculator.py.** @dataclass Ingredient/Recipe;
-  profile(recipe) → {nutrient_code: amount} via merge + groupby.
+  Recipe carries ingredients + **added water** + **measured final
+  volume**; profile(recipe) → nutrient totals via merge + groupby,
+  then **densities** (kcal/mL, protein/mL, free-water fraction) using
+  measured volume as denominator.
 - **Phase 4 — measures.py.** Household measure → grams via the
   conversion table. Filter to Measure_Type=6 only.
-- **Phase 5 — targets.py + report.py.** SME-authored target tables;
-  gap report (amount vs target, % target, status).
+- **Phase 5 — targets.py + report.py.** SME-authored DRI / tube-feed
+  target tables; daily adequacy report (needs daily mL intake as input:
+  density × mL/day vs targets, % target, status), free-water total,
+  commercial-formula benchmark row.
 - **Phase 6 — streamlit_app.py.** Editable ingredient table, live
-  nutrient panel, gap report, export-to-Excel button.
+  density panel, adequacy report, **dilution what-if control** (add X mL
+  water → new densities → required daily volume vs tolerance),
+  export-to-Excel button.
 - **Phase 7 — Polish.** Save/load recipes as JSON; pytest suite.
 - **Phase 8+ (graduation).** Lift calculator behind FastAPI; build
   React frontend that calls it.
@@ -144,6 +201,9 @@ stuck >20 min, author may ask for a *hint* (not the answer). The
 Bug difficulty ramps: early modules get obvious bugs (typos, wrong
 column names); later modules get subtle ones (silent row-drops in
 merges, dtype gotchas, off-by-100 unit conversion).
+
+A `reference/` folder contains bug-free solutions for each phase, so the
+author can compare their fixes or unblock themselves if stuck for too long.
 
 ---
 
@@ -170,20 +230,24 @@ merges, dtype gotchas, off-by-100 unit conversion).
   "never track these files."
 - **Vectorization** — operating on whole columns at once, not row-by-row
   with `.iterrows()` (which is a code smell).
+- **BOM (Byte Order Mark)** — a `\ufeff` character at the start of some
+  UTF-8 files; `encoding="utf-8-sig"` strips it.
 
 ---
 
 ## 9. Current status
 
 - [x] Phase 1 setup — COMPLETE (venv, requirements.txt, .gitignore, git init, first commit 852cc9e)
-- [ ] Phase 2 data_loader — NOT STARTED
+- [x] Phase 2 data_loader — SCAFFOLDED (buggy `src/data_loader.py` + `src/build_parquet.py` created; reference solutions in `reference/`; spec in `notebooks/PHASE2_SPEC.md`; exploration notebook in `notebooks/00_explore_cnf.ipynb`; reference verified working 2026-07-01)
 - [ ] Phase 3 calculator — NOT STARTED
 - [ ] Phase 4 measures — NOT STARTED
 - [ ] Phase 5 targets/report — NOT STARTED
 - [ ] Phase 6 Streamlit UI — NOT STARTED
 - [ ] Phase 7 polish — NOT STARTED
 
-Last updated: 2026-06-26
+Last updated: 2026-07-08 (design reframe adopted into §1, §3, §6 from
+`Projects/CNF_project_ideas.md`; Phases 1–2 unaffected — the reframe
+changes the calculator's *outputs*, not the data plumbing)
 
 ---
 
@@ -198,4 +262,5 @@ Last updated: 2026-06-26
   must be preserved via `st.session_state` (a Phase 6 lesson).
 - The AI agent's configured working directory may be wider than the VS
   Code workspace; agent self-imposes project-folder-only access.
-
+- `reference/` files use the same path resolution as `src/` (both at
+  project root); code can be copied between them without path changes.
