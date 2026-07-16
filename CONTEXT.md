@@ -441,13 +441,27 @@ architectural change since the last audit:**
   custom-food recipes will underestimate free water. A new "BTF micro
   screen" expander renders the clinical screen; Excel export gained a
   "Micro Screen" sheet.
-- Acceptance criterion (verified, not just claimed): adding a country
-  is writing new CSVs under `data/packs/<pack>/` with **zero Python
-  changes** — checked by `load_registry("no_such_pack")` raising
-  `FileNotFoundError` in `verify_backend.py` stage 10, proving the
-  registry is genuinely data-driven, not a Canadian default with a
-  data-shaped facade. kJ/salt-unit handling is the one documented
-  exception (future per-pack `config.yaml`; see Appendix C).
+- Acceptance criterion — **partially met; do not read the docs as
+  saying otherwise.** The goal is that adding a country is writing new
+  CSVs under `data/packs/<pack>/` with **zero Python changes**.
+  - **Met** for `nutrients.csv` and `targets.csv`: `load_registry()`,
+    `load_targets()`, `generate_adequacy_report()` and
+    `generate_clinical_screen()` all take a `pack` argument.
+    `verify_backend.py` stage 10 checks `load_registry("no_such_pack")`
+    raises `FileNotFoundError`, proving the registry is genuinely
+    data-driven rather than a Canadian default with a data-shaped facade.
+  - **NOT met** for `formulas.csv` and `thinning_liquids.csv`:
+    `_load_commercial_formulas()` (`src/calculator.py`) and
+    `_load_thinning_liquids()` (`app/streamlit_app.py`) are still
+    module-level constants loaded once from a hardcoded `canada` path.
+    A US pack would today get US nutrients + US targets but **Canadian
+    formulas** — which matters, because commercial formulary is among
+    the most country-specific data in the tool. **Outstanding work:**
+    parameterize both loaders by `pack`. Note this ripples to
+    `COMMERCIAL_FORMULAS`'s importers (`src/report.py`,
+    `app/streamlit_app.py`).
+  - Deferred by design: kJ/salt-unit handling (future per-pack
+    `config.yaml`; see Appendix C).
 
 **Backend verification (2026-07-16): PASSED.** The full backend
 integration test lives at `scripts/verify_backend.py` and now runs 11

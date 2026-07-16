@@ -751,12 +751,28 @@ data/packs/
     thinning_liquids.csv
 ```
 
-Canada is the only pack implemented today. Adding a country is
-**writing new CSVs under `data/packs/<country>/`, with zero Python
-changes** — that is the acceptance criterion this design is held to.
-(One documented exception, deferred to a future `config.yaml` per pack:
-kJ vs kcal, and the EU's "salt" vs sodium unit convention, which need a
-units-conversion layer this project hasn't built yet.)
+Canada is the only pack implemented today. The goal — and the acceptance
+criterion this design is held to — is that adding a country is **writing
+new CSVs under `data/packs/<country>/`, with zero Python changes.**
+
+Status against that criterion, stated honestly:
+
+- **Met** for `nutrients.csv` and `targets.csv`. The registry, the
+  targets loader, and both report functions all take a `pack` argument.
+  Verified: a US pack promoting `vitamin_d_ug` to `tier=label,
+  on_label=yes` moves vitamin D into the main adequacy table and out of
+  the micro screen with no code change.
+- **Not yet met** for `formulas.csv` and `thinning_liquids.csv`. These
+  still load once from a hardcoded `canada` path
+  (`_load_commercial_formulas()` in `src/calculator.py`,
+  `_load_thinning_liquids()` in `app/streamlit_app.py`). A US pack would
+  currently get US nutrients and US targets but **Canadian formulas** —
+  which matters, since commercial formulary is among the most
+  country-specific data in the tool. Parameterizing these two loaders by
+  `pack` is the outstanding work to fully meet the criterion.
+- **Deferred by design** to a future `config.yaml` per pack: kJ vs kcal,
+  and the EU's "salt" vs sodium convention, which need a units-conversion
+  layer this project hasn't built yet.
 
 ### `nutrients.csv` — the registry schema
 
