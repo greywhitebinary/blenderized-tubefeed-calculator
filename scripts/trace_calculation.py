@@ -111,10 +111,13 @@ def main() -> int:
         on="Food_Code", how="inner",
     )
     merged["nutrient"] = merged["Nutrient_Code"].map(_CODE_TO_NAME)
+    n_ingr = len(recipe.ingredients)
+    max_rows = n_ingr * len(tracked)
     print(f"\n[3] MERGE ingredients x nutrient amounts ON Food_Code (inner join)")
-    print(f"    3 ingredients x up to 11 nutrients = up to 33 rows; got {len(merged)}.")
-    print(f"    (Fewer than 33 means some food LACKS a CNF row for some nutrient —")
-    print(f"     see the missing-data audit at the end.)")
+    print(f"    {n_ingr} ingredients x up to {len(tracked)} tracked nutrients "
+          f"= up to {max_rows} rows; got {len(merged)}.")
+    print(f"    (Fewer than {max_rows} means some food LACKS a CNF row for some")
+    print(f"     nutrient — see the missing-data audit at the end.)")
 
     # ---- [4] Scaling -----------------------------------------------------
     merged["scaled_amount"] = merged["grams"] * (merged["Nutrient_Amount"] / 100.0)
