@@ -8,6 +8,36 @@ Built on the **Canadian Nutrient File (CNF) 2026 edition**.
 
 ---
 
+## Coming back after time away? Start here.
+
+Five steps to get re-oriented, in order. Total time: ~5 minutes.
+
+1. **Open the project in VS Code** (steps 1–3 in "How to run the app"
+   below: open VS Code → open the
+   `Documents/GitHub/blenderized-tubefeed-calculator` folder → open a
+   terminal).
+2. **Ask git what state things are in.** In the terminal:
+   ```
+   git status
+   ```
+   - `nothing to commit, working tree clean` → nothing half-finished,
+     you're safe to start.
+   - A list of modified files → something was left mid-change. Look at
+     what changed with `git diff`, or ask Claude "what's uncommitted
+     and why?"
+3. **Read the status section of CONTEXT.md.** Open `CONTEXT.md` and
+   scroll to **§9 Current status** — the last entry tells you what was
+   done most recently and what's next. (Every work session updates it,
+   so it's always the freshest summary.)
+4. **Confirm everything still works** (takes ~30 seconds):
+   ```
+   .venv/bin/python scripts/verify_backend.py
+   ```
+   You want `=== ALL BACKEND MODULES VERIFIED ===` at the end.
+5. **Start the app** (step 4 below) and pick up where you left off.
+
+---
+
 ## Prerequisites (one-time setup, already done)
 
 These were set up in Phase 1 and should already be in place:
@@ -109,6 +139,114 @@ You should see `IMPORTS OK` at the end.
 
 ---
 
+## How to check you can trust the numbers (the ~20-minute ritual)
+
+The pipeline has four hops: **load CNF data → scale by grams → divide
+by volume → multiply by daily volume.** You verify it by catching any
+hop being wrong, with a calculator and a browser — no code reading.
+Do this once thoroughly; afterwards, re-check only the hop you doubt.
+
+### Hop 1+2 — the trace script (scaling)
+
+```
+.venv/bin/python scripts/trace_calculation.py
+```
+
+This prints every intermediate table for the example recipe. Find the
+step **[4] SCALE** table, pick any row, and check it on a calculator:
+
+> 200 g chicken × (120 kcal per 100 g ÷ 100) = **240 kcal** ✓
+
+Pick two or three rows, including one mg-unit row (e.g. potassium).
+If they check out, the grams-scaling math is right.
+
+### Hop 1 (again) — the source data, through a different door
+
+Look up the same food on **Health Canada's own CNF search**:
+https://food-nutrition.canada.ca/cnf-fce/?lang=eng
+
+Search "chicken breast raw", find the same food, and compare its
+per-100g values against the trace's step [2]/[4] `Nutrient_Amount`
+column. Same numbers = the app is loading the database faithfully
+(BOM handling, parquet conversion, all of it).
+
+### Hop 3 — the density division
+
+In the running app, load the example recipe, then on a calculator:
+
+> total kcal ÷ measured volume = the kcal/mL shown on screen?
+
+(e.g. 557 kcal ÷ 550 mL = 1.013 kcal/mL)
+
+### Hop 4 — your own spreadsheet as the referee (the strongest test)
+
+Your EN spreadsheet computes Peptamen 1.5 at any volume, and the app's
+formula profiles came from that spreadsheet. So:
+
+1. In the app, set delivery to **Direct, 1200 mL/day** and the
+   comparator to **Peptamen 1.5**.
+2. In your spreadsheet, run Peptamen 1.5 at 1200 mL.
+3. The kcal and protein must match (1800 kcal, 81.6 g protein).
+
+If the spreadsheet and app agree on the formula side, and Health
+Canada's website and the app agree on the food side, the whole data
+model is triangulated from two independent directions.
+
+### The one caveat to remember forever
+
+**A zero can mean "CNF never measured it," not "this food has none."**
+The trace script's *missing-data audit* (bottom of its output) and the
+report's *Coverage* column (e.g. "1/2 ingredients") exist to surface
+this. Sparse nutrients (vitamin D: 88% of CNF foods) can read low
+partly from missing data.
+
+---
+
+## How to update commercial formulas from manufacturer PDFs
+
+Full instructions live in `data/packs/canada/formula_sources/README.md`.
+The short version:
+
+1. **Download** the product's healthcare-professional PDF from the
+   manufacturer's site into `data/packs/canada/formula_sources/`.
+2. **Ask Claude** (in a Claude Code session in this project):
+   > Read the new PDFs in data/packs/canada/formula_sources/ and update
+   > formulas.csv — show me each extracted value next to the PDF text
+   > you got it from.
+3. **You verify the diff** — two numbers per formula, seconds to check
+   against the PDF. You are the safety mechanism; never skip this.
+4. Commit (see "How to save your work" below).
+
+---
+
+## How to save your work with git (the 3-command loop)
+
+After you've changed something (a CSV, a note in CONTEXT.md) and want
+it saved to the project's history:
+
+```
+git status
+```
+Shows what changed. Read the list — is it what you expect?
+
+```
+git add -A
+git commit -m "Update Peptamen 1.5 numbers from 2026 product PDF"
+```
+Saves a snapshot with your message (write what/why in plain words).
+
+```
+git push
+```
+Sends your snapshots to GitHub (the cloud backup). If you skip this,
+your work is saved locally but only on this Mac.
+
+**If git says something scary:** don't guess — copy the message and ask
+Claude. Nothing in git is truly lost; wrong moves are almost always
+recoverable.
+
+---
+
 ## How to edit reference data (no Python needed)
 
 All reference data lives under `data/packs/canada/` — Canada is one
@@ -122,7 +260,7 @@ load.
 |---|---|---|
 | Nutrient registry (what to track, and why) | `data/packs/canada/nutrients.csv` | name, code, label, unit, tier, on_label, decimals, notes |
 | DRI targets | `data/packs/canada/targets.csv` | nutrient, target, unit, target_type, source |
-| Commercial formulas | `data/packs/canada/formulas.csv` | name, kcal_per_mL, protein_per_mL |
+| Commercial formulas | `data/packs/canada/formulas.csv` | name, kcal_per_mL, protein_per_mL, source, verified |
 | Thinning liquid presets | `data/packs/canada/thinning_liquids.csv` | name, kcal_per_100mL, protein_g_per_100mL, water_g_per_100mL |
 
 ### To add a nutrient to track:
@@ -146,8 +284,11 @@ load.
 1. Open `data/packs/canada/formulas.csv` in VS Code.
 2. Add a new line at the bottom, e.g.:
    ```
-   Ensure Plus,1.5,0.063
+   Ensure Plus,1.5,0.063,2026_ensure-plus-hcp.pdf,2026-07-16
    ```
+   The last two columns (`source`, `verified`) are your audit trail —
+   which PDF the numbers came from and when you checked them. The app
+   ignores them; they're for the next human. Fine to leave empty.
 3. Save the file (`Cmd + S`).
 4. Rerun the app. The new formula appears in the comparator dropdown.
 
