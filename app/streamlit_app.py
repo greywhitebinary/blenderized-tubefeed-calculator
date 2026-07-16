@@ -177,8 +177,7 @@ if st.sidebar.button("📋 Load example recipe"):
         ]
         st.session_state.custom_foods = {}
         st.session_state.next_custom_code = -1
-        st.session_state["sb_added_water"] = 200.0
-        st.session_state["sb_measured_volume"] = 550.0
+        st.session_state["load_example"] = True
         st.rerun()
     else:
         st.sidebar.error("Could not find example foods in CNF.")
@@ -313,17 +312,20 @@ with st.sidebar.expander("➕ Add ingredient", expanded=True):
 
 # --- Blend details ---
 st.sidebar.subheader("Blend details")
+# Check if example recipe was loaded (flag set by the button above)
+_example_loaded = st.session_state.pop("load_example", False)
+
 added_water = st.sidebar.number_input(
     "Added water (mL)",
     min_value=0.0,
-    value=0.0,
+    value=200.0 if _example_loaded else 0.0,
     step=10.0,
     key="sb_added_water",
 )
 measured_volume = st.sidebar.number_input(
     "Measured final volume (mL) ⚠️",
     min_value=0.0,
-    value=0.0,
+    value=550.0 if _example_loaded else 0.0,
     step=10.0,
     help="The volume you measured after blending — this is the denominator for all densities.",
     key="sb_measured_volume",
