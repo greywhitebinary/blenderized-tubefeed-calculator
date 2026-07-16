@@ -229,6 +229,61 @@ def main() -> int:
         pass
     print("    load_registry() raises FileNotFoundError for a missing pack — OK")
 
+    # 11. Per-recipe coverage provenance (P2) — a missing CNF row and a true
+    # zero both sum to 0 in nutrient_totals; nutrient_coverage tells us,
+    # per nutrient, how many of THIS recipe's ingredients actually had
+    # data. Food_Code 9 ("Meat loaf with tomato sauce, mashed potatoes and
+    # peas") is a real CNF food verified to have no row for trans_fat_g
+    # (605) or vitamin_d_ug (328) — pairing it with chicken (which has
+    # both) gives a recipe with known, deliberately partial coverage.
+    print("\n[11] Per-recipe coverage provenance...")
+    incomplete_food_code = 9
+    incomplete_desc = fn[fn["Food_Code"] == incomplete_food_code]["Food_Description_EN"].iloc[0]
+    print(f"    Incomplete-coverage food: Food_Code {incomplete_food_code} ({incomplete_desc})")
+    coverage_recipe = Recipe(
+        name="Coverage test blend",
+        ingredients=[
+            Ingredient(food_code=chicken_code, food_description="Chicken breast", grams=200),
+            Ingredient(food_code=incomplete_food_code, food_description=incomplete_desc, grams=150),
+        ],
+        added_water_mL=100,
+        measured_final_volume_mL=450,
+    )
+    coverage_profile = calculate_profile(coverage_recipe, na)
+    trans_fat_coverage = coverage_profile.nutrient_coverage.get("trans_fat_g")
+    vit_d_coverage = coverage_profile.nutrient_coverage.get("vitamin_d_ug")
+    energy_coverage = coverage_profile.nutrient_coverage.get("energy_kcal")
+    print(f"    trans_fat_g coverage:  {trans_fat_coverage} (expect 1 of 2 ingredients)")
+    print(f"    vitamin_d_ug coverage: {vit_d_coverage} (expect 1 of 2 ingredients)")
+    print(f"    energy_kcal coverage:  {energy_coverage} (expect 2 of 2 -- full coverage)")
+    assert trans_fat_coverage == (1, 2), f"expected (1, 2), got {trans_fat_coverage}"
+    assert vit_d_coverage == (1, 2), f"expected (1, 2), got {vit_d_coverage}"
+    assert energy_coverage == (2, 2), f"expected (2, 2) full coverage, got {energy_coverage}"
+
+    coverage_adequacy = generate_adequacy_report(coverage_profile, daily_vol, targets)
+    trans_fat_row = coverage_adequacy[coverage_adequacy["Nutrient"] == "Trans Fat"].iloc[0]
+    energy_row = coverage_adequacy[coverage_adequacy["Nutrient"] == "Energy"].iloc[0]
+    assert trans_fat_row["Coverage"] == "1/2 ingredients", trans_fat_row["Coverage"]
+    assert energy_row["Coverage"] == "—", (
+        f"fully-covered nutrients should show '—', not be flagged: {energy_row['Coverage']!r}"
+    )
+
+    coverage_clinical = generate_clinical_screen(coverage_profile, daily_vol, targets)
+    vit_d_row = coverage_clinical[coverage_clinical["Nutrient"] == "Vitamin D"].iloc[0]
+    assert vit_d_row["Coverage"] == "1/2 ingredients", vit_d_row["Coverage"]
+
+    # Strictly additive (P2's core constraint): the SAME recipe's
+    # already-verified totals (stage 3's chicken/rice/oil recipe) must be
+    # byte-for-byte unchanged now that calculate_profile() also computes
+    # coverage -- coverage is new information, not a rewrite of existing math.
+    reverified_profile = calculate_profile(recipe, na)
+    assert reverified_profile.nutrient_totals == profile.nutrient_totals, (
+        "adding coverage provenance changed existing nutrient totals -- "
+        "P2 must be strictly additive"
+    )
+    print("    Coverage flags incomplete nutrients, leaves full-coverage nutrients "
+          "unflagged, and does not alter existing totals — OK")
+
     print("\n=== ALL BACKEND MODULES VERIFIED ===")
     return 0
 

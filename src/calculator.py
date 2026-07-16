@@ -151,10 +151,40 @@ def calculate_profile(
                         nutrient_totals.get(nutrient_name, 0.0) + scaled
                     )
 
+    # Step 8: Per-recipe coverage provenance (strictly additive — does not
+    # change any total computed above). A missing CNF row and a true zero
+    # are otherwise indistinguishable: both simply don't appear in `merged`
+    # (Step 3's inner join drops them) and so contribute nothing in Step 5.
+    # This counts, per tracked nutrient, how many of THIS recipe's
+    # ingredients actually supplied a value — a CNF row was present, or (for
+    # a custom food) the RD entered that field — out of the ingredient
+    # count. Complements the registry's static on_label flag (P1), which
+    # flags nutrients a LABEL can never supply regardless of the recipe;
+    # this flags nutrients THIS recipe happens to be missing data for.
+    n_total_ingredients = len(recipe.ingredients)
+    # merged is already one row per (ingredient instance, nutrient code)
+    # supplied by CNF — counting rows per Nutrient_Code counts ingredients,
+    # even when two ingredients share the same Food_Code, because the
+    # Step-3 merge preserves ingr_df's row-per-ingredient granularity.
+    cnf_supplying_counts = merged.groupby("Nutrient_Code")["Food_Code"].count()
+    nutrient_coverage: dict[str, tuple[int, int]] = {
+        name: (int(cnf_supplying_counts.get(code, 0)), n_total_ingredients)
+        for name, code in NUTRIENT_CODES.items()
+    }
+    if custom_foods:
+        for ing in recipe.ingredients:
+            if ing.food_code < 0:
+                custom_data = custom_foods.get(ing.food_code, {})
+                for nutrient_name in custom_data:
+                    if nutrient_name in nutrient_coverage:
+                        n_supplying, n_tot = nutrient_coverage[nutrient_name]
+                        nutrient_coverage[nutrient_name] = (n_supplying + 1, n_tot)
+
     return NutrientProfile(
         nutrient_totals=nutrient_totals,
         measured_final_volume_mL=recipe.measured_final_volume_mL,
         added_water_mL=recipe.added_water_mL,
+        nutrient_coverage=nutrient_coverage,
     )
 
 

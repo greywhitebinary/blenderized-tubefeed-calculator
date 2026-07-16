@@ -98,11 +98,27 @@ def _source_text(nutrient_def: NutrientDef) -> str:
     return _SOURCE_ON_LABEL if nutrient_def.on_label else _SOURCE_CNF_ONLY
 
 
+def _coverage_text(name: str, coverage: dict[str, tuple[int, int]]) -> str:
+    """'How many of THIS recipe's ingredients actually had data for this
+    nutrient?' (P2 — per-recipe coverage provenance, on top of the
+    registry's static on_label flag from P1).
+
+    Only flags incomplete coverage (n_supplying < n_total) — full
+    coverage is the expected case and renders "—", same convention as
+    the Target/% Target columns for "nothing to flag here".
+    """
+    n_supplying, n_total = coverage.get(name, (0, 0))
+    if n_total > 0 and n_supplying < n_total:
+        return f"{n_supplying}/{n_total} ingredients"
+    return "—"
+
+
 def _tier_rows(
     defs: list[NutrientDef],
     daily_totals: dict[str, float],
     targets: dict[str, float],
     target_types: dict[str, str],
+    coverage: dict[str, tuple[int, int]],
 ) -> list[dict]:
     """Build report rows for a list of NutrientDef (one tier's worth)."""
     rows = []
@@ -122,6 +138,7 @@ def _tier_rows(
                 "% Target": round(pct, 0) if target_val > 0 else "—",
                 "Status": status,
                 "Source": _source_text(d),
+                "Coverage": _coverage_text(d.name, coverage),
             }
         )
     return rows
@@ -142,7 +159,8 @@ def generate_adequacy_report(
     generate_clinical_screen(). tier="engine" nutrients (water_g) never
     get a row anywhere.
 
-    Columns: Nutrient, Daily Total, Unit, Target, % Target, Status, Source
+    Columns: Nutrient, Daily Total, Unit, Target, % Target, Status, Source,
+    Coverage
 
     Args:
         profile:         The recipe's NutrientProfile.
@@ -164,8 +182,9 @@ def generate_adequacy_report(
         target_types = load_target_types(pack=pack)
 
     daily_totals = calculate_daily_totals(profile, daily_volume_mL)
+    coverage = profile.nutrient_coverage
 
-    rows = _tier_rows(defs_for_tier("label", pack=pack), daily_totals, targets, target_types)
+    rows = _tier_rows(defs_for_tier("label", pack=pack), daily_totals, targets, target_types, coverage)
 
     # Free water (Appendix A6): free water is a first-class computed
     # output, not a CNF nutrient lookup — it's derived from
@@ -175,6 +194,7 @@ def generate_adequacy_report(
     # note explains the underlying limitation: no label carries moisture,
     # so recipes built partly from custom/label foods will UNDER-report
     # free water (see the caption in app/streamlit_app.py's custom-food form).
+    # Its Coverage reuses water_g's per-recipe coverage (P2).
     water_def = registry_by_name(pack).get("water_g")
     water_decimals = water_def.decimals if water_def else 1
     free_water_mL = profile.free_water_fraction * daily_volume_mL
@@ -190,6 +210,7 @@ def generate_adequacy_report(
             "% Target": round(fluid_pct, 0) if fluid_target > 0 else "—",
             "Status": _adequacy_status(free_water_mL, fluid_target, fluid_type),
             "Source": "Derived (food moisture + added water) — no label carries moisture",
+            "Coverage": _coverage_text("water_g", coverage),
         }
     )
 
@@ -219,9 +240,10 @@ def generate_clinical_screen(
     scripts/trace_calculation.py's missing-data audit).
 
     Same columns as generate_adequacy_report(): Nutrient, Daily Total,
-    Unit, Target, % Target, Status, Source. Magnesium and phosphorus
-    intentionally have no target row in targets.csv (see src/targets.py
-    docstring) and so render "No target" here — that's correct, not a bug.
+    Unit, Target, % Target, Status, Source, Coverage. Magnesium and
+    phosphorus intentionally have no target row in targets.csv (see
+    src/targets.py docstring) and so render "No target" here — that's
+    correct, not a bug.
     """
     if targets is None:
         targets = {}
@@ -229,7 +251,8 @@ def generate_clinical_screen(
         target_types = load_target_types(pack=pack)
 
     daily_totals = calculate_daily_totals(profile, daily_volume_mL)
-    rows = _tier_rows(defs_for_tier("clinical", pack=pack), daily_totals, targets, target_types)
+    coverage = profile.nutrient_coverage
+    rows = _tier_rows(defs_for_tier("clinical", pack=pack), daily_totals, targets, target_types, coverage)
     return pd.DataFrame(rows)
 
 

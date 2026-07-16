@@ -83,11 +83,22 @@ class NutrientProfile:
         nutrient_totals:          Dict of nutrient_name → total amount in recipe.
         measured_final_volume_mL: The measured blend volume (denominator).
         added_water_mL:           Water added during blending (for free-water calc).
+        nutrient_coverage:        Dict of nutrient_name → (n_supplying, n_total):
+                                   how many of the recipe's ingredients actually
+                                   supplied a value for that nutrient (a CNF row
+                                   was present, or a custom-food key was given),
+                                   out of the total ingredient count. A missing
+                                   CNF row and a true zero both sum to 0 in
+                                   nutrient_totals — this makes that gap visible
+                                   per-recipe (see calculator.calculate_profile).
+                                   Defaults to {} so existing constructions that
+                                   don't pass it keep working unchanged.
     """
 
     nutrient_totals: dict[str, float] = field(default_factory=dict)
     measured_final_volume_mL: float = 0.0
     added_water_mL: float = 0.0
+    nutrient_coverage: dict[str, tuple[int, int]] = field(default_factory=dict)
 
     # -- Density properties (the primary outputs) ---------------------------
 
