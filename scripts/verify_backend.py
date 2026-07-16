@@ -117,9 +117,15 @@ def main() -> int:
     # 6. Targets + adequacy report
     print("\n[6] Loading targets and generating adequacy report...")
     targets = default_targets()
+    assert targets.get("fluid_mL", 0.0) > 0, "default targets missing fluid_mL"
     adequacy = generate_adequacy_report(profile, daily_vol, targets)
     print(adequacy.to_string(index=False))
     assert len(adequacy) > 0, "adequacy report is empty"
+    assert "Free water" in adequacy["Nutrient"].values, (
+        "adequacy report missing the Free water row"
+    )
+    free_water_row = adequacy[adequacy["Nutrient"] == "Free water"].iloc[0]
+    assert free_water_row["Unit"] == "mL", "Free water row should be in mL"
 
     # 7. Formula comparison
     print("\n[7] Formula comparison (vs Peptamen 1.5)...")

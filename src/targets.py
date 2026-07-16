@@ -67,6 +67,7 @@ def empty_targets() -> dict[str, float]:
         "zinc_mg": 0.0,
         "vitamin_d_ug": 0.0,
         "vitamin_b12_ug": 0.0,
+        "fluid_mL": 0.0,
     }
 
 

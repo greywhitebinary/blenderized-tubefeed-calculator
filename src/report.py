@@ -105,6 +105,24 @@ def generate_adequacy_report(
             }
         )
 
+    # Free water (Appendix A6): free water is "first-class computed output",
+    # not part of NUTRIENT_CODES (it's derived from free_water_fraction, not
+    # a CNF nutrient lookup) — compared against the fluid target separately.
+    # Labeled "Free water (mL)" so it isn't confused with total daily volume.
+    free_water_mL = profile.free_water_fraction * daily_volume_mL
+    fluid_target = targets.get("fluid_mL", 0.0)
+    fluid_pct = (free_water_mL / fluid_target * 100) if fluid_target > 0 else 0.0
+    rows.append(
+        {
+            "Nutrient": "Free water",
+            "Daily Total": round(free_water_mL, 1),
+            "Unit": "mL",
+            "Target": round(fluid_target, 1) if fluid_target > 0 else "—",
+            "% Target": round(fluid_pct, 0) if fluid_target > 0 else "—",
+            "Status": _adequacy_status(free_water_mL, fluid_target),
+        }
+    )
+
     return pd.DataFrame(rows)
 
 

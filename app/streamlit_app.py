@@ -19,6 +19,7 @@ Design commitments (from CONTEXT.md §1):
 """
 
 import io
+import re
 import sys
 from pathlib import Path
 
@@ -113,6 +114,16 @@ def get_measure_lookup():
 # Helpers
 # ---------------------------------------------------------------------------
 
+def sanitize_filename(name: str, fallback: str = "btf") -> str:
+    """Strip characters that break filenames/downloads on common filesystems.
+
+    e.g. "chicken/rice" -> "chickenrice"; empty or all-invalid names fall
+    back to `fallback` so the download always has a usable name.
+    """
+    cleaned = re.sub(r'[\\/:*?"<>|]', "", (name or "")).strip()
+    return cleaned or fallback
+
+
 def find_food(fn_df: pd.DataFrame, desc: str) -> int | None:
     """Find the first Food_Code matching a description substring."""
     m = fn_df[fn_df["Food_Description_EN"].str.contains(
@@ -203,7 +214,7 @@ with st.sidebar.expander("➕ Add ingredient", expanded=True):
 
         if len(search_term) >= 2:
             matches = fn[fn["Food_Description_EN"].str.contains(
-                search_term, case=False, na=False
+                search_term, case=False, na=False, regex=False
             )]
             matches = matches.sort_values("Food_Description_EN").head(50)
 
@@ -326,7 +337,7 @@ added_water = st.sidebar.number_input(
     key="sb_added_water",
 )
 measured_volume = st.sidebar.number_input(
-    "Measured final volume (mL) ⚠️",
+    "**Measured final volume (mL)**",
     min_value=0.0,
     value=550.0 if _example_loaded else 0.0,
     step=10.0,
@@ -392,6 +403,7 @@ else:
     tc1, tc2 = st.sidebar.columns(2)
     targets["energy_kcal"] = tc1.number_input("kcal/day", min_value=0.0, value=0.0, step=50.0)
     targets["protein_g"] = tc2.number_input("Protein g/day", min_value=0.0, value=0.0, step=5.0)
+    targets["fluid_mL"] = tc1.number_input("Fluid mL/day", min_value=0.0, value=0.0, step=100.0)
     targets["fibre_g"] = tc1.number_input("Fibre g/day", min_value=0.0, value=0.0, step=1.0)
     targets["sodium_mg"] = tc2.number_input("Sodium mg/day", min_value=0.0, value=0.0, step=100.0)
     targets["potassium_mg"] = tc1.number_input("Potassium mg/day", min_value=0.0, value=0.0, step=100.0)
@@ -670,7 +682,7 @@ with pd.ExcelWriter(output, engine="openpyxl") as writer:
 st.download_button(
     label="📥 Export to Excel",
     data=output.getvalue(),
-    file_name=f"{recipe.name or 'btf'}_report.xlsx",
+    file_name=f"{sanitize_filename(recipe.name)}_report.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
 
