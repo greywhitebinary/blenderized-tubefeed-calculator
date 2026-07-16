@@ -16,8 +16,11 @@
    success. If you add backend features, extend that script instead of
    writing a new one-off verification command.
 
-4. Current work: Phase 6 — app/streamlit_app.py (Streamlit UI).
-   See CONTEXT.md §1 for the app flow and §6 for the phase plan.
+4. Current work: Phase 6 (app/streamlit_app.py) is scaffolded and
+   backend-verified — remaining work is Week 3 scope (pytest suite, CI,
+   Streamlit Cloud deploy, USDA SR Legacy supplement) plus the pinned
+   issues in CONTEXT.md §9. See CONTEXT.md §1 for the app flow and §6
+   for the build plan.
 
 5. Never modify anything under cnf_fcen_all-files-data_2026/ (raw data).
 

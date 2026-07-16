@@ -1,5 +1,11 @@
 # reference/ — Bug-free reference solutions
 
+> **Note:** The scaffold-and-fix learning workflow this folder supports is
+> retired for the AI Masters Vibecoding Challenge (the project is now on the
+> competition's 4-week plan — see `CONTEXT.md` §2 and §7). The folder is
+> kept as-is in case the author returns to the learning project later; no
+> new phases will be added to it for the competition build.
+
 This folder contains **correct, working versions** of each module, organized
 by phase. Use these to:
 

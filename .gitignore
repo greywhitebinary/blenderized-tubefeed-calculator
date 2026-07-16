@@ -16,3 +16,8 @@ data/processed/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated/exported documents at repo root (regenerable from BUSINESS_CASE.md;
+# root-anchored so this does NOT touch PDFs under cnf_fcen_all-files-data_2026/)
+/BTF Calculator.pdf
+/BTF_Calculator_Complete.*

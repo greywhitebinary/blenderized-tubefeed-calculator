@@ -12,24 +12,25 @@
 A clinical nutrition tool that **characterizes a real, working
 blenderized tube-feed (BTF) recipe** — one already known to flow through
 the tube because someone is living on it — and helps navigate changes
-to it. (Design reframed 2026-07-08; business case and methodology
-documented 2026-07-14 in `BUSINESS_CASE.md` and `METHODOLOGY.md`.)
+to it. The full business case, market analysis, and methodology are in
+`BUSINESS_CASE.md` (the Week 1 competition deliverable).
 
 **App flow — "start with the blender":**
 
-1. **Recipe builder** — search CNF or add a custom food from a nutrition
-   facts label; enter grams per ingredient, added water, measured final
-   volume.
+1. **Recipe builder** — search CNF or USDA supplement or add a custom
+   food from a nutrition facts label; enter grams per ingredient, added
+   water, measured final volume.
 2. **Delivery input** — how is the feed given? Syringe bolus (mL ×
    times/day), pump (mL/hr × hours/day), or direct mL/day. The tool does
    the multiplication.
 3. **Targets (optional)** — RD enters kcal/day, protein g/day, fluid
    mL/day they already know. No assessment page, no energy equations in
-   the app (those are documented in `METHODOLOGY.md` §10 as reference).
+   the app (those are documented in `BUSINESS_CASE.md` Appendix B as
+   reference).
 4. **Results (live)** — densities, daily totals, adequacy vs targets,
-   commercial formula comparator, dilution what-if slider.
+   commercial formula comparator, live recipe adjustment.
 
-Three design commitments that follow from "the recipe already works":
+**Design commitments:**
 
 1. **Per-mL is the primary lens, not per-recipe.** The outputs that
    matter are densities — kcal/mL, protein/mL, free-water fraction.
@@ -39,48 +40,65 @@ Three design commitments that follow from "the recipe already works":
    weights — but the user *knows* it (they poured it into a container).
    Ingredients give nutrient totals; measured volume gives the
    denominator.
-3. **The core feature is the water trade-off what-if.** "Add 150 mL
-   water → kcal/mL drops 1.3 → 1.1 → hitting 1,800 kcal now takes
-   1,640 mL/day — within tolerance?" The tool never judges thinness
-   (that stays human, hands-on-blender knowledge); it shows what a
-   thinning decision *costs*.
+3. **Live recipe adjustment — the tool IS the what-if.** Every edit
+   (add/remove/swap ingredients, change amounts, swap water for juice
+   or broth) updates everything instantly. The RD iterates: tweak →
+   check numbers → drip test → tweak again. The tool handles the
+   numbers side; the RD handles the physical flow side.
 
-It also reports adequacy vs. tube-feeding targets (calories, protein
-g/kg, fluid, fibre, sodium, potassium, and the micros that actually go
-wrong in BTF: calcium, iron, zinc, vitamin D, B12), plus a
-**commercial-formula comparator** (side-by-side: "your BTF at 1,200 mL
-vs Peptamen 1.5 at 1,200 mL") — how RDs actually reason about BTF
-adequacy.
+**The sweet spot — thin enough to flow, dense enough to nourish:**
+Every BTF recipe lives in a tension between two physical realities:
+thin enough to flow through the tube (checked by the RD with a drip
+test — no app can measure viscosity) and dense enough to nourish
+(calculated by the tool as kcal/mL). BTF recipes should be at most as
+thick as Resource 2.0. The tool shows the nutritional numbers while
+the RD checks the physical flow. See `BUSINESS_CASE.md` §2 for the
+full description.
+
+**Thinning liquids aren't just water.** Water (pure dilution), apple
+juice (adds calories), broth (adds sodium + protein), milk (adds
+calories + protein + calcium), oil (adds fat). The AHS caregiver
+handbook confirms: *"If your child needs more calories add: milk,
+juice, oil, formula"* vs. *"If your child does not need more calories
+add: cooking liquid, water."* The tool shows the nutritional impact
+of each thinning choice.
 
 **Design philosophy — "no black boxes":** Inspired by the EN spreadsheet
 by Hui Jun Chew, RD (North York General Hospital, Toronto). Every
 calculation visible, every assumption documented, reference data
 human-editable, RD clinical judgment always the final authority. See
-`BUSINESS_CASE.md` §5 and `METHODOLOGY.md` for the full philosophy.
+`BUSINESS_CASE.md` §5 and Appendix A for the full philosophy and
+equations.
 
 **Internationalization — "built for Canada, designed for the world":**
 The calculator engine is country-agnostic. Each country is a "data pack"
 (nutrient database + targets + formula profiles + units config). Canada
-first (CNF 2026), then US (USDA), UK (CoFID), Australia (AUSNUT). See
-`METHODOLOGY.md` §11 for the data pack specification.
+first (CNF 2026 + USDA SR Legacy supplement), then US, UK, Australia.
+See `BUSINESS_CASE.md` Appendix C for the data pack specification.
 
 **Out of scope, permanently (fixed caution notes, never computed):**
 osmolality (a footnote for this population, not a headline), viscosity /
 tube-flow behaviour, nutrient losses from blending and holding, food
-safety. **Identity from day one: "for RD use, estimates only"** — not a
-family-facing tool.
+safety. **Identity from day one: "for RD use, estimates only."**
 
-Built on the **Canadian Nutrient File (CNF) 2026 edition** — a public
-Government of Canada dataset of ~5,993 foods × ~173 nutrients, all values
-expressed **per 100 g of edible food**. CNF catalogues single/generic
-foods, not prepared dishes — a limitation for menu analysis but a
-perfect fit for BTF, which is built from single whole foods. CNF's
-per-food moisture values make **free water** a first-class computed
-output, not an afterthought.
+**Data:** Built on the **Canadian Nutrient File (CNF) 2026 edition** —
+a public Government of Canada dataset of ~5,993 foods × ~173 nutrients,
+all values expressed **per 100 g of edible food** — supplemented by
+**USDA SR Legacy** (~7,000 whole foods) for foods CNF doesn't have.
+Whole foods are interchangeable across databases; packaged foods are
+not (different fortification by country). Custom food entry from
+nutrition facts labels covers specific branded products.
 
 ---
 
 ## 2. Author & learning context
+
+> **Note:** This section describes the original learning project. The
+> project has been repurposed for the AI Masters Vibecoding Challenge
+> (4-week competition). For the competition, the AI agent writes working
+> code directly — no scaffold-and-fix, no deliberate bugs. The learning
+> sections below are kept for reference in case the author returns to
+> the learning project later.
 
 - The author is a nutrition subject-matter expert (SME) learning Python.
 - Goal: deep fluency, not just a working app. "Don't dumb it down" —
@@ -107,21 +125,22 @@ output, not an afterthought.
 |-------------|-------------------|------------------------------------------------|
 | Language    | Python 3.12+      | matches existing projects; author's focus      |
 | Data        | pandas            | standard for tabular data; tames 565k-row CSV  |
-| UI          | Streamlit         | zero-frontend web app; learning bridge to React|
+| UI          | Streamlit         | fastest path from Python to live web app; free cloud deployment. Chosen for competition speed. Graduation path: FastAPI + React. |
 | Persistence | Parquet (pyarrow) | binary, ~20× faster load than CSV              |
 | Validation  | pydantic (later)  | typed input models; prep for API stage         |
 | Tests       | pytest            | standard, simple                               |
 | Formatting  | black + ruff      | auto-style + linter; teaches conventions        |
+| Deployment  | Streamlit Community Cloud | free, public URL, auto-deploys from GitHub |
 
 Deliberately NOT yet included: database, FastAPI, React. Those are the
-Phase 6+ graduation path — see §6.
+graduation path — see §6.
 
-**UI decision recorded 2026-07-08:** the idea-bank doc
-(`Projects/CNF_project_ideas.md`) argues for Flask everywhere; per
-direct human-mentor advice, *this* project stays **Streamlit**. The
-author is not attached either way, so the tiebreak stands. Flask gets
-learned later on the lower-stakes Epicure similarity explorer (idea
-bank, Project 6b). Don't relitigate without new information.
+**UI decision:** Streamlit chosen for the competition because it's the
+fastest path from Python to a live web app. The author knows Python, not
+JS. The full-page-rerun model is a limitation for editable tables, but
+manageable with `@st.cache_data` and `st.session_state`. If editable
+tables prove too painful, fallback is FastAPI + HTMX (still Python only).
+Graduation path: FastAPI + React.
 
 ---
 
@@ -132,17 +151,19 @@ blenderized-tubefeed-calculator/
 ├── cnf_fcen_all-files-data_2026/   # raw CNF data (DO NOT MODIFY)
 ├── data/
 │   ├── processed/                   # generated parquet (gitignored)
-│   └── targets/                     # SME-authored DRI / tube-feed targets
+│   ├── targets/                     # SME-authored DRI / tube-feed targets
+│   ├── formulas/                    # commercial formula profiles (CSV)
+│   └── thinning_liquids.csv         # thinning liquid presets (CSV)
 ├── src/
 │   ├── __init__.py
-│   ├── data_loader.py               # CSV → pandas DataFrames (working, verified)
-│   ├── build_parquet.py             # one-time: CSV → parquet (working)
-│   ├── models.py                    # @dataclass Ingredient, Recipe, Profile (verified)
-│   ├── calculator.py               # core math: recipe → nutrient profile (verified)
-│   ├── measures.py                  # household-measure → grams (verified)
-│   ├── targets.py                   # load DRI / tube-feed targets (verified)
-│   └── report.py                    # profile + targets → gap report (verified)
-├── reference/                        # bug-free reference solutions (per phase)
+│   ├── data_loader.py               # CSV → pandas DataFrames (WORKING)
+│   ├── build_parquet.py             # one-time: CSV → parquet (WORKING)
+│   ├── models.py                    # @dataclass Ingredient, Recipe, Profile
+│   ├── calculator.py               # core math: recipe → nutrient profile
+│   ├── measures.py                  # household-measure → grams
+│   ├── targets.py                   # load DRI / tube-feed targets
+│   └── report.py                    # profile + targets → gap report
+├── reference/                        # bug-free reference solutions (per phase; learning project only)
 │   ├── __init__.py
 │   ├── data_loader.py               # Phase 2 reference (verified working)
 │   ├── build_parquet.py             # Phase 2 reference (verified working)
@@ -150,12 +171,15 @@ blenderized-tubefeed-calculator/
 ├── app/
 │   └── streamlit_app.py             # the UI
 ├── scripts/
-│   └── verify_backend.py            # full backend integration test (Phases 2–5)
+│   ├── verify_backend.py            # full backend integration test
+│   └── check_app_imports.py         # app import smoke test
 ├── tests/
 ├── notebooks/
 │   ├── 00_explore_cnf.ipynb         # data-exploration sandbox
 │   └── PHASE2_SPEC.md               # spec, hint list, verification for Phase 2
-├── CONTEXT.md                       # this file
+├── BUSINESS_CASE.md                  # Week 1 deliverable + full methodology
+├── CONTEXT.md                       # this file (internal project management)
+├── README.md                         # newbie-friendly setup + usage guide
 ├── requirements.txt
 └── .gitignore
 ```
@@ -179,18 +203,35 @@ Relational database delivered as CSVs. All nutrient amounts are
 
 Key arithmetic: `nutrient_from_ingredient = grams × (amount / 100)`.
 
-**Gotcha:** Several CNF CSVs have a UTF-8 BOM (`\ufeff`). Must use
+**Gotcha:** Several CNF CSVs have a UTF-8 BOM (`﻿`). Must use
 `encoding="utf-8-sig"` in `pd.read_csv()` to strip it, or the first
-column name becomes `\ufeffNutrient_Code` and merges silently fail.
+column name becomes `﻿Nutrient_Code` and merges silently fail.
 
 ---
 
-## 6. Phased build plan
+## 6. Build plan
+
+### Competition plan (4 weeks — see `BUSINESS_CASE.md` §12)
+
+| Week | Deliverable | What gets built |
+|---|---|---|
+| **1 — Plan It** | `BUSINESS_CASE.md` posted publicly | Concept, market, requirements, methodology |
+| **2 — Core Feature** | Working Streamlit app | Build calculator, measures, targets/report, Streamlit UI |
+| **3 — Build to Last** | Tests, CI, deploy, custom food, USDA | pytest, GitHub Actions, Streamlit Cloud, label-entry, USDA data |
+| **4 — Ship + Pitch** | Live app + 2–3 min demo | Polish, export, demo video |
+
+### Learning project phases (original — for reference)
+
+> The phases below describe the original learning project. For the
+> competition, we follow the 4-week plan above. The AI agent writes
+> working code directly (no scaffold-and-fix). The phases are still
+> useful as a module breakdown.
 
 - **Phase 1 — Setup.** venv, requirements.txt, folder skeleton,
-  exploration notebook, git init. (No logic; pure plumbing.)
+  exploration notebook, git init. (COMPLETE)
 - **Phase 2 — data_loader.py.** Typed, reusable loading functions;
-  one-time CSV→parquet build script.
+  one-time CSV→parquet build script. (COMPLETE — working code, parquet
+  files built and verified 2026-07-15)
 - **Phase 3 — models.py + calculator.py.** @dataclass Ingredient/Recipe;
   Recipe carries ingredients + **added water** + **measured final
   volume**; profile(recipe) → nutrient totals via merge + groupby,
@@ -199,20 +240,21 @@ column name becomes `\ufeffNutrient_Code` and merges silently fail.
 - **Phase 4 — measures.py.** Household measure → grams via the
   conversion table. Filter to Measure_Type=6 only.
 - **Phase 5 — targets.py + report.py.** SME-authored DRI / tube-feed
-  target tables; daily adequacy report (needs daily mL intake as input:
-  density × mL/day vs targets, % target, status), free-water total,
+  target tables; daily adequacy report, free-water total,
   commercial-formula benchmark row.
 - **Phase 6 — streamlit_app.py.** Editable ingredient table, live
-  density panel, adequacy report, **dilution what-if control** (add X mL
-  water → new densities → required daily volume vs tolerance),
-  export-to-Excel button.
+  density panel, adequacy report, live recipe adjustment, export.
 - **Phase 7 — Polish.** Save/load recipes as JSON; pytest suite.
 - **Phase 8+ (graduation).** Lift calculator behind FastAPI; build
   React frontend that calls it.
 
 ---
 
-## 7. Working method: scaffold-and-fix
+## 7. Working method: scaffold-and-fix (learning project only)
+
+> **Note:** This method is for the original learning project only. For
+> the competition, the AI agent writes working code directly — no
+> deliberate bugs, no scaffold-and-fix.
 
 The author learns by fixing deliberately-buggy code, not by writing from
 scratch or studying finished code. Per module the AI agent provides:
@@ -226,10 +268,6 @@ scratch or studying finished code. Per module the AI agent provides:
 Author fixes one bug at a time, re-runs the check after each. When
 stuck >20 min, author may ask for a *hint* (not the answer). The
 *full fix* is given only if the author explicitly says "just show me."
-
-Bug difficulty ramps: early modules get obvious bugs (typos, wrong
-column names); later modules get subtle ones (silent row-drops in
-merges, dtype gotchas, off-by-100 unit conversion).
 
 A `reference/` folder contains bug-free solutions for each phase, so the
 author can compare their fixes or unblock themselves if stuck for too long.
@@ -259,23 +297,43 @@ author can compare their fixes or unblock themselves if stuck for too long.
   "never track these files."
 - **Vectorization** — operating on whole columns at once, not row-by-row
   with `.iterrows()` (which is a code smell).
-- **BOM (Byte Order Mark)** — a `\ufeff` character at the start of some
+- **BOM (Byte Order Mark)** — a `﻿` character at the start of some
   UTF-8 files; `encoding="utf-8-sig"` strips it.
+- **Sweet spot** — the overlap between "thin enough to flow" (RD's
+  drip test) and "dense enough to nourish" (tool's density calc).
+- **Drip test** — hands-on check: pull blended food in a 50–60 mL
+  syringe without resistance (AHS 2021). The tool can't replace this.
+- **Thickness ceiling** — BTF recipes should be at most as thick as
+  Resource 2.0; thicker won't flow through a tube.
 
 ---
 
 ## 9. Current status
 
+**Competition-week framing (see `BUSINESS_CASE.md` §12 for the 4-week plan):**
+
+- [x] Week 1 — Plan It — COMPLETE (`BUSINESS_CASE.md` posted; `CONTEXT.md`
+  merged and aligned with it as of this repo audit)
+- [x] Week 2 — Core Feature — effectively COMPLETE (calculator, measures,
+  targets/report, and the Streamlit UI are all built and backend-verified;
+  see the phase-level record below for detail)
+- [ ] Week 3 — Build to Last — NOT STARTED (pytest suite, CI, Streamlit
+  Cloud deploy, and the USDA SR Legacy supplement are not started; custom
+  food entry from a label is already built in Week 2's Streamlit UI)
+- [ ] Week 4 — Ship + Pitch — NOT STARTED (polish, export, demo video)
+
+**Phase-level record (module breakdown, kept for detail):**
+
 - [x] Phase 1 setup — COMPLETE (venv, requirements.txt, .gitignore, git init, first commit 852cc9e)
-- [x] Phase 2 data_loader — SCAFFOLDED (buggy `src/data_loader.py` + `src/build_parquet.py` created; reference solutions in `reference/`; spec in `notebooks/PHASE2_SPEC.md`; exploration notebook in `notebooks/00_explore_cnf.ipynb`; reference verified working 2026-07-01)
-- [x] Week 1 planning — COMPLETE (`BUSINESS_CASE.md` and `METHODOLOGY.md` written 2026-07-14; `CONTEXT.md` §1 updated with app flow, design philosophy, and internationalization)
+- [x] Phase 2 data_loader — COMPLETE (working `src/data_loader.py` + `src/build_parquet.py`; parquet files built and verified 2026-07-15; reference solutions in `reference/` match src/)
+- [x] Week 1 planning — COMPLETE (`BUSINESS_CASE.md` written with full market analysis, competitors, methodology, and 4-week build plan)
 - [x] Phase 3 calculator — COMPLETE & VERIFIED (`src/models.py`, `src/calculator.py`)
 - [x] Phase 4 measures — COMPLETE & VERIFIED (`src/measures.py`)
 - [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv`)
 - [x] Phase 6 Streamlit UI — SCAFFOLDED (`app/streamlit_app.py` created; recipe builder with CNF search + custom food from label, delivery input, targets, live density panel, adequacy report with color-coded status, dilution what-if with thinning liquid presets, commercial formula comparator, Excel export; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed)
 - [ ] Phase 7 polish — NOT STARTED
 
-**Phase 6 pinned issues (to revisit after user testing):**
+**Pinned issues (to revisit after user testing):**
 
 - **⚠️ emoji on "Measured final volume" label** — the `⚠️` in the
   sidebar label was intended to emphasize that measured volume is the
@@ -289,6 +347,12 @@ author can compare their fixes or unblock themselves if stuck for too long.
   `data/formulas/commercial_formulas.csv` and thinning liquids in
   `data/thinning_liquids.csv`. Both load at startup with hardcoded
   fallbacks. RDs can edit these without touching Python.
+- **Design gap: dilution-slider vs. live recipe adjustment** — the code
+  currently implements the dilution-slider what-if (add X mL of a
+  thinning liquid, see new densities), but `BUSINESS_CASE.md` §7 /
+  Appendix A8 describes live recipe adjustment as the goal (no separate
+  what-if mode — every edit to the recipe itself updates everything
+  instantly). UI iteration pending after user testing.
 
 **Backend verification (2026-07-15): PASSED.** The full backend
 integration test lives at `scripts/verify_backend.py` and was run
@@ -302,16 +366,16 @@ formula comparison, density summary). To re-verify at any time, run:
 
 **Note to AI agents:** do NOT re-verify the backend with long inline
 `python -c "..."` commands — use the script above. It exists precisely
-so verification is a single short, approvable command. The backend is
-done; the next work is Phase 6 (Streamlit UI).
+so verification is a single short, approvable command.
 
-Last updated: 2026-07-15 (Phase 6 Streamlit UI scaffolded in
-`app/streamlit_app.py`; recipe builder with CNF search + custom food
-from label, delivery input (syringe bolus/pump/direct), targets
-(default DRI or custom), live density panel, adequacy report with
-color-coded status, dilution what-if with thinning liquid presets
-(water/broth/juice/milk/custom), commercial formula comparator, Excel
-export. Import-verified. Next: user testing and Phase 7 polish.)
+Last updated: 2026-07-16 (P0 repo hygiene: merged CONTEXT.md so it
+matches `BUSINESS_CASE.md`'s design framing — competition framing, CNF +
+USDA SR Legacy, sweet-spot/drip-test/thickness-ceiling concepts, live
+recipe adjustment as the stated goal; retired scaffold-and-fix to
+"learning project only"; removed references to a non-existent
+methodology file in favor of `BUSINESS_CASE.md` Appendices A/B/C;
+removed duplicate/generated documents (`CONTEXT.md</path`, `BUS`,
+`.docx`, `.epub`) from git.)
 
 ---
 
