@@ -22,6 +22,7 @@ Densities (Appendix A3):
 """
 
 import pandas as pd
+from pathlib import Path
 
 try:
     from src.models import Ingredient, Recipe, NutrientProfile, Delivery, DeliveryMethod
@@ -279,7 +280,14 @@ def required_daily_volume(
 
 # Formula profiles from the EN spreadsheet (BUSINESS_CASE.md Appendix A7).
 # These are the Canadian commercial formulas RDs commonly compare against.
-COMMERCIAL_FORMULAS: dict[str, dict[str, float]] = {
+#
+# The canonical source is data/formulas/commercial_formulas.csv — an RD
+# can add or update formulas there without touching Python. The hardcoded
+# dict below is a fallback used only if the CSV is missing (e.g., running
+# in a stripped-down environment).
+_FORMULAS_CSV = Path(__file__).resolve().parent.parent / "data" / "formulas" / "commercial_formulas.csv"
+
+_FORMULAS_FALLBACK: dict[str, dict[str, float]] = {
     "Isosource Fibre 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068},
     "Isosource Fibre 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.054},
     "Isosource Fibre 1.0 HP": {"kcal_per_mL": 1.0, "protein_per_mL": 0.062},
@@ -289,6 +297,27 @@ COMMERCIAL_FORMULAS: dict[str, dict[str, float]] = {
     "Resource 2.0": {"kcal_per_mL": 2.01, "protein_per_mL": 0.08},
     "Peptamen 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068},
 }
+
+
+def _load_commercial_formulas() -> dict[str, dict[str, float]]:
+    """Load commercial formulas from CSV, falling back to hardcoded dict.
+
+    CSV format: name,kcal_per_mL,protein_per_mL
+    """
+    if not _FORMULAS_CSV.exists():
+        return dict(_FORMULAS_FALLBACK)
+
+    df = pd.read_csv(_FORMULAS_CSV)
+    formulas: dict[str, dict[str, float]] = {}
+    for _, row in df.iterrows():
+        formulas[row["name"]] = {
+            "kcal_per_mL": float(row["kcal_per_mL"]),
+            "protein_per_mL": float(row["protein_per_mL"]),
+        }
+    return formulas
+
+
+COMMERCIAL_FORMULAS: dict[str, dict[str, float]] = _load_commercial_formulas()
 
 
 def compare_with_formula(

@@ -53,13 +53,41 @@ from src.report import (
 # These let the RD see *why* broth thins without nourishing, while milk
 # recovers more of the lost kcal density. Oil is excluded — it's a calorie
 # booster, not a thinner, and belongs in the ingredient list.
-THINNING_LIQUIDS: dict[str, dict[str, float]] = {
+# The canonical source is data/thinning_liquids.csv -- an RD can add or
+# update liquids there without touching Python. The hardcoded dict below
+# is a fallback used only if the CSV is missing.
+_THINNING_CSV = PROJECT_ROOT / "data" / "thinning_liquids.csv"
+
+_THINNING_FALLBACK: dict[str, dict[str, float]] = {
     "Water": {"kcal": 0.0, "protein_g": 0.0, "water_g": 100.0},
     "Broth (chicken)": {"kcal": 1.5, "protein_g": 0.5, "water_g": 95.0},
     "Apple juice": {"kcal": 46.0, "protein_g": 0.1, "water_g": 88.0},
     "Milk (2%)": {"kcal": 50.0, "protein_g": 3.3, "water_g": 89.0},
-    "Custom": {"kcal": 0.0, "protein_g": 0.0, "water_g": 0.0},
 }
+
+
+def _load_thinning_liquids() -> dict[str, dict[str, float]]:
+    """Load thinning liquid presets from CSV, falling back to hardcoded dict.
+
+    CSV format: name,kcal_per_100mL,protein_g_per_100mL,water_g_per_100mL
+    """
+    if not _THINNING_CSV.exists():
+        liquids = dict(_THINNING_FALLBACK)
+    else:
+        df = pd.read_csv(_THINNING_CSV)
+        liquids = {}
+        for _, row in df.iterrows():
+            liquids[row["name"]] = {
+                "kcal": float(row["kcal_per_100mL"]),
+                "protein_g": float(row["protein_g_per_100mL"]),
+                "water_g": float(row["water_g_per_100mL"]),
+            }
+    # "Custom" is always available (RD enters nutrients manually)
+    liquids["Custom"] = {"kcal": 0.0, "protein_g": 0.0, "water_g": 0.0}
+    return liquids
+
+
+THINNING_LIQUIDS: dict[str, dict[str, float]] = _load_thinning_liquids()
 
 
 # ---------------------------------------------------------------------------
