@@ -330,16 +330,11 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - [x] Phase 3 calculator — COMPLETE & VERIFIED (`src/models.py`, `src/calculator.py`)
 - [x] Phase 4 measures — COMPLETE & VERIFIED (`src/measures.py`)
 - [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv`)
-- [x] Phase 6 Streamlit UI — SCAFFOLDED (`app/streamlit_app.py` created; recipe builder with CNF search + custom food from label, delivery input, targets, live density panel, adequacy report with color-coded status, dilution what-if with thinning liquid presets, commercial formula comparator, Excel export; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed)
+- [x] Phase 6 Streamlit UI — SCAFFOLDED, bug-fixed post-audit (`app/streamlit_app.py`; recipe builder with CNF search + custom food from label, delivery input, targets (including fluid mL/day), live density panel, adequacy report with color-coded status (including a Free water row), dilution what-if with thinning liquid presets, commercial formula comparator, Excel export with a sanitized filename; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed)
 - [ ] Phase 7 polish — NOT STARTED
 
 **Pinned issues (to revisit after user testing):**
 
-- **⚠️ emoji on "Measured final volume" label** — the `⚠️` in the
-  sidebar label was intended to emphasize that measured volume is the
-  critical denominator, but the author found it confusing (looked like
-  an error indicator). Remove or replace with a different emphasis
-  approach (e.g., `help=` tooltip only, or bold text).
 - **App not matching expectations** — author noted "it's not quite what
   I expected." Specific feedback pending after hands-on testing. Week 2
   iteration will address.
@@ -352,13 +347,43 @@ author can compare their fixes or unblock themselves if stuck for too long.
   thinning liquid, see new densities), but `BUSINESS_CASE.md` §7 /
   Appendix A8 describes live recipe adjustment as the goal (no separate
   what-if mode — every edit to the recipe itself updates everything
-  instantly). UI iteration pending after user testing.
+  instantly). UI iteration pending after user testing. (Deferred by
+  design — this is a UI rework, not a bug; roadmap item for Week 3/4.)
+- **Fluid target default (2700 mL) needs RD review** — added as part of
+  the 2026-07-16 audit's fluid-adequacy fix (see below). This is the
+  DRI AI for adult women (2.7 L/day); adult men's AI is higher
+  (~3.7 L/day). Edit `data/targets/dri_adult_default.csv` or use the
+  custom-targets sidebar input to correct per patient.
 
-**Backend verification (2026-07-15): PASSED.** The full backend
-integration test lives at `scripts/verify_backend.py` and was run
-successfully against real CNF data (all 8 stages: data load, household
-measures, profile calculation, delivery, daily totals, adequacy report,
-formula comparison, density summary). To re-verify at any time, run:
+**Repo audit fixes (2026-07-16, this session) — resolved, no longer pinned:**
+
+- ~~⚠️ emoji on "Measured final volume" label~~ — removed; label is now
+  bold markdown text, `help=` tooltip kept.
+- ~~Food search crashes on regex metacharacters~~ — the search box now
+  passes `regex=False` to `str.contains`, matching the `find_food()`
+  helper.
+- ~~No fluid-adequacy row~~ — `data/targets/dri_adult_default.csv` now
+  has a `fluid_mL` target; `empty_targets()` and the custom-targets
+  sidebar include it; `generate_adequacy_report()` appends a "Free
+  water (mL)" row.
+- ~~Excel export filename could break on special characters~~ —
+  `sanitize_filename()` strips `/\:*?"<>|` before building the download
+  filename.
+- ~~Custom-food math lived in the UI layer~~ — moved into
+  `calculate_profile(recipe, na, custom_foods=...)` in
+  `src/calculator.py`; covered by `verify_backend.py` stage 9.
+- ~~Parquet layer built but unused~~ — `src/data_loader.py` now reads
+  `data/processed/*.parquet` when present, falling back to CNF CSV;
+  `verify_backend.py` stage 1 prints the source and load time.
+- ~~Stray Cline artifact / duplicate docs in git~~ — see the 2026-07-16
+  P0 entry below.
+
+**Backend verification (2026-07-16): PASSED.** The full backend
+integration test lives at `scripts/verify_backend.py` and now runs 9
+stages against real CNF data (data load with Parquet/CSV source timing,
+household measures, profile calculation, delivery, daily totals,
+adequacy report including the Free water row, formula comparison,
+density summary, custom-food folding). To re-verify at any time, run:
 
 ```
 .venv/bin/python scripts/verify_backend.py
@@ -368,14 +393,20 @@ formula comparison, density summary). To re-verify at any time, run:
 `python -c "..."` commands — use the script above. It exists precisely
 so verification is a single short, approvable command.
 
-Last updated: 2026-07-16 (P0 repo hygiene: merged CONTEXT.md so it
-matches `BUSINESS_CASE.md`'s design framing — competition framing, CNF +
-USDA SR Legacy, sweet-spot/drip-test/thickness-ceiling concepts, live
-recipe adjustment as the stated goal; retired scaffold-and-fix to
-"learning project only"; removed references to a non-existent
-methodology file in favor of `BUSINESS_CASE.md` Appendices A/B/C;
-removed duplicate/generated documents (`CONTEXT.md</path`, `BUS`,
-`.docx`, `.epub`) from git.)
+Last updated: 2026-07-16 (repo audit & repair session, four commits:
+(1) P0 repo hygiene — merged CONTEXT.md so it matches
+`BUSINESS_CASE.md`'s design framing (competition framing, CNF + USDA SR
+Legacy, sweet-spot/drip-test/thickness-ceiling concepts, live recipe
+adjustment as the stated goal), retired scaffold-and-fix to "learning
+project only", removed references to a non-existent methodology file in
+favor of `BUSINESS_CASE.md` Appendices A/B/C, and removed
+duplicate/generated documents (`CONTEXT.md</path`, `BUS`, `.docx`,
+`.epub`) from git; (2) P1 bug fixes — search-crash regex, fluid-adequacy
+row, emoji removal, Excel filename sanitization; (3) P2-1 — moved
+custom-food math from the UI into `calculate_profile()`; (4) P2-2 —
+`data_loader.py` now prefers Parquet over CSV. Next: Week 3 scope
+(pytest suite, CI, Streamlit Cloud deploy, USDA SR Legacy supplement)
+and the remaining pinned issues above.)
 
 ---
 
