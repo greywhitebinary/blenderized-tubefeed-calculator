@@ -314,6 +314,9 @@ with st.sidebar.expander("➕ Add ingredient", expanded=True):
 st.sidebar.subheader("Blend details")
 # Check if example recipe was loaded (flag set by the button above)
 _example_loaded = st.session_state.pop("load_example", False)
+if _example_loaded:
+    st.session_state.pop("sb_added_water", None)
+    st.session_state.pop("sb_measured_volume", None)
 
 added_water = st.sidebar.number_input(
     "Added water (mL)",
