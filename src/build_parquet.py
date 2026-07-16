@@ -35,7 +35,12 @@ TABLES = {
 
 
 def build_parquet(cnf_dir: Path = CNF_DIR, out_dir: Path = PARQUET_DIR) -> None:
-    """Read each CNF CSV and write a Parquet file to data/processed/."""
+    """Read each CNF CSV and write a Parquet file to data/processed/.
+
+    Uses index=False because the CSVs have no meaningful index column —
+    writing the default RangeIndex would add a useless '__index_level_0__'
+    column to the Parquet file.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for parquet_name, csv_name in TABLES.items():
@@ -46,7 +51,7 @@ def build_parquet(cnf_dir: Path = CNF_DIR, out_dir: Path = PARQUET_DIR) -> None:
         # All CNF CSVs use utf-8-sig to handle the BOM in some files
         df = pd.read_csv(csv_path, encoding="utf-8-sig")
 
-        df.to_parquet(out_path, index=True)
+        df.to_parquet(out_path, index=False)
         print(f"  → wrote {out_path} ({df.shape[0]} rows × {df.shape[1]} cols)")
 
 

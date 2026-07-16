@@ -1,0 +1,604 @@
+# Blenderized Tube Feed Calculator — Project Plan
+
+> **Week 1 deliverable for the AI Masters Vibecoding Challenge.**
+> Concept, market research, requirements, and methodology — in one document.
+
+---
+
+## 1. The concept
+
+A transparent, open-source calculator that tells you exactly what your
+blenderized tube-feed (BTF) recipe delivers nutritionally — per mL, per
+day, and compared to commercial formula. No black boxes.
+
+It's not groundbreaking. The math isn't new — RDs do it every day, by
+hand or in spreadsheets. But there's no well-built, open-source,
+Canadian tool that does it properly. So we're building one.
+
+---
+
+## 2. The problem
+
+Registered Dietitians (RDs) who manage blenderized tube feeds are doing
+the math by hand or in cobbled-together spreadsheets. They *can* do it
+— they're trained, they're capable. But the process is:
+
+- **Slow.** Building a nutrient profile for a single BTF recipe by hand
+  takes 30–45 minutes. Adjusting one ingredient means recalculating
+  everything.
+- **Error-prone.** Every manual recalculation is a chance for a silent
+  arithmetic error in a clinical context.
+- **Unshareable.** Each RD's spreadsheet is their own. No standard, no
+  validation, no audit trail. If an RD leaves a practice, their
+  spreadsheet leaves with them.
+- **Intimidating.** RDs who are *interested* in BTF but not confident in
+  the math are deterred.
+
+### The sweet spot — thin enough to flow, dense enough to nourish
+
+Every BTF recipe lives in a tension between two physical realities:
+
+1. **Thin enough to flow through the tube.** If the blend is too thick,
+   it clogs. This is a physical property (viscosity) that no calculator
+   can measure. The RD or caregiver uses a **drip test** — hold the
+   syringe, watch how fast it drains, feel the resistance. Alberta Health
+   Services' *Home Blended Food for Tube Feeding: Caregiver Handbook*
+   (2021) describes it: *"If you can pull up the blended food in a 50 or
+   60 mL syringe without resistance, then the consistency is likely
+   good."* The ideal consistency *"may flow off the end of a spoon like
+   liquid honey."* There is no sensor, no formula, no app that can
+   replace this. It's tacit, embodied knowledge.
+
+2. **Dense enough to nourish.** If the blend is too thin (too much
+   water), the patient can't get enough calories/protein within the
+   volume they tolerate. This *is* computable: kcal/mL × tolerated
+   volume = daily kcal.
+
+The **sweet spot** is where these two constraints overlap. The RD
+iterates: tweak the recipe → check the numbers (tool) → drip test
+(hands-on) → tweak again → until both sides work. BTF recipes should be
+**at most as thick as Resource 2.0** (one of the thickest commercial
+formulas) — thicker than that won't flow through a tube.
+
+The tool handles the numbers side; the RD handles the flow side.
+
+---
+
+## 3. Why now
+
+### Market growth
+
+- The global tube feeding (enteral nutrition) market was valued at
+  **$8.79 billion in 2025** and is expected to reach **$16.70 billion
+  by 2033** (CAGR 8.36%) (Data Bridge Market Research).
+- Growth drivers: aging populations, chronic disease prevalence (cancer,
+  neurological disorders, GI conditions).
+- BTF specifically: *"The growth in interest and demand for using
+  blenderized tube feeds (BTFs) has outpaced the availability of robust
+  evidence-based literature"* (State-of-the-art review).
+
+### ASPEN validates the gap
+
+ASPEN (American Society for Parenteral and Enteral Nutrition) published
+**"Blenderized Tube Feedings: ASPEN Practice Recommendations"** in 2024.
+A survey of ASPEN RD members (Brown T, et al. *Nutr Clin Pract.*
+2024;39(3):651-664) found:
+
+- *"Recent surveys suggest that registered dietitian nutritionists
+  (RDNs) are increasingly supportive of blenderized tube feeding (BTF).
+  However, its actual use in clinical practice continues to lag."*
+- Common themes: *"desire for evidence-based guidelines and educational
+  handouts from reputable sources, such as ASPEN, a need for education
+  because of a lack of training, confusion around the term 'blenderized'
+  tube feeding."*
+
+ASPEN itself says RDs want BTF but lack tools and education. This tool
+addresses that gap.
+
+### Formula companies are investing
+
+Nestlé built the Compleat® recipe builder. Abbott published BTF education
+materials. The market is real enough that major companies are investing
+in tools — but their tools are marketing instruments, not vendor-neutral
+clinical instruments.
+
+---
+
+## 4. Value proposition
+
+| Without this tool | With this tool |
+|---|---|
+| 30–45 min to build a BTF recipe profile | 2–3 minutes |
+| Manual recalculation for every change | Live updates — change one ingredient, see everything update |
+| Adequacy vs targets checked by eye | Automatic gap report with status indicators |
+| No commercial-formula comparison | Side-by-side comparator |
+| Mental math for delivery schedules | Flexible delivery input (syringe/pump/direct) |
+| Errors are silent | Validated inputs, consistent math, every calculation visible |
+| Hard to share or audit | Exportable recipe + methodology for chart documentation |
+| Curated food list or no database | ~6,000 CNF foods + USDA supplement + custom foods from labels |
+
+---
+
+## 5. Design philosophy — "No black boxes"
+
+Inspired by the EN spreadsheet created by Hui Jun Chew, RD (North York
+General Hospital, Toronto). That spreadsheet is considered the most
+user-friendly tube-feed calculator in practice because:
+
+1. **Everything is visible.** Every formula is in the cell. An RD can
+   point to any number and say "here's where this came from."
+2. **Reference data is human-editable.** If a formulation changes, an RD
+   updates it without touching code.
+3. **Clinical judgment overrides everywhere.** The tool never says "this
+   is the answer" — it says "here are the calculations, you decide."
+4. **Multiple methods shown simultaneously.** The tool doesn't pick one
+   equation; it shows all and lets the RD choose.
+
+This BTF tool carries that philosophy forward: every nutrient calculation
+is traceable, the companion methodology (Appendix A) documents every
+equation, and the RD is always the final authority.
+
+---
+
+## 6. Target users
+
+### Primary: Registered Dietitians (RDs)
+
+- Working in home care, private practice, outpatient clinics, and
+  community health settings where BTF is managed.
+- Already know their patients' targets from prior assessment.
+- Want a tool that *accelerates* their calculation, not one that
+  *replaces* their judgment.
+
+### Secondary: Patients and caregivers (via the RD)
+
+- The RD uses the tool to **show** the patient/caregiver what their
+  feeding schedule delivers.
+- The flexible delivery input is a *communication* feature — it helps
+  the RD translate between the patient's mental model ("300 mL, 4 times
+  a day") and the nutritional reality.
+- The AHS handbook confirms this audience: it's written for caregivers
+  but repeatedly says "talk to your dietitian."
+- The tool is designed to be usable by anyone on the care team, with
+  the safety guardrail: **"for RD use, estimates only."**
+
+---
+
+## 7. Core features
+
+1. **Recipe builder.** Search CNF 2026 (~5,993 foods) or USDA supplement
+   (~7,000 whole foods) or add a custom food from a nutrition facts
+   label. Enter grams per ingredient, added water, and measured final
+   blend volume. **Use what's in your kitchen, at the amounts you
+   actually used.**
+
+2. **Live density panel.** kcal/mL, protein/mL, free-water fraction —
+   updated instantly as ingredients change. Per-mL density is the
+   primary lens because the patient can only tolerate so many mL/day.
+   The tool shows density live; the RD checks flow with a drip test.
+
+3. **Flexible delivery input.**
+   - Syringe bolus: ___ mL × ___ times/day
+   - Pump: ___ mL/hr × ___ hours/day
+   - Direct: ___ mL/day
+
+   The AHS handbook confirms syringe bolus is the primary method for
+   BTF: *"Home blended food is mostly offered by syringe as the blend
+   may be thicker than formula"* and *"Pumps are not routinely provided
+   because their design does not work well with home blended food."*
+
+4. **Adequacy report.** At the entered daily volume: total kcal, protein,
+   fluid, fibre, and key micronutrients vs. optional target inputs.
+   Status indicators: meeting / below / above target.
+
+5. **Commercial formula comparator.** Side-by-side: "Your BTF at 1,200
+   mL/day = 1,560 kcal, 78 g protein. Peptamen 1.5 at 1,200 mL/day =
+   1,800 kcal, 81.6 g protein."
+
+6. **Live recipe adjustment.** There is no separate "what-if mode" — the
+   recipe builder IS the what-if. Every edit updates everything
+   instantly. The RD iterates: tweak → check numbers → drip test →
+   tweak again.
+
+   **Thinning liquids aren't just water.** Water (pure dilution), apple
+   juice (adds calories), broth (adds sodium + protein), milk (adds
+   calories + protein + calcium), oil (adds fat). The AHS handbook
+   confirms: *"If your child needs more calories add: milk, juice, oil,
+   formula"* vs. *"If your child does not need more calories add:
+   cooking liquid, water."* The tool shows the impact of each choice.
+
+7. **Export.** Save recipe as JSON. Export results for chart
+   documentation.
+
+### Out of scope
+
+- **Assessment page** (energy equations, IBW, etc.). The RD brings their
+  own targets. Reference equations documented in Appendix B.
+- **Osmolality, viscosity, food safety.** Not computable from nutrient
+  data. The tool acknowledges the thickness ceiling (at most like
+  Resource 2.0) but cannot measure it — the drip test is the RD's domain.
+- **EMR integration.** Future.
+
+---
+
+## 8. Data — CNF + USDA supplement
+
+### The problem with CNF alone
+
+CNF 2026 has ~5,993 foods. That's good for Canadian packaged foods and
+common whole foods, but it's limited. If someone searches for plantain,
+cassava flour, or specific ethnic foods, CNF may not have them.
+
+### The solution: dual database
+
+**Whole foods are whole foods.** A raw plantain from CNF and a raw
+plantain from USDA have essentially the same nutrient profile. Cooked
+lentils are cooked lentils. The biology doesn't change at the border.
+
+**Packaged foods are different.** Canadian yogurt has different
+fortification than US yogurt. Canadian bread has different folic acid
+levels. Canadian milk has different vitamin D fortification. For
+packaged foods, using the wrong country's database gives wrong numbers.
+
+So the approach is:
+
+| Data source | Used for | Why |
+|---|---|---|
+| **CNF 2026** (primary) | Canadian packaged foods, common foods | Right fortification, Canadian-specific |
+| **USDA SR Legacy** (supplement) | Whole foods CNF doesn't have | Whole foods are interchangeable across countries |
+| **Custom label entry** | Specific branded products | Always the most accurate for packaged foods |
+
+The search function checks CNF first, then USDA for foods not found. The
+user sees one unified search — they don't need to know which database it
+came from.
+
+### Cultural foods
+
+This isn't a separate feature — it's a natural consequence of having a
+large database + custom entry. But it matters. Most BTF tools have a
+curated food list (Compleat has ~40 foods). If your family eats dal,
+roti, and okra — or jollof rice, plantains, and egusi — or congee, pork
+floss, and bok choy — those foods aren't on a 40-food list. BTF is about
+real food, family food. If the tool can't handle your family's food,
+it's not really "real food."
+
+With CNF + USDA supplement + custom entry, you can use **your** kitchen,
+**your** food, **your** culture. That's a real benefit, not a
+breakthrough — just a consequence of not restricting people to a
+curated list.
+
+---
+
+## 9. Competitive landscape
+
+### BTF-specific tools
+
+| Competitor | What it is | Audience | What it does | What it doesn't do |
+|---|---|---|---|---|
+| **Compleat® (Nestlé/CHOP)** | Food-guide recipe builder | Patients/caregivers | Category-based selection, calorie-targeted, blended volume per ingredient, volume limit + variance, PDF export, supplementation flags | Curated ~40 foods, fixed portions (can't enter grams), US-focused, no density lens, no thinning-liquid comparison, no commercial comparator, black box math, vendor-locked |
+| **Blended Recipe Builder** | Nutrition app | Patients/caregivers | Macros + micros, blend book, recipes, videos, education | Unclear database size, no density lens, no commercial comparator, no transparent math |
+| **BlendWise Nutrition** | Full service + grocery delivery | Patients/caregivers | RD guidance, automated meal planning, grocery delivery | Not a self-serve tool, not open-source, service model |
+| **TubieTable** | Recipe generator | Patients/caregivers | Tube type filtering, recipe generation | Not a calculator, no density lens, no adequacy report |
+| **The Blend** | Recipe community | Patients/caregivers | Recipe sharing | Not a calculator, no nutrient analysis |
+| **Hilarie Geurink RD** | Consulting service | Patients/caregivers | Personal RD consulting, community | Not a tool, service model |
+
+### Other competitors
+
+| Competitor | What it does | What it doesn't do |
+|---|---|
+| **Hand-built Excel spreadsheets** | The real competitor. Every RD has their own. | Not validated, not shareable, not maintainable, no BTF-specific features |
+| **Commercial formula calculators** (Nestlé, Abbott) | Calculate EN for their own products | Built to sell formula, not analyze BTF |
+| **Generic nutrition apps** (MyFitnessPal, Cronometer) | Track oral intake | Not built for tube feeding, no density/mL |
+
+### Where we fit
+
+Every competitor is either (a) patient/caregiver-facing or (b) a formula
+company marketing tool. None are open-source, transparent calculators
+with a large food database and Canadian data.
+
+Our differentiators, honestly stated:
+- **Transparent math** — every calculation visible and documented
+- **Calculator not food guide** — enter what's in your blender, not pick
+  from a curated list
+- **Actual grams, not fixed servings** — enter what you really used
+- **Large database + custom entry** — CNF + USDA + labels = use what's
+  in your kitchen
+- **Per-mL density lens** — kcal/mL as primary metric
+- **Sweet spot awareness** — shows density while RD checks flow
+- **Thinning-liquid comparison** — water vs juice vs broth vs milk
+- **Commercial formula comparator** — side-by-side
+- **Canadian** — CNF data, Canadian fortification, Canadian formulas
+- **Open-source** — MIT licensed, vendor-neutral
+
+These are practical differences, not breakthroughs. But they're real,
+and none of the existing tools offer all of them.
+
+---
+
+## 10. Sustainability
+
+There are no institutional budgets for BTF calculators. This is not a
+SaaS startup with a revenue model. **This is an open-source public
+health tool that should exist because the alternative is everyone
+reinventing their own broken spreadsheet.**
+
+- **License:** MIT or CC BY-NC-SA.
+- **Sustainability model:** Open-source, community-maintained.
+  Community-contributed food data and recipes. Future: grant funding
+  from nutrition associations (Dietitians of Canada, ASPEN, BDA).
+- **For the competition:** The "business" is adoption and impact, not
+  revenue.
+
+---
+
+## 11. Tech stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Language | Python 3.12+ | Matches existing projects; author's focus |
+| Data | pandas | Standard for tabular data |
+| UI | Streamlit | Zero-frontend web app; free cloud deployment |
+| Persistence | Parquet (pyarrow) | Binary, fast load |
+| Tests | pytest | Standard, simple |
+| Deployment | Streamlit Community Cloud | Free, public URL, auto-deploys from GitHub |
+
+---
+
+## 12. The 4-week build plan
+
+| Week | Deliverable | What gets built |
+|---|---|---|
+| **1 — Plan It** | This document posted publicly | Concept, market, requirements, methodology |
+| **2 — Core Feature** | Working Streamlit app: recipe builder → density panel → delivery input → adequacy report → commercial comparator | Fix data loader bugs; build calculator, measures, targets/report, Streamlit UI |
+| **3 — Build to Last** | Tests, CI, deploy, custom food entry, USDA supplement | pytest suite, GitHub Actions, Streamlit Cloud deploy, label-entry feature, USDA data load |
+| **4 — Ship + Pitch** | Live app + 2–3 min demo | Polish, export, demo video |
+
+---
+
+## 13. The story (for the Week 1 post)
+
+> I'm a nutrition subject-matter expert. I've watched colleagues struggle
+> with spreadsheets to calculate blenderized tube-feed recipes. The math
+> isn't new — RDs do it every day. But they do it by hand or in
+> spreadsheets that don't survive when they change jobs.
+>
+> Nestlé built the Compleat® recipe builder — but it's a marketing tool
+> with a curated list of 40 foods in fixed servings. RDs don't need a
+> food guide. They need a calculator: "tell me what's in my blender, and
+> I'll tell you what it delivers — per mL, per day, and compared to
+> commercial formula."
+>
+> So I'm building it. Open-source. Free. Every calculation visible, every
+> assumption documented. No black boxes.
+>
+> It uses Canadian data (CNF 2026) with USDA as a supplement for foods
+> CNF doesn't have — because whole foods are whole foods, but packaged
+> foods differ across borders. You can also enter custom foods from
+> nutrition facts labels. The result: you use what's in your kitchen, at
+> the amounts you actually used.
+>
+> The core insight is the **sweet spot**: every BTF recipe must be thin
+> enough to flow through the tube (the RD checks this with a drip test —
+> no app can measure thickness) AND dense enough to nourish (the tool
+> calculates kcal/mL and shows whether the patient can meet targets
+> within their volume tolerance). The tool handles the numbers side; the
+> RD handles the physical side.
+>
+> This isn't a startup. It's a tool that should exist and doesn't.
+
+---
+
+## Appendix A: Methodology — every equation, no black boxes
+
+### A1. Data source
+
+CNF 2026: ~5,993 foods × ~173 nutrients, all per 100 g of edible food.
+USDA SR Legacy: ~7,000 whole foods as supplement.
+Custom foods: entered from nutrition facts labels, converted to per-100 g.
+
+### A2. Core calculation
+
+```
+nutrient_from_ingredient = grams × (Nutrient_Amount / 100)
+recipe_total[nutrient] = Σ ( ingredient_grams × (Nutrient_Amount / 100) )
+```
+
+Example: 200 g chicken breast at 110 kcal/100 g → 200 × (110/100) = 220 kcal
+
+### A3. Densities
+
+```
+kcal_per_mL       = recipe_total_kcal / measured_final_volume_mL
+protein_per_mL    = recipe_total_protein_g / measured_final_volume_mL
+free_water_frac   = (recipe_total_water_g + added_water_mL) / measured_final_volume_mL
+```
+
+Final blend volume is a **measured input** (user poured it into a
+container), not computed. Ingredients give nutrient totals; measured
+volume gives the denominator.
+
+### A4. Delivery
+
+```
+Syringe bolus:  daily_volume_mL = bolus_volume_mL × times_per_day
+Pump:           daily_volume_mL = rate_mL_per_hr × hours_per_day
+Direct:         daily_volume_mL = user-entered value
+```
+
+### A5. Daily totals
+
+```
+daily_kcal       = kcal_per_mL × daily_volume_mL
+daily_protein_g  = protein_per_mL × daily_volume_mL
+daily_[nutrient] = (recipe_[nutrient] / measured_volume_mL) × daily_volume_mL
+```
+
+### A6. Adequacy
+
+```
+pct_target = (daily_total / target) × 100
+
+status:
+  < 90% of target  → "Below target"
+  90%–110%         → "Meeting target"
+  > 110% of target → "Above target"
+```
+
+Nutrients reported: Energy, Protein, Fluid, Fibre, Sodium, Potassium,
+Calcium, Iron, Zinc, Vitamin D, Vitamin B12.
+
+### A7. Commercial formula comparator
+
+At same daily volume:
+```
+BTF daily kcal     = kcal_per_mL × daily_volume_mL
+formula daily kcal = formula_kcal_per_mL × daily_volume_mL
+```
+
+At same target kcal:
+```
+BTF volume needed     = target_kcal / kcal_per_mL
+formula volume needed = target_kcal / formula_kcal_per_mL
+```
+
+Formula profiles (from EN spreadsheet):
+
+| Formula | kcal/mL | Protein g/mL |
+|---|---|---|
+| Isosource Fibre 1.5 | 1.5 | 0.068 |
+| Isosource Fibre 1.2 | 1.2 | 0.054 |
+| Isosource Fibre 1.0 HP | 1.0 | 0.062 |
+| Nepro | 1.8 | 0.081 |
+| Peptamen AF 1.2 | 1.2 | 0.076 |
+| Peptamen Intense High Protein | 1.0 | 0.092 |
+| Resource 2.0 | 2.01 | 0.08 |
+| Peptamen 1.5 | 1.5 | 0.068 |
+
+### A8. Live recipe adjustment (thinning with different liquids)
+
+General case — adding any liquid:
+```
+new_volume_mL       = measured_final_volume_mL + added_liquid_mL
+new_kcal_per_mL     = (recipe_total_kcal + liquid_kcal) / new_volume_mL
+new_protein_per_mL  = (recipe_total_protein_g + liquid_protein_g) / new_volume_mL
+new_water_frac      = (recipe_total_water_g + liquid_water_g) / new_volume_mL
+```
+
+For pure water: liquid_kcal = 0, liquid_protein_g = 0.
+For juice/broth/milk/oil: both numerator and denominator change.
+
+Required daily volume to meet targets:
+```
+volume_to_meet_kcal    = target_kcal / new_kcal_per_mL
+volume_to_meet_protein = target_protein_g / new_protein_per_mL
+required_daily_volume  = max(volume_to_meet_kcal, volume_to_meet_protein)
+```
+
+### A9. Custom foods from labels
+
+```
+per_100g_value = label_value × (100 / serving_size_g)
+```
+
+Example: 175 g serving has 130 kcal → per 100 g = 130 × (100/175) = 74.3 kcal
+
+### A10. Limitations
+
+The tool does NOT calculate:
+- **Osmolality** — not computable from CNF data
+- **Viscosity/tube-flow** — requires physical measurement (drip test);
+  thickness ceiling is at most like Resource 2.0
+- **Nutrient losses from blending/holding** — real but not quantifiable
+- **Food safety** — outside scope
+- **Assessment equations** — RD brings their own targets (see Appendix B)
+
+### A11. Key assumptions
+
+1. CNF/USDA values are accurate for the foods used (custom entry covers
+   specific products)
+2. Measured final volume is accurate (user reads it from a container)
+3. 1 g water ≈ 1 mL (standard clinical approximation)
+4. No nutrient loss from blending (known limitation)
+5. The recipe already works — the tool characterizes, doesn't design
+
+---
+
+## Appendix B: Reference equations (not in the app)
+
+### Energy — predictive equations
+
+**Harris-Benedict:**
+- Males: REE = 66.47 + (13.75 × wt) + (5.00 × ht) - (6.75 × age)
+- Females: REE = 655.10 + (9.56 × wt) + (1.85 × ht) - (4.68 × age)
+
+**Mifflin-St Jeor:**
+- Males: REE = (10 × wt) + (6.25 × ht) - (5 × age) + 5
+- Females: REE = (10 × wt) + (6.25 × ht) - (5 × age) - 161
+
+**Penn State** (critically ill, <60 yrs):
+- RMR = (0.96 × REE_HB) + (167 × temp°C) + (31 × Ve) - 6212
+
+**Weight-based:** Energy = wt_kg × 20–35 kcal/kg
+
+### Weight considerations
+
+- IBW: Males 48 kg/152 cm + 1.1 kg/cm; Females 45.5 kg/152 cm + 0.9 kg/cm
+- AdjBW (CBW > 120% IBW): (CBW - IBW) × 0.25 + IBW
+- Amputation adjustments: Hand 0.7%, Foot 1.5%, Lower arm 2.3%, Lower
+  leg 5.9%, Entire arm 5%, Entire leg 16%
+
+### Protein
+
+Protein = wt_kg × 0.8–2.0 g/kg (factors: stress, wounds, renal, hepatic)
+
+### Fluid
+
+- Weight-based: wt_kg × 25–35 mL/kg
+- Deficit: ((140 - Na) × wt × 0.6) / Na
+
+---
+
+## Appendix C: Internationalization — data pack specification
+
+Each country is a "data pack" — a folder containing:
+
+```
+data_packs/
+  canada/
+    primary_database.parquet      # CNF 2026
+    supplement_database.parquet   # USDA SR Legacy (whole foods)
+    commercial_formulas.csv       # Canadian formula profiles
+    targets.csv                   # Canadian DRI
+    config.yaml                   # units, language, fortification rules
+  us/
+    primary_database.parquet      # USDA FoodData Central
+    ...
+  uk/
+    primary_database.parquet      # McCance & Widdowson / CoFID
+    ...
+```
+
+The calculator engine is country-agnostic. Adding a country is a data
+task, not a code task. Build Canada first, architect for swappability.
+
+---
+
+## References
+
+1. Canadian Nutrient File (CNF) 2026. Health Canada.
+2. USDA FoodData Central, SR Legacy subset. US Department of Agriculture.
+3. Alberta Health Services. *Home Blended Food for Tube Feeding: Caregiver
+   Handbook.* April 2021. (AHS, Maternal Newborn Child and Youth
+   Strategic Clinical Network)
+4. Brown T, et al. "Knowledge and clinical practice of ASPEN registered
+   dietitian nutritionist members regarding blenderized tube feedings."
+   *Nutr Clin Pract.* 2024;39(3):651-664.
+5. ASPEN. *Blenderized Tube Feedings: ASPEN Practice Recommendations,
+   Sections 1–4.* 2024. nutritioncare.org
+6. Compleat® Blend from Scratch recipe builder. compleat.com/blend-from-
+   scratch. Powered by Blenderized Diet Recipe Calculator by Robin Cook,
+   M.S., R.D., L.D.N. (CHOP).
+7. Data Bridge Market Research. *Tube Feeding Nutrition Market* — Global
+   Market Size, Share, and Trends Analysis, 2025–2033.
+8. Chew HJ, RD. EN spreadsheet (password-protected). North York General
+   Hospital, Toronto.

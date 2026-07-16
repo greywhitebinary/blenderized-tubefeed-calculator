@@ -1,0 +1,11 @@
+nutrient,target,unit,source
+energy_kcal,2000,kcal,DRI general adult
+protein_g,75,g,DRI 1.0 g/kg reference
+fibre_g,28,g,DRI 14 g/1000 kcal
+sodium_mg,2300,mg,DRI UL
+potassium_mg,3400,mg,DRI AI
+calcium_mg,1000,mg,DRI AI
+iron_mg,18,mg,DRI RDA
+zinc_mg,11,mg,DRI RDA
+vitamin_d_ug,15,ug,DRI RDA
+vitamin_b12_ug,2.4,ug,DRI RDA

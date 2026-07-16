@@ -30,8 +30,11 @@ def load_food_name(data_dir: Path = CNF_DIR) -> pd.DataFrame:
     Alternate_Description_EN, Alternate_Description_FR, Food_Source_Code,
     USDA_NDB_Code, CNF_Food_Group_Code, Comment_EN, Comment_FR,
     ScientificName, Food_Last_Updated_Date
+
+    Note: Food_Name.csv does NOT have a BOM, so plain utf-8 is fine.
+    Food_Code must be a regular column (not the index) so merges work later.
     """
-    df = pd.read_csv(data_dir / "Food_Name.csv", index_col=0)
+    df = pd.read_csv(data_dir / "Food_Name.csv")
     return df
 
 
@@ -40,8 +43,11 @@ def load_nutrient_name(data_dir: Path = CNF_DIR) -> pd.DataFrame:
 
     Columns: Nutrient_Code (PK), Nutrient_Symbol, Nutrient_Unit,
     Nutrient_Name_EN, Nutrient_Name_FR, Tagname, Nutrient_Decimals
+
+    Note: This file HAS a BOM — must use utf-8-sig to strip it, otherwise
+    the first column becomes '\\ufeffNutrient_Code' and merges silently fail.
     """
-    df = pd.read_csv(data_dir / "Nutrient_Name.csv", encoding="utf-8")
+    df = pd.read_csv(data_dir / "Nutrient_Name.csv", encoding="utf-8-sig")
     return df
 
 
@@ -50,11 +56,10 @@ def load_nutrient_amount(data_dir: Path = CNF_DIR) -> pd.DataFrame:
 
     Columns: Food_Code (FK), Nutrient_Code (FK), Nutrient_Amount,
     STD_Error, Observations, Nutrient_Source_Code, Nutrient_Last_Updated_Date
+
+    Note: This file HAS a BOM — must use utf-8-sig.
     """
-    df = pd.read_csv(
-        data_dir / "Nutrient_Amount.csv",
-        encoding="utf-8",
-    )
+    df = pd.read_csv(data_dir / "Nutrient_Amount.csv", encoding="utf-8-sig")
     return df
 
 
@@ -74,7 +79,7 @@ def load_measure_type(data_dir: Path = CNF_DIR) -> pd.DataFrame:
     Columns: Measure_Type_Code (PK), Measure_Type_Description_EN,
     Measure_Type_Description_FR
     """
-    df = pd.read_csv(data_dir / "Measure_Tipe.csv", encoding="utf-8-sig")
+    df = pd.read_csv(data_dir / "Measure_Type.csv", encoding="utf-8-sig")
     return df
 
 
@@ -83,10 +88,11 @@ def load_measure_weight_conversion(data_dir: Path = CNF_DIR) -> pd.DataFrame:
 
     Columns: Food_Code (FK), Measure_Type_Code, Measure_Code (FK),
     Measure_Weight_Conversion, Measure_Weight_Conversion_Last_Updated_Date
+
+    Note: CNF CSVs are comma-separated (sep="," is the default).
     """
     df = pd.read_csv(
         data_dir / "Measure_Weight_Conversion.csv",
-        sep=";",
         encoding="utf-8-sig",
     )
     return df
