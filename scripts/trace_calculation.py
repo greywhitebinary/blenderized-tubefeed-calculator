@@ -15,7 +15,10 @@ The pipeline it traces (src/calculator.py::calculate_profile):
     (find Food_Code)       (per-100g values, keyed Food_Code+Nutrient_Code)
           |                        |
           v                        v
-    [1] ingredient table    [2] filter to the 11 tracked nutrient codes
+    [1] ingredient table    [2] filter to the tracked nutrient codes (the
+                                 per-country registry — src/nutrients.py —
+                                 13 label-tier + 5 clinical-tier + 1
+                                 engine-tier = 19 for the Canada pack)
           \\                       /
            \\                     /
             [3] merge on Food_Code  (inner join — see the missing-data
@@ -46,6 +49,7 @@ from src.calculator import (
     calculate_profile,
     calculate_daily_totals,
 )
+from src.nutrients import registry_by_name, DEFAULT_PACK
 
 pd.set_option("display.width", 120)
 pd.set_option("display.float_format", lambda v: f"{v:,.3f}")
@@ -186,6 +190,37 @@ missing data, not missing nutrition.
     if not any_missing:
         print("\n  (This example recipe happens to have full coverage. Try a")
         print("   recipe with less-common foods and re-run to see gaps.)")
+
+    # ---- Registry audit — teaches the tier/on_label model -----------------
+    # Added alongside the nutrient-registry refactor (src/nutrients.py):
+    # every nutrient this pipeline tracks now carries two independent
+    # axes — WHY it's tracked (tier) and WHETHER a nutrition-facts label
+    # could ever supply it (on_label). This prints both so the trace
+    # teaches the new model, not just the CNF join mechanics above.
+    print("\n" + "=" * 72)
+    print("REGISTRY AUDIT — tier & on_label per tracked nutrient")
+    print("=" * 72)
+    print("""
+tier="label"    -> on this country's mandatory Nutrition Facts panel;
+                   the main adequacy table (report.generate_adequacy_report).
+tier="clinical" -> tracked for a BTF/clinical reason, not a public-health
+                   one; the separate, collapsed BTF micro screen
+                   (report.generate_clinical_screen) -- a one-time
+                   supplementation check, not a daily-tracked panel.
+tier="engine"   -> needed internally by the calculator (water_g only,
+                   for free_water_fraction) -- NEVER its own report row.
+on_label=no means a custom food entered from a nutrition facts label
+can NEVER supply that nutrient -- it will silently contribute zero.
+""")
+    registry = registry_by_name(DEFAULT_PACK)
+    header = f"  {'nutrient':<18} {'tier':<10} {'on_label':<9} code"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+    for name in NUTRIENT_CODES:
+        d = registry.get(name)
+        if d is None:
+            continue
+        print(f"  {d.name:<18} {d.tier:<10} {str(d.on_label):<9} {d.code}")
 
     print("\nTrace complete. Every number above is recomputable by hand.")
     return 0

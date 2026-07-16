@@ -44,9 +44,11 @@ from src.measures import load_measure_lookup, get_measures_for_food
 from src.targets import default_targets, empty_targets
 from src.report import (
     generate_adequacy_report,
+    generate_clinical_screen,
     generate_formula_comparison,
     generate_density_summary,
 )
+from src.nutrients import defs_for_tier, registry_by_name, DEFAULT_PACK
 
 # ---------------------------------------------------------------------------
 # Thinning liquid presets (per 100 mL) — for the dilution what-if
@@ -284,20 +286,28 @@ with st.sidebar.expander("➕ Add ingredient", expanded=True):
             "Grams to use in recipe", min_value=0.0, value=100.0, step=1.0
         )
 
+        # Fields are generated from the registry's tier="label" rows (the
+        # nutrients actually printed on a Canadian nutrition facts label) —
+        # NOT the full tracked-nutrient list. That's why this form has fat,
+        # saturated fat, trans fat, cholesterol, carbohydrate, and sugars
+        # (a real Canadian label has them) but no vitamin D, B12, or zinc
+        # (no Canadian label carries those — see src/nutrients.py). A future
+        # US pack would show vitamin D here instead, with zero code changes.
         with st.expander("Nutrition facts (per serving)"):
             c1, c2 = st.columns(2)
             cv: dict[str, float] = {}
-            cv["energy_kcal"] = c1.number_input("kcal", min_value=0.0, value=0.0, step=1.0)
-            cv["protein_g"] = c2.number_input("Protein (g)", min_value=0.0, value=0.0, step=0.1)
-            cv["water_g"] = c1.number_input("Water (g)", min_value=0.0, value=0.0, step=0.1)
-            cv["fibre_g"] = c2.number_input("Fibre (g)", min_value=0.0, value=0.0, step=0.1)
-            cv["sodium_mg"] = c1.number_input("Sodium (mg)", min_value=0.0, value=0.0, step=1.0)
-            cv["potassium_mg"] = c2.number_input("Potassium (mg)", min_value=0.0, value=0.0, step=1.0)
-            cv["calcium_mg"] = c1.number_input("Calcium (mg)", min_value=0.0, value=0.0, step=1.0)
-            cv["iron_mg"] = c2.number_input("Iron (mg)", min_value=0.0, value=0.0, step=0.1)
-            cv["zinc_mg"] = c1.number_input("Zinc (mg)", min_value=0.0, value=0.0, step=0.1)
-            cv["vitamin_d_ug"] = c2.number_input("Vitamin D (µg)", min_value=0.0, value=0.0, step=0.1)
-            cv["vitamin_b12_ug"] = c1.number_input("Vitamin B12 (µg)", min_value=0.0, value=0.0, step=0.1)
+            label_defs = [d for d in defs_for_tier("label", pack=DEFAULT_PACK) if d.on_label]
+            for i, d in enumerate(label_defs):
+                col = c1 if i % 2 == 0 else c2
+                step = 1.0 if d.decimals == 0 else round(10 ** (-d.decimals), d.decimals)
+                cv[d.name] = col.number_input(
+                    f"{d.label} ({d.unit})", min_value=0.0, value=0.0, step=step
+                )
+        st.caption(
+            "Water/moisture is on no nutrition facts label, so recipes using "
+            "custom foods will underestimate the free-water fraction — the "
+            "label simply has nowhere to report it."
+        )
 
         if st.button("➕ Add custom food"):
             if not cname:
@@ -395,23 +405,46 @@ use_defaults = st.sidebar.checkbox(
     "Use default DRI adult targets", value=True
 )
 
+# Per-nutrient step sizes for the custom-target number_inputs below —
+# a UX nicety only (e.g. kcal steps by 50, not 1). Nutrients not listed
+# fall back to a step derived from their registry `decimals`.
+_TARGET_STEP_OVERRIDES: dict[str, float] = {
+    "energy_kcal": 50.0,
+    "fluid_mL": 100.0,
+    "sodium_mg": 100.0,
+    "potassium_mg": 100.0,
+    "calcium_mg": 50.0,
+    "protein_g": 5.0,
+    "vitamin_b12_ug": 0.5,
+}
+
 if use_defaults:
     targets = default_targets()
 else:
     targets = empty_targets()
     st.sidebar.caption("Enter patient-specific targets (0 = no target):")
     tc1, tc2 = st.sidebar.columns(2)
-    targets["energy_kcal"] = tc1.number_input("kcal/day", min_value=0.0, value=0.0, step=50.0)
-    targets["protein_g"] = tc2.number_input("Protein g/day", min_value=0.0, value=0.0, step=5.0)
-    targets["fluid_mL"] = tc1.number_input("Fluid mL/day", min_value=0.0, value=0.0, step=100.0)
-    targets["fibre_g"] = tc1.number_input("Fibre g/day", min_value=0.0, value=0.0, step=1.0)
-    targets["sodium_mg"] = tc2.number_input("Sodium mg/day", min_value=0.0, value=0.0, step=100.0)
-    targets["potassium_mg"] = tc1.number_input("Potassium mg/day", min_value=0.0, value=0.0, step=100.0)
-    targets["calcium_mg"] = tc2.number_input("Calcium mg/day", min_value=0.0, value=0.0, step=50.0)
-    targets["iron_mg"] = tc1.number_input("Iron mg/day", min_value=0.0, value=0.0, step=1.0)
-    targets["zinc_mg"] = tc2.number_input("Zinc mg/day", min_value=0.0, value=0.0, step=1.0)
-    targets["vitamin_d_ug"] = tc1.number_input("Vit D µg/day", min_value=0.0, value=0.0, step=1.0)
-    targets["vitamin_b12_ug"] = tc2.number_input("B12 µg/day", min_value=0.0, value=0.0, step=0.5)
+    cols = (tc1, tc2)
+    # Generated from the registry: iterate every nutrient that HAS a
+    # target in data/packs/canada/targets.csv (default_targets()' keys,
+    # in CSV row order), not a hardcoded field list. "fluid_mL" isn't a
+    # CNF nutrient (it's the target for the derived Free water row), so
+    # it gets a hand-written label/unit; everything else reads its
+    # label/unit straight off the registry.
+    _registry_map = registry_by_name(DEFAULT_PACK)
+    for i, nutrient_name in enumerate(default_targets()):
+        col = cols[i % 2]
+        if nutrient_name == "fluid_mL":
+            disp_label, unit, decimals = "Fluid", "mL", 0
+        else:
+            d = _registry_map[nutrient_name]
+            disp_label, unit, decimals = d.label, d.unit, d.decimals
+        step = _TARGET_STEP_OVERRIDES.get(
+            nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
+        )
+        targets[nutrient_name] = col.number_input(
+            f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step
+        )
 
 
 # ===========================================================================
@@ -505,12 +538,18 @@ adequacy_display["% Target"] = adequacy_display["% Target"].astype(str)
 
 
 def color_status(val: str) -> str:
-    """Color-code adequacy status cells."""
-    if val == "Below target":
+    """Color-code adequacy status cells.
+
+    "Above UL" and "Below target" are both concerning (red); "Below UL"
+    and "Meeting target" are both fine (green) — a UL is a ceiling, not
+    an aim, so "Below UL" reads as "fine" the same way "Meeting target"
+    does for an RDA/AI nutrient. See src/report.py::_adequacy_status.
+    """
+    if val in ("Below target", "Above UL"):
         return "background-color: #ffcccc"
     elif val == "Above target":
         return "background-color: #ffe0b2"
-    elif val == "Meeting target":
+    elif val in ("Meeting target", "Below UL"):
         return "background-color: #c8e6c9"
     return ""
 
@@ -520,6 +559,26 @@ st.dataframe(
     width="stretch",
     hide_index=True,
 )
+
+with st.expander("BTF micro screen — vitamins & minerals not on labels"):
+    st.caption(
+        "A one-time supplementation screen (ASPEN-style: \"does this blend "
+        "need a multivitamin?\"), not a daily-tracked panel like the table "
+        "above. These nutrients aren't on a Canadian nutrition facts label "
+        "(Source column), so a custom food entered from a label always "
+        "contributes zero here. CNF coverage is also partial for some of "
+        "them — vitamin D is present for only ~88% of foods — so a low "
+        "number may reflect missing CNF data rather than missing nutrition."
+    )
+    clinical_df = generate_clinical_screen(profile, daily_vol, targets)
+    clinical_display = clinical_df.copy()
+    clinical_display["Target"] = clinical_display["Target"].astype(str)
+    clinical_display["% Target"] = clinical_display["% Target"].astype(str)
+    st.dataframe(
+        clinical_display.style.map(color_status, subset=["Status"]),
+        width="stretch",
+        hide_index=True,
+    )
 
 # --- Dilution what-if ---
 st.subheader("Dilution What-If")
@@ -659,9 +718,16 @@ with pd.ExcelWriter(output, engine="openpyxl") as writer:
         writer, sheet_name="Density", index=False
     )
 
-    # Adequacy report
+    # Adequacy report (tier="label" nutrients + Free water)
     generate_adequacy_report(profile, daily_vol, targets).to_excel(
         writer, sheet_name="Adequacy", index=False
+    )
+
+    # BTF micro screen (tier="clinical" nutrients — one-time ASPEN-style
+    # supplementation screen, not on any Canadian label; see the
+    # "BTF micro screen" expander in the app for the full caveat).
+    generate_clinical_screen(profile, daily_vol, targets).to_excel(
+        writer, sheet_name="Micro Screen", index=False
     )
 
     # Formula comparison

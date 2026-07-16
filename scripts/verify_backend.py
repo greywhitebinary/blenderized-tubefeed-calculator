@@ -28,9 +28,11 @@ from src.measures import load_measure_lookup, measure_to_grams
 from src.targets import default_targets
 from src.report import (
     generate_adequacy_report,
+    generate_clinical_screen,
     generate_formula_comparison,
     generate_density_summary,
 )
+from src.nutrients import load_registry, defs_for_tier, DEFAULT_PACK
 
 
 def find_food(fn, desc):
@@ -167,6 +169,65 @@ def main() -> int:
     print(f"    Custom-food protein/mL: {custom_profile.protein_per_mL:.3f}")
     assert custom_profile.kcal_per_mL == 0.5, "custom food kcal/mL should be 50/100 = 0.5"
     assert custom_profile.protein_per_mL == 0.05, "custom food protein/mL should be 5/100 = 0.05"
+
+    # 10. Nutrient registry + tier-based reporting (the data-pack refactor)
+    print("\n[10] Nutrient registry + tier-based reporting...")
+    registry = load_registry(DEFAULT_PACK)
+    print(f"    Registry: {len(registry)} nutrients loaded from "
+          f"data/packs/{DEFAULT_PACK}/nutrients.csv")
+    assert len(registry) == 19, f"expected 19 registry rows, got {len(registry)}"
+    label_defs = defs_for_tier("label", pack=DEFAULT_PACK)
+    clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
+    engine_defs = defs_for_tier("engine", pack=DEFAULT_PACK)
+    assert len(label_defs) == 13, f"expected 13 label-tier nutrients, got {len(label_defs)}"
+    assert len(clinical_defs) == 5, f"expected 5 clinical-tier nutrients, got {len(clinical_defs)}"
+    assert len(engine_defs) == 1, f"expected 1 engine-tier nutrient (water_g), got {len(engine_defs)}"
+    assert engine_defs[0].name == "water_g"
+
+    # Main adequacy table: only tier="label" nutrients + Free water. No
+    # vitamin D / B12 / zinc — they aren't on a Canadian label (tier="clinical").
+    main_names = set(adequacy["Nutrient"].values)
+    for forbidden in ("Vitamin D", "Vitamin B12", "Zinc"):
+        assert forbidden not in main_names, (
+            f"'{forbidden}' leaked into the main adequacy report — it's "
+            f"tier=clinical, not tier=label, and must only appear in the "
+            f"clinical screen"
+        )
+    assert "Free water" in main_names
+    assert len(adequacy) == 14, (  # 13 label rows + Free water
+        f"expected 14 rows (13 label-tier + Free water), got {len(adequacy)}"
+    )
+    print(f"    Main adequacy report: {len(adequacy)} rows, no vitamin D/B12/zinc — OK")
+
+    # tier="clinical" screen: the one-time ASPEN-style micro screen.
+    clinical = generate_clinical_screen(profile, daily_vol, targets)
+    print(clinical.to_string(index=False))
+    assert len(clinical) == 5, f"expected 5 clinical-screen rows, got {len(clinical)}"
+    assert set(clinical["Nutrient"].values) == {
+        "Magnesium", "Phosphorus", "Zinc", "Vitamin D", "Vitamin B12"
+    }
+    assert (clinical["Source"] == "CNF only — labels don't carry this").all(), (
+        "every clinical-tier nutrient should be marked as not on a Canadian label"
+    )
+
+    # target_type="UL" semantics (sodium): must say "Above UL"/"Below UL",
+    # never the old "Above target"/"Meeting target" wording.
+    sodium_row = adequacy[adequacy["Nutrient"] == "Sodium"].iloc[0]
+    assert sodium_row["Status"] in ("Above UL", "Below UL"), (
+        f"sodium (target_type=UL) should report 'Above UL'/'Below UL', "
+        f"got {sodium_row['Status']!r}"
+    )
+    print(f"    Sodium status: {sodium_row['Status']!r} (UL vocabulary) — OK")
+
+    # load_registry() must raise loudly for a pack with no nutrients.csv —
+    # this is deliberate (see src/nutrients.py); a silent fallback would
+    # defeat the whole data-pack design. Confirm the guard is live.
+    try:
+        load_registry("no_such_pack")
+        raise AssertionError("load_registry() should raise FileNotFoundError for a missing pack")
+    except FileNotFoundError:
+        pass
+    print("    load_registry() raises FileNotFoundError for a missing pack — OK")
 
     print("\n=== ALL BACKEND MODULES VERIFIED ===")
     return 0
