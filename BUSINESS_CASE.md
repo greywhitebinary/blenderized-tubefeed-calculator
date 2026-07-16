@@ -84,23 +84,47 @@ The tool handles the numbers side; the RD handles the flow side.
   blenderized tube feeds (BTFs) has outpaced the availability of robust
   evidence-based literature"* (State-of-the-art review).
 
-### ASPEN validates the gap
+### The evidence: support outpaces practice, and time is the top barrier
 
-ASPEN (American Society for Parenteral and Enteral Nutrition) published
-**"Blenderized Tube Feedings: ASPEN Practice Recommendations"** in 2024.
-A survey of ASPEN RD members (Brown T, et al. *Nutr Clin Pract.*
-2024;39(3):651-664) found:
+Dietitian surveys across three regions tell a consistent story:
 
-- *"Recent surveys suggest that registered dietitian nutritionists
-  (RDNs) are increasingly supportive of blenderized tube feeding (BTF).
-  However, its actual use in clinical practice continues to lag."*
-- Common themes: *"desire for evidence-based guidelines and educational
-  handouts from reputable sources, such as ASPEN, a need for education
-  because of a lack of training, confusion around the term 'blenderized'
-  tube feeding."*
+- **Support outpaces practice.** Among US RDNs surveyed in 2025, 87%
+  supported BTF and 76% used it in clinical practice — yet actual use
+  *"continues to lag"* behind support, a gap attributed in part to the
+  absence of facility-level BTF policies (Spurlock 2025).
+- **Time is the #1 professional barrier.** In a 2025 Australia/New
+  Zealand survey of dietitians, the most-cited barrier to supporting
+  blended tube feeding was **health professional time commitment
+  (63%)**, ahead of lack of practical guidelines (53%) and need for
+  education/training (50%) (Reilly 2025). A calculator directly attacks
+  the top-ranked barrier.
+- **RDs are asking for transparent, reputable resources.** The 2024
+  ASPEN member survey (Brown 2024) found *"desire for evidence-based
+  guidelines and educational handouts from reputable sources, such as
+  ASPEN, a need for education because of a lack of training."* ASPEN
+  published its BTF Practice Recommendations the same year.
 
-ASPEN itself says RDs want BTF but lack tools and education. This tool
-addresses that gap.
+**Honest framing of the demand signal:** no survey has asked RDs "do
+you want a BTF calculator?" The documented demand is for *time relief,
+guidelines, and education*. This tool maps onto that demand in two
+ways: the calculator addresses the time barrier directly, and the
+transparent methodology (Appendix A) doubles as the kind of
+show-your-work educational resource the surveys asked for. Both are
+inferences from barrier data, not direct market research — which is
+why hands-on pilot testing with practicing RDs is a stated success
+metric (§10), not an afterthought.
+
+### The adult gap
+
+The most credible existing tool (the Nestlé/CHOP Compleat® recipe
+builder) is **pediatric-only (ages 1–13)** and caregiver-facing. But
+the adult evidence base is growing: BTF mitigated weight loss, GI
+symptoms, and quality-of-life decline in head-and-neck cancer patients
+on tube feeding (Spurlock 2022), and a pilot study found BTF safe and
+effective for weight gain in adults on home enteral nutrition. The
+adult BTF population — head-and-neck cancer, ALS, home enteral — is
+the growing, underserved corner of this niche. This tool ships with
+adult DRI defaults.
 
 ### Formula companies are investing
 
@@ -280,7 +304,7 @@ curated list.
 
 | Competitor | What it is | Audience | What it does | What it doesn't do |
 |---|---|---|---|---|
-| **Compleat® (Nestlé/CHOP)** | Food-guide recipe builder | Patients/caregivers | Category-based selection, calorie-targeted, blended volume per ingredient, volume limit + variance, PDF export, supplementation flags | Curated ~40 foods, fixed portions (can't enter grams), US-focused, no density lens, no thinning-liquid comparison, no commercial comparator, black box math, vendor-locked |
+| **Compleat® (Nestlé/CHOP)** | Food-guide recipe builder | Patients/caregivers | Category-based selection, calorie-targeted, blended volume per ingredient, volume limit + variance, PDF export, supplementation flags | **Pediatric-only (ages 1–13)**, curated ~40 foods, fixed portions (can't enter grams), US-focused, no density lens, no thinning-liquid comparison, no commercial comparator, black box math, vendor-locked |
 | **Blended Recipe Builder** | Nutrition app | Patients/caregivers | Macros + micros, blend book, recipes, videos, education | Unclear database size, no density lens, no commercial comparator, no transparent math |
 | **BlendWise Nutrition** | Full service + grocery delivery | Patients/caregivers | RD guidance, automated meal planning, grocery delivery | Not a self-serve tool, not open-source, service model |
 | **TubieTable** | Recipe generator | Patients/caregivers | Tube type filtering, recipe generation | Not a calculator, no density lens, no adequacy report |
@@ -292,16 +316,21 @@ curated list.
 | Competitor | What it does | What it doesn't do |
 |---|---|
 | **Hand-built Excel spreadsheets** | The real competitor. Every RD has their own. | Not validated, not shareable, not maintainable, no BTF-specific features |
+| **Professional nutrient-analysis software** (ESHA Food Processor, Nutritionist Pro) | The *other* real competitor: validated recipe analysis RDs already use and trust | Paid licenses, US-data-centric, and no BTF machinery: no per-mL density lens, no measured-volume denominator, no free-water fraction, no formula comparator, no dilution what-if |
 | **Commercial formula calculators** (Nestlé, Abbott) | Calculate EN for their own products | Built to sell formula, not analyze BTF |
 | **Generic nutrition apps** (MyFitnessPal, Cronometer) | Track oral intake | Not built for tube feeding, no density/mL |
 
 ### Where we fit
 
-Every competitor is either (a) patient/caregiver-facing or (b) a formula
-company marketing tool. None are open-source, transparent calculators
-with a large food database and Canadian data.
+Every competitor is either (a) patient/caregiver-facing, (b) a formula
+company marketing tool, or (c) general-purpose paid analysis software
+with none of the BTF-specific machinery. None are open-source,
+transparent calculators with a large food database and Canadian data.
 
 Our differentiators, honestly stated:
+- **Adult-focused** — the credible incumbents are pediatric; the
+  growing adult BTF population (head/neck cancer, ALS, home enteral)
+  has no dedicated tool
 - **Transparent math** — every calculation visible and documented
 - **Calculator not food guide** — enter what's in your blender, not pick
   from a curated list
@@ -320,19 +349,64 @@ and none of the existing tools offer all of them.
 
 ---
 
-## 10. Sustainability
+## 10. Business model, risks, and success metrics
 
-There are no institutional budgets for BTF calculators. This is not a
-SaaS startup with a revenue model. **This is an open-source public
-health tool that should exist because the alternative is everyone
-reinventing their own broken spreadsheet.**
+### Market sizing (honest)
+
+This is a narrow professional niche, sized in the hundreds, not
+thousands. There is no reliable national count of home enteral patients
+in Canada; the closest proxy is a 2017 survey in which 240 Canadian RDs
+recalled ~5,600 EN patients across acute, long-term, and home care
+settings (Hopkins 2017). BTF is a fraction of that caseload, managed by
+a smaller subset of RDs. Realistic serviceable market: **hundreds of
+regular users.** The value proposition is depth, not reach — each use
+informs a clinical decision for a patient who lives on the recipe.
+
+### Business model: impact-driven open source
+
+There are no institutional budgets for BTF calculators, and
+willingness-to-pay for allied-health tooling is structurally low —
+RD-facing software budgets are a fraction of physician-facing ones.
+This is not a SaaS opportunity, and pretending otherwise would distort
+the design. **This is an open-source public-health tool that should
+exist because the alternative is every RD reinventing their own
+unvalidated spreadsheet.**
 
 - **License:** MIT or CC BY-NC-SA.
-- **Sustainability model:** Open-source, community-maintained.
-  Community-contributed food data and recipes. Future: grant funding
-  from nutrition associations (Dietitians of Canada, ASPEN, BDA).
-- **For the competition:** The "business" is adoption and impact, not
-  revenue.
+- **Sustainability model:** open-source, community-maintained;
+  reference data (formulas, targets, thinning liquids) lives in
+  human-editable CSVs so clinical upkeep requires no code. Future:
+  grant funding from nutrition associations (Dietitians of Canada,
+  ASPEN, BDA).
+- **Distribution (go-to-market):** professional word of mouth —
+  colleague pilots first, then Dietitians of Canada networks, the Oley
+  Foundation, and ASPEN BTF interest groups. Niche clinical tools live
+  or die on trust networks, not marketing.
+- **The success currency is adoption and impact, not revenue.**
+
+### Risk register
+
+| Risk | Impact | Mitigation |
+|---|---|---|
+| **Trust/validation** — RDs won't chart numbers from an unvalidated tool | Adoption-killing | Validation appendix: worked examples cross-checked against hand calculation and established software; every equation already documented (Appendix A) |
+| **Author–domain distance** — the author is an RD, but not a BTF specialist | Clinical blind spots | Pilot testing with practicing BTF RDs before any promotion; their feedback is the product roadmap |
+| **Policy vacuum** — facilities lack BTF policies, so institutional use lags regardless of tool quality (Spurlock 2025) | Caps adoption ceiling | Accept it; target individual RDs in home/community practice where policy friction is lowest |
+| **Discoverability** — niche clinical tools die in obscurity | No users | Trust-network distribution (see go-to-market); the transparent methodology doc is itself shareable education content |
+| **Maintenance / bus factor** — CNF editions, formula reformulations, single maintainer | Slow decay | Editable-CSV reference data; documented CNF upgrade path; open-source license so others can fork |
+
+### Success metrics (KPIs)
+
+1. **Efficiency:** time from ingredients-in-hand to full nutrient
+   profile under 5 minutes (baseline: 30–45 by hand).
+2. **Accuracy:** validation appendix published — worked examples
+   matching hand calculation to rounding error.
+3. **Adoption:** 3–5 practicing RD colleagues complete a pilot on a
+   real recipe and report back.
+4. **Education:** methodology (Appendix A) readable standalone by an
+   RD with no Python knowledge — the "show your work" resource the
+   ASPEN survey asked for.
+5. **Maintainability:** a formula or target update requires editing
+   one CSV row, zero code.
 
 ---
 
@@ -607,3 +681,15 @@ task, not a code task. Build Canada first, architect for swappability.
    M.S., R.D., L.D.N. (CHOP).
 7. Data Bridge Market Research. *Tube Feeding Nutrition Market.* 2025.
 8. Chew HJ, RD. EN spreadsheet. North York General Hospital, Toronto.
+9. Reilly C, et al. "A study of professional practices, attitudes and
+   barriers to blended tube feeding in Australia and New Zealand."
+   *Nutr Diet.* 2025;82(2). doi:10.1111/1747-0080.12909
+10. Spurlock AY, et al. "Exploring healthcare facilities' blenderized
+    tube feeding policy trends: A survey of registered dietitian
+    nutritionists." *Nutr Clin Pract.* 2025. doi:10.1002/ncp.11267
+11. Spurlock AY, et al. "Blenderized food tube feeding in patients with
+    head and neck cancer." *Nutr Clin Pract.* 2022;37(3):615-624.
+    doi:10.1002/ncp.10760
+12. Hopkins B, et al. *Prevalence and Management of Enteral Nutrition
+    Intolerance in the Non-ICU Setting in Canada.* 2017. (240 RDs,
+    ~5,600 EN patients across acute, LTC, and home care.)
