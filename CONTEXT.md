@@ -272,7 +272,7 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - [x] Phase 3 calculator — COMPLETE & VERIFIED (`src/models.py`, `src/calculator.py`)
 - [x] Phase 4 measures — COMPLETE & VERIFIED (`src/measures.py`)
 - [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv`)
-- [ ] Phase 6 Streamlit UI — NOT STARTED (next up: `app/streamlit_app.py`)
+- [x] Phase 6 Streamlit UI — SCAFFOLDED (`app/streamlit_app.py` created; recipe builder with CNF search + custom food from label, delivery input, targets, live density panel, adequacy report with color-coded status, dilution what-if with thinning liquid presets, commercial formula comparator, Excel export; import-verified 2026-07-15)
 - [ ] Phase 7 polish — NOT STARTED
 
 **Backend verification (2026-07-15): PASSED.** The full backend
@@ -290,12 +290,13 @@ formula comparison, density summary). To re-verify at any time, run:
 so verification is a single short, approvable command. The backend is
 done; the next work is Phase 6 (Streamlit UI).
 
-Last updated: 2026-07-15 (Phases 3–5 backend complete and verified
-end-to-end via `scripts/verify_backend.py`; verification results:
-test recipe of chicken/rice/oil at 550 mL measured volume gives
-1.091 kcal/mL, 0.092 g protein/mL, 0.869 free-water fraction;
-syringe bolus 300 mL × 4/day = 1200 mL/day = 1310 kcal, 110 g
-protein daily. Next: Phase 6 Streamlit UI.)
+Last updated: 2026-07-15 (Phase 6 Streamlit UI scaffolded in
+`app/streamlit_app.py`; recipe builder with CNF search + custom food
+from label, delivery input (syringe bolus/pump/direct), targets
+(default DRI or custom), live density panel, adequacy report with
+color-coded status, dilution what-if with thinning liquid presets
+(water/broth/juice/milk/custom), commercial formula comparator, Excel
+export. Import-verified. Next: user testing and Phase 7 polish.)
 
 ---
 
