@@ -14,6 +14,14 @@ CNF schema quick reference (all nutrient amounts are per 100 g edible food):
   Measure_Type.csv                   3 rows   Measure_Type_Code (PK)
   Measure_Weight_Conversion.csv ~29,868 rows  Food_Code + Measure_Code → grams
   CNF_Food_Group.csv                23 rows   CNF_Food_Group_Code (PK)
+
+Persistence (CONTEXT.md §3): each loader below checks data/processed/ for a
+pre-built Parquet file first (built by build_parquet.py — ~20x faster than
+CSV for the big tables) and falls back to the raw CSV if the Parquet file
+isn't there yet. The fast path only applies when reading from the default
+CNF_DIR — a caller-supplied data_dir (e.g. tests pointing at a fixture
+folder) always reads CSV, since a Parquet cache built from the real CNF
+data wouldn't match it.
 """
 
 from pathlib import Path
@@ -21,6 +29,32 @@ import pandas as pd
 
 # Default location of raw CNF CSVs (relative to this file: ../../cnf_fcen_...)
 CNF_DIR = Path(__file__).resolve().parent.parent / "cnf_fcen_all-files-data_2026"
+
+# Default location of pre-built Parquet tables (see build_parquet.py).
+# Gitignored/regenerable — run `python src/build_parquet.py` to (re)build.
+PARQUET_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
+
+
+def _load_table(
+    csv_name: str,
+    parquet_name: str,
+    data_dir: Path,
+    encoding: str | None = "utf-8-sig",
+) -> pd.DataFrame:
+    """Load one table, preferring a pre-built Parquet file over the raw CSV.
+
+    Only attempts the Parquet fast path when data_dir is the default
+    CNF_DIR — a custom data_dir means the caller wants a specific CSV
+    source, and the Parquet cache (built once, from CNF_DIR) wouldn't
+    necessarily match it.
+    """
+    if data_dir == CNF_DIR:
+        parquet_path = PARQUET_DIR / parquet_name
+        if parquet_path.exists():
+            return pd.read_parquet(parquet_path)
+
+    read_kwargs = {} if encoding is None else {"encoding": encoding}
+    return pd.read_csv(data_dir / csv_name, **read_kwargs)
 
 
 def load_food_name(data_dir: Path = CNF_DIR) -> pd.DataFrame:
@@ -34,8 +68,7 @@ def load_food_name(data_dir: Path = CNF_DIR) -> pd.DataFrame:
     Note: Food_Name.csv does NOT have a BOM, so plain utf-8 is fine.
     Food_Code must be a regular column (not the index) so merges work later.
     """
-    df = pd.read_csv(data_dir / "Food_Name.csv")
-    return df
+    return _load_table("Food_Name.csv", "food_name.parquet", data_dir, encoding=None)
 
 
 def load_nutrient_name(data_dir: Path = CNF_DIR) -> pd.DataFrame:
@@ -47,8 +80,7 @@ def load_nutrient_name(data_dir: Path = CNF_DIR) -> pd.DataFrame:
     Note: This file HAS a BOM — must use utf-8-sig to strip it, otherwise
     the first column becomes '\\ufeffNutrient_Code' and merges silently fail.
     """
-    df = pd.read_csv(data_dir / "Nutrient_Name.csv", encoding="utf-8-sig")
-    return df
+    return _load_table("Nutrient_Name.csv", "nutrient_name.parquet", data_dir)
 
 
 def load_nutrient_amount(data_dir: Path = CNF_DIR) -> pd.DataFrame:
@@ -59,8 +91,7 @@ def load_nutrient_amount(data_dir: Path = CNF_DIR) -> pd.DataFrame:
 
     Note: This file HAS a BOM — must use utf-8-sig.
     """
-    df = pd.read_csv(data_dir / "Nutrient_Amount.csv", encoding="utf-8-sig")
-    return df
+    return _load_table("Nutrient_Amount.csv", "nutrient_amount.parquet", data_dir)
 
 
 def load_measure_name(data_dir: Path = CNF_DIR) -> pd.DataFrame:
@@ -69,8 +100,7 @@ def load_measure_name(data_dir: Path = CNF_DIR) -> pd.DataFrame:
     Columns: Measure_Code (PK), Measure_Description_and_Unit_EN,
     Measure_Description_and_Unit_FR
     """
-    df = pd.read_csv(data_dir / "Measure_Name.csv", encoding="utf-8-sig")
-    return df
+    return _load_table("Measure_Name.csv", "measure_name.parquet", data_dir)
 
 
 def load_measure_type(data_dir: Path = CNF_DIR) -> pd.DataFrame:
@@ -79,8 +109,7 @@ def load_measure_type(data_dir: Path = CNF_DIR) -> pd.DataFrame:
     Columns: Measure_Type_Code (PK), Measure_Type_Description_EN,
     Measure_Type_Description_FR
     """
-    df = pd.read_csv(data_dir / "Measure_Type.csv", encoding="utf-8-sig")
-    return df
+    return _load_table("Measure_Type.csv", "measure_type.parquet", data_dir)
 
 
 def load_measure_weight_conversion(data_dir: Path = CNF_DIR) -> pd.DataFrame:
@@ -91,11 +120,11 @@ def load_measure_weight_conversion(data_dir: Path = CNF_DIR) -> pd.DataFrame:
 
     Note: CNF CSVs are comma-separated (sep="," is the default).
     """
-    df = pd.read_csv(
-        data_dir / "Measure_Weight_Conversion.csv",
-        encoding="utf-8-sig",
+    return _load_table(
+        "Measure_Weight_Conversion.csv",
+        "measure_weight_conversion.parquet",
+        data_dir,
     )
-    return df
 
 
 def load_food_group(data_dir: Path = CNF_DIR) -> pd.DataFrame:
@@ -104,8 +133,7 @@ def load_food_group(data_dir: Path = CNF_DIR) -> pd.DataFrame:
     Columns: CNF_Food_Group_Code (PK), CNF_Food_Group_Description_EN,
     CNF_Food_Group_Description_FR
     """
-    df = pd.read_csv(data_dir / "CNF_Food_Group.csv", encoding="utf-8-sig")
-    return df
+    return _load_table("CNF_Food_Group.csv", "food_group.parquet", data_dir)
 
 
 def load_all(data_dir: Path = CNF_DIR) -> dict[str, pd.DataFrame]:

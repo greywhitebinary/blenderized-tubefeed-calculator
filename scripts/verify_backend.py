@@ -10,13 +10,14 @@ Exits 0 on success, non-zero on any failure.
 """
 
 import sys
+import time
 from pathlib import Path
 
 # Ensure project root is on sys.path regardless of where this is run from
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data_loader import load_nutrient_amount, load_food_name
+from src.data_loader import load_nutrient_amount, load_food_name, PARQUET_DIR
 from src.models import Ingredient, Recipe, Delivery, DeliveryMethod
 from src.calculator import (
     calculate_profile,
@@ -44,10 +45,15 @@ def main() -> int:
 
     # 1. Load CNF data
     print("[1] Loading CNF data...")
+    source = "Parquet" if PARQUET_DIR.exists() and any(PARQUET_DIR.glob("*.parquet")) else "CSV"
+    t0 = time.perf_counter()
     na = load_nutrient_amount()
     fn = load_food_name()
+    load_seconds = time.perf_counter() - t0
     print(f"    Nutrient_Amount: {na.shape[0]} rows")
     print(f"    Food_Name: {fn.shape[0]} rows")
+    print(f"    Loaded from {source} in {load_seconds:.3f}s "
+          f"(data/processed/ preferred when present, CSV fallback otherwise)")
     assert na.shape[0] > 500_000, "Nutrient_Amount looks truncated"
     assert fn.shape[0] > 5_000, "Food_Name looks truncated"
 
