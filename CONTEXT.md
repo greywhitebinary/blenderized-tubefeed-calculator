@@ -272,8 +272,23 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - [x] Phase 3 calculator — COMPLETE & VERIFIED (`src/models.py`, `src/calculator.py`)
 - [x] Phase 4 measures — COMPLETE & VERIFIED (`src/measures.py`)
 - [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv`)
-- [x] Phase 6 Streamlit UI — SCAFFOLDED (`app/streamlit_app.py` created; recipe builder with CNF search + custom food from label, delivery input, targets, live density panel, adequacy report with color-coded status, dilution what-if with thinning liquid presets, commercial formula comparator, Excel export; import-verified 2026-07-15)
+- [x] Phase 6 Streamlit UI — SCAFFOLDED (`app/streamlit_app.py` created; recipe builder with CNF search + custom food from label, delivery input, targets, live density panel, adequacy report with color-coded status, dilution what-if with thinning liquid presets, commercial formula comparator, Excel export; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed)
 - [ ] Phase 7 polish — NOT STARTED
+
+**Phase 6 pinned issues (to revisit after user testing):**
+
+- **⚠️ emoji on "Measured final volume" label** — the `⚠️` in the
+  sidebar label was intended to emphasize that measured volume is the
+  critical denominator, but the author found it confusing (looked like
+  an error indicator). Remove or replace with a different emphasis
+  approach (e.g., `help=` tooltip only, or bold text).
+- **App not matching expectations** — author noted "it's not quite what
+  I expected." Specific feedback pending after hands-on testing. Week 2
+  iteration will address.
+- **Reference data now in CSVs** — commercial formulas live in
+  `data/formulas/commercial_formulas.csv` and thinning liquids in
+  `data/thinning_liquids.csv`. Both load at startup with hardcoded
+  fallbacks. RDs can edit these without touching Python.
 
 **Backend verification (2026-07-15): PASSED.** The full backend
 integration test lives at `scripts/verify_backend.py` and was run
@@ -300,7 +315,51 @@ export. Import-verified. Next: user testing and Phase 7 polish.)
 
 ---
 
-## 10. Conventions & gotchas
+## 10. Quick-start guide (how to run the app)
+
+After restarting your computer:
+
+1. **Open VS Code** and open the project folder
+   (`blenderized-tubefeed-calculator`).
+
+2. **Open a terminal** in VS Code (`` Ctrl+` `` or Terminal → New Terminal).
+
+3. **Start the app:**
+
+   ```
+   .venv/bin/streamlit run app/streamlit_app.py
+   ```
+
+4. **Open your browser** to `http://localhost:8501` (Streamlit prints
+   the URL; if port 8501 is taken, it uses 8502, etc.).
+
+5. **To stop the app:** go back to the terminal and press `Ctrl+C`.
+
+**To verify the backend still works (optional, after code changes):**
+
+```
+.venv/bin/python scripts/verify_backend.py
+```
+
+**To verify the app imports without errors (optional):**
+
+```
+.venv/bin/python scripts/check_app_imports.py
+```
+
+**To edit reference data (no Python needed):**
+
+| Data | File |
+|---|---|
+| DRI targets | `data/targets/dri_adult_default.csv` |
+| Commercial formulas | `data/formulas/commercial_formulas.csv` |
+| Thinning liquid presets | `data/thinning_liquids.csv` |
+
+Edit the CSV, save, and rerun the app. Changes take effect on next load.
+
+---
+
+## 11. Conventions & gotchas
 
 - The author's existing projects use `SEED = 42` and a single `run.py`
   entry point — this project uses `app/streamlit_app.py` as entry instead.
