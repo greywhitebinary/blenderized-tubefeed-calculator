@@ -26,6 +26,7 @@ from pathlib import Path
 
 try:
     from src.models import Ingredient, Recipe, NutrientProfile, Delivery, DeliveryMethod
+    from src.nutrients import NUTRIENT_CODES, NUTRIENT_LABELS
 except ImportError:
     # Allow running as a script (python src/calculator.py) without the
     # project root on sys.path — fall back to a relative-style import.
@@ -36,47 +37,25 @@ except ImportError:
         Delivery,
         DeliveryMethod,
     )
+    from nutrients import NUTRIENT_CODES, NUTRIENT_LABELS
 
 
 # ---------------------------------------------------------------------------
 # Nutrient codes — CNF Nutrient_Code → internal name
 # ---------------------------------------------------------------------------
 
-# These are the nutrients the tool tracks, mapped to their CNF codes.
-# Found by querying Nutrient_Name.csv (see exploration in 00_explore_cnf.ipynb).
-# Not every CNF nutrient is tracked — only the ones that matter for BTF adequacy
-# (per BUSINESS_CASE.md §7 and Appendix A6).
-NUTRIENT_CODES: dict[str, int] = {
-    "energy_kcal": 208,      # Energy (kilocalories) — ENERC_KCAL
-    "protein_g": 203,        # Protein — PROCNT
-    "water_g": 255,          # Moisture — WATER (for free-water calculation)
-    "fibre_g": 291,          # Fibre, total dietary — FIBTG
-    "sodium_mg": 307,        # Sodium
-    "potassium_mg": 306,     # Potassium — K
-    "calcium_mg": 301,       # Calcium — CA
-    "iron_mg": 303,          # Iron — FE
-    "zinc_mg": 309,          # Zinc — ZN
-    "vitamin_d_ug": 328,     # Vitamin D (D2 + D3) — VITD
-    "vitamin_b12_ug": 418,   # Vitamin B-12 — VITB12
-}
+# NUTRIENT_CODES / NUTRIENT_LABELS now live in src/nutrients.py, built from
+# the per-country registry at data/packs/<pack>/nutrients.csv — re-exported
+# here for back-compat (this module, scripts/trace_calculation.py, and
+# scripts/verify_backend.py all historically imported them from here).
+# Not every CNF nutrient is tracked — only the ones on this country's
+# Nutrition Facts panel (tier="label"), plus a small clinical screen and
+# the "engine" nutrient (water_g) the calculator needs internally. See
+# src/nutrients.py's module docstring and BUSINESS_CASE.md Appendix C for
+# the full rationale.
 
 # Reverse lookup: CNF Nutrient_Code → internal name
 _CODE_TO_NAME: dict[int, str] = {v: k for k, v in NUTRIENT_CODES.items()}
-
-# Human-readable labels + units for display
-NUTRIENT_LABELS: dict[str, str] = {
-    "energy_kcal": "Energy (kcal)",
-    "protein_g": "Protein (g)",
-    "water_g": "Water (g)",
-    "fibre_g": "Fibre (g)",
-    "sodium_mg": "Sodium (mg)",
-    "potassium_mg": "Potassium (mg)",
-    "calcium_mg": "Calcium (mg)",
-    "iron_mg": "Iron (mg)",
-    "zinc_mg": "Zinc (mg)",
-    "vitamin_d_ug": "Vitamin D (µg)",
-    "vitamin_b12_ug": "Vitamin B12 (µg)",
-}
 
 
 # ---------------------------------------------------------------------------
@@ -306,11 +285,13 @@ def required_daily_volume(
 # Formula profiles from the EN spreadsheet (BUSINESS_CASE.md Appendix A7).
 # These are the Canadian commercial formulas RDs commonly compare against.
 #
-# The canonical source is data/formulas/commercial_formulas.csv — an RD
-# can add or update formulas there without touching Python. The hardcoded
-# dict below is a fallback used only if the CSV is missing (e.g., running
-# in a stripped-down environment).
-_FORMULAS_CSV = Path(__file__).resolve().parent.parent / "data" / "formulas" / "commercial_formulas.csv"
+# The canonical source is data/packs/canada/formulas.csv — an RD can add
+# or update formulas there without touching Python. The hardcoded dict
+# below is a fallback used only if the CSV is missing (e.g., running in a
+# stripped-down environment). Unlike src/nutrients.py::load_registry(),
+# this IS allowed to fall back — formula profiles are reference data, not
+# structural (see src/nutrients.py's module docstring for that distinction).
+_FORMULAS_CSV = Path(__file__).resolve().parent.parent / "data" / "packs" / "canada" / "formulas.csv"
 
 _FORMULAS_FALLBACK: dict[str, dict[str, float]] = {
     "Isosource Fibre 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068},

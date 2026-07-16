@@ -1,0 +1,20 @@
+name,code,label,unit,tier,on_label,decimals,notes
+energy_kcal,208,Energy,kcal,label,yes,0,Canadian NFt core
+protein_g,203,Protein,g,label,yes,1,Canadian NFt core
+fat_g,204,Fat,g,label,yes,1,Canadian NFt core
+saturated_fat_g,606,Saturated Fat,g,label,yes,1,Canadian NFt core
+trans_fat_g,605,Trans Fat,g,label,yes,1,Canadian NFt core
+cholesterol_mg,601,Cholesterol,mg,label,yes,0,Canadian NFt core
+carbohydrate_g,205,Carbohydrate,g,label,yes,1,Canadian NFt core
+fibre_g,291,Fibre,g,label,yes,1,Canadian NFt core
+sugars_g,269,Sugars,g,label,yes,1,Canadian NFt core
+sodium_mg,307,Sodium,mg,label,yes,0,"Canadian NFt core; CNF Tagname/Nutrient_Symbol for this row is the literal string NA -- look up by numeric code, see CONTEXT.md section 11"
+potassium_mg,306,Potassium,mg,label,yes,0,Canadian NFt core; added 2022 regs -- intakes are low
+calcium_mg,301,Calcium,mg,label,yes,0,Canadian NFt core
+iron_mg,303,Iron,mg,label,yes,1,Canadian NFt core
+water_g,255,Water (moisture),g,engine,no,1,Free-water denominator; no label carries moisture
+magnesium_mg,304,Magnesium,mg,clinical,no,1,Author's EN spreadsheet tracks Mg; not on any NFt; no default target (see targets.csv)
+phosphorus_mg,305,Phosphorus,mg,clinical,no,0,Author's EN spreadsheet tracks P; not on any NFt; no default target (see targets.csv)
+zinc_mg,309,Zinc,mg,clinical,no,1,ASPEN BTF supplementation screen; not on Canadian labels
+vitamin_d_ug,328,Vitamin D,µg,clinical,no,1,ASPEN BTF supplementation screen; on US labels but not Canadian
+vitamin_b12_ug,418,Vitamin B12,µg,clinical,no,1,ASPEN BTF supplementation screen; not on Canadian labels

@@ -54,10 +54,10 @@ from src.report import (
 # These let the RD see *why* broth thins without nourishing, while milk
 # recovers more of the lost kcal density. Oil is excluded — it's a calorie
 # booster, not a thinner, and belongs in the ingredient list.
-# The canonical source is data/thinning_liquids.csv -- an RD can add or
-# update liquids there without touching Python. The hardcoded dict below
-# is a fallback used only if the CSV is missing.
-_THINNING_CSV = PROJECT_ROOT / "data" / "thinning_liquids.csv"
+# The canonical source is data/packs/canada/thinning_liquids.csv -- an RD
+# can add or update liquids there without touching Python. The hardcoded
+# dict below is a fallback used only if the CSV is missing.
+_THINNING_CSV = PROJECT_ROOT / "data" / "packs" / "canada" / "thinning_liquids.csv"
 
 _THINNING_FALLBACK: dict[str, dict[str, float]] = {
     "Water": {"kcal": 0.0, "protein_g": 0.0, "water_g": 100.0},
