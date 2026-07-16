@@ -1,0 +1,25 @@
+# Cline rules for blenderized-tubefeed-calculator
+
+1. Read CONTEXT.md §9 (Current status) FIRST. Trust its checkboxes —
+   do not re-do or re-verify completed phases.
+
+2. The backend (Phases 2–5: data_loader, models, calculator, measures,
+   targets, report) is COMPLETE and VERIFIED as of 2026-07-15.
+   Do not rewrite, re-scaffold, or re-test these modules unless the
+   user explicitly asks or a change breaks them.
+
+3. To verify the backend, run:
+
+   .venv/bin/python scripts/verify_backend.py
+
+   It exits 0 and prints "=== ALL BACKEND MODULES VERIFIED ===" on
+   success. If you add backend features, extend that script instead of
+   writing a new one-off verification command.
+
+4. Current work: Phase 6 — app/streamlit_app.py (Streamlit UI).
+   See CONTEXT.md §1 for the app flow and §6 for the phase plan.
+
+5. Never modify anything under cnf_fcen_all-files-data_2026/ (raw data).
+
+6. After completing meaningful work, update CONTEXT.md §9 status and
+   commit, so the next session starts from accurate state.

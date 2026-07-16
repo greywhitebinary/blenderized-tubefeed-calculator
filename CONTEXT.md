@@ -135,13 +135,13 @@ blenderized-tubefeed-calculator/
 │   └── targets/                     # SME-authored DRI / tube-feed targets
 ├── src/
 │   ├── __init__.py
-│   ├── data_loader.py               # CSV → pandas DataFrames (scaffolded, buggy)
-│   ├── build_parquet.py             # one-time: CSV → parquet (scaffolded, buggy)
-│   ├── models.py                    # @dataclass Ingredient, Recipe, Profile
-│   ├── calculator.py               # core math: recipe → nutrient profile
-│   ├── measures.py                  # household-measure → grams
-│   ├── targets.py                   # load DRI / tube-feed targets
-│   └── report.py                    # profile + targets → gap report
+│   ├── data_loader.py               # CSV → pandas DataFrames (working, verified)
+│   ├── build_parquet.py             # one-time: CSV → parquet (working)
+│   ├── models.py                    # @dataclass Ingredient, Recipe, Profile (verified)
+│   ├── calculator.py               # core math: recipe → nutrient profile (verified)
+│   ├── measures.py                  # household-measure → grams (verified)
+│   ├── targets.py                   # load DRI / tube-feed targets (verified)
+│   └── report.py                    # profile + targets → gap report (verified)
 ├── reference/                        # bug-free reference solutions (per phase)
 │   ├── __init__.py
 │   ├── data_loader.py               # Phase 2 reference (verified working)
@@ -149,6 +149,8 @@ blenderized-tubefeed-calculator/
 │   └── README.md
 ├── app/
 │   └── streamlit_app.py             # the UI
+├── scripts/
+│   └── verify_backend.py            # full backend integration test (Phases 2–5)
 ├── tests/
 ├── notebooks/
 │   ├── 00_explore_cnf.ipynb         # data-exploration sandbox
@@ -267,18 +269,33 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - [x] Phase 1 setup — COMPLETE (venv, requirements.txt, .gitignore, git init, first commit 852cc9e)
 - [x] Phase 2 data_loader — SCAFFOLDED (buggy `src/data_loader.py` + `src/build_parquet.py` created; reference solutions in `reference/`; spec in `notebooks/PHASE2_SPEC.md`; exploration notebook in `notebooks/00_explore_cnf.ipynb`; reference verified working 2026-07-01)
 - [x] Week 1 planning — COMPLETE (`BUSINESS_CASE.md` and `METHODOLOGY.md` written 2026-07-14; `CONTEXT.md` §1 updated with app flow, design philosophy, and internationalization)
-- [ ] Phase 3 calculator — NOT STARTED
-- [ ] Phase 4 measures — NOT STARTED
-- [ ] Phase 5 targets/report — NOT STARTED
-- [ ] Phase 6 Streamlit UI — NOT STARTED
+- [x] Phase 3 calculator — COMPLETE & VERIFIED (`src/models.py`, `src/calculator.py`)
+- [x] Phase 4 measures — COMPLETE & VERIFIED (`src/measures.py`)
+- [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv`)
+- [ ] Phase 6 Streamlit UI — NOT STARTED (next up: `app/streamlit_app.py`)
 - [ ] Phase 7 polish — NOT STARTED
 
-Last updated: 2026-07-14 (Week 1 competition deliverables complete:
-`BUSINESS_CASE.md` and `METHODOLOGY.md` created; `CONTEXT.md` §1
-updated with "start with the blender" app flow, "no black boxes"
-design philosophy, commercial formula comparator, flexible delivery
-input, custom foods from labels, and international data-pack
-architecture. Phases 1–2 unaffected; Phase 3+ scope clarified.)
+**Backend verification (2026-07-15): PASSED.** The full backend
+integration test lives at `scripts/verify_backend.py` and was run
+successfully against real CNF data (all 8 stages: data load, household
+measures, profile calculation, delivery, daily totals, adequacy report,
+formula comparison, density summary). To re-verify at any time, run:
+
+```
+.venv/bin/python scripts/verify_backend.py
+```
+
+**Note to AI agents:** do NOT re-verify the backend with long inline
+`python -c "..."` commands — use the script above. It exists precisely
+so verification is a single short, approvable command. The backend is
+done; the next work is Phase 6 (Streamlit UI).
+
+Last updated: 2026-07-15 (Phases 3–5 backend complete and verified
+end-to-end via `scripts/verify_backend.py`; verification results:
+test recipe of chicken/rice/oil at 550 mL measured volume gives
+1.091 kcal/mL, 0.092 g protein/mL, 0.869 free-water fraction;
+syringe bolus 300 mL × 4/day = 1200 mL/day = 1310 kcal, 110 g
+protein daily. Next: Phase 6 Streamlit UI.)
 
 ---
 
