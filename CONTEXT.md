@@ -358,11 +358,12 @@ author can compare their fixes or unblock themselves if stuck for too long.
   what-if mode — every edit to the recipe itself updates everything
   instantly). UI iteration pending after user testing. (Deferred by
   design — this is a UI rework, not a bug; roadmap item for Week 3/4.)
-- **Fluid target default (2700 mL) needs RD review** — added as part of
-  the 2026-07-16 audit's fluid-adequacy fix (see below). This is the
-  DRI AI for adult women (2.7 L/day); adult men's AI is higher
-  (~3.7 L/day). Edit `data/packs/canada/targets.csv` or use the
-  custom-targets sidebar input to correct per patient.
+- ~~Fluid target default (2700 mL) needs RD review~~ — **RD-reviewed and
+  accepted 2026-07-16.** 2700 mL is the DRI AI for adult women and stands
+  as the *guideline default*; adult men's AI is higher (~3.7 L/day). The
+  author's ruling: fluid clearly has to be individualised per patient —
+  that's what the custom-targets sidebar input is for — but a guideline
+  default is the right thing to ship. No longer pinned.
 - **Magnesium and phosphorus are deliberately target-less** — both are
   tracked (`tier=clinical` in `data/packs/canada/nutrients.csv`, since
   the author's EN spreadsheet tracks them and CNF covers them at
