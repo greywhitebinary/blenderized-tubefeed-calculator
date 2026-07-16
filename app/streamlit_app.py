@@ -472,17 +472,7 @@ recipe = Recipe(
     measured_final_volume_mL=measured_volume,
 )
 
-profile = calculate_profile(recipe, na)
-
-# Add custom food nutrients (foods with negative food_codes bypass CNF lookup)
-for ing in recipe.ingredients:
-    if ing.food_code < 0:
-        custom_data = st.session_state.custom_foods.get(ing.food_code, {})
-        for nutrient_name, per_100g_value in custom_data.items():
-            scaled = per_100g_value * (ing.grams / 100.0)
-            profile.nutrient_totals[nutrient_name] = (
-                profile.nutrient_totals.get(nutrient_name, 0.0) + scaled
-            )
+profile = calculate_profile(recipe, na, custom_foods=st.session_state.custom_foods)
 
 # --- Density panel ---
 st.subheader("Density Panel")

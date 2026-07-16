@@ -87,6 +87,7 @@ NUTRIENT_LABELS: dict[str, str] = {
 def calculate_profile(
     recipe: Recipe,
     nutrient_amount_df: pd.DataFrame,
+    custom_foods: dict[int, dict[str, float]] | None = None,
 ) -> NutrientProfile:
     """Calculate the nutrient profile for a recipe.
 
@@ -100,11 +101,20 @@ def calculate_profile(
       3. Merge ingredients with nutrient amounts on Food_Code.
       4. Scale: each row's amount × (grams / 100) → nutrient from that ingredient.
       5. Group by nutrient code, sum → recipe totals.
-      6. Map codes to internal names and build the NutrientProfile.
+      6. Map codes to internal names and build the nutrient totals dict.
+      7. Fold in any custom-food contributions (Appendix A9).
 
     Args:
         recipe:              A Recipe with ingredients and measured_final_volume_mL.
         nutrient_amount_df:  The CNF Nutrient_Amount DataFrame (from data_loader).
+        custom_foods:        Optional dict of food_code -> per-100g nutrient dict,
+                              for foods entered from a nutrition facts label
+                              (Appendix A9). Custom foods use negative food_codes
+                              so they never collide with real CNF Food_Codes and
+                              simply drop out of the CNF merge in step 3; their
+                              nutrient contribution is added here instead. Keys
+                              in each per-100g dict are internal nutrient names
+                              (see NUTRIENT_CODES), e.g. "energy_kcal".
 
     Returns:
         NutrientProfile with totals and densities.
@@ -130,7 +140,9 @@ def calculate_profile(
     ].copy()
 
     # Step 3: Merge ingredients with nutrient amounts
-    #   inner join: only rows where the food_code exists in both tables
+    #   inner join: only rows where the food_code exists in both tables.
+    #   Custom foods (negative food_code) have no match in CNF data, so
+    #   they simply drop out here — their contribution is folded in below.
     merged = ingr_df.merge(na_filtered, on="Food_Code", how="inner")
 
     # Step 4: Scale per-100g amounts to actual grams used
@@ -140,12 +152,25 @@ def calculate_profile(
     # Step 5: Group by nutrient code, sum across all ingredients
     totals_by_code = merged.groupby("Nutrient_Code")["scaled_amount"].sum()
 
-    # Step 6: Map codes to internal names, build the profile
+    # Step 6: Map codes to internal names, build the nutrient totals dict
     nutrient_totals: dict[str, float] = {}
     for code, total in totals_by_code.items():
         name = _CODE_TO_NAME.get(int(code))
         if name:
             nutrient_totals[name] = float(total)
+
+    # Step 7: Fold in custom-food contributions (Appendix A9). Negative
+    # food_codes identify custom foods entered from a nutrition facts label;
+    # their per-100g values are scaled by grams used, same as CNF foods.
+    if custom_foods:
+        for ing in recipe.ingredients:
+            if ing.food_code < 0:
+                custom_data = custom_foods.get(ing.food_code, {})
+                for nutrient_name, per_100g_value in custom_data.items():
+                    scaled = per_100g_value * (ing.grams / 100.0)
+                    nutrient_totals[nutrient_name] = (
+                        nutrient_totals.get(nutrient_name, 0.0) + scaled
+                    )
 
     return NutrientProfile(
         nutrient_totals=nutrient_totals,

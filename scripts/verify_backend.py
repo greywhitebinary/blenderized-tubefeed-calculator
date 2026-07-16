@@ -139,6 +139,29 @@ def main() -> int:
     print(density.to_string(index=False))
     assert len(density) == 6, "density summary should have 6 rows"
 
+    # 9. Custom food folding (Appendix A9) — calculate_profile() takes an
+    # optional custom_foods dict so this math lives in the backend, not the
+    # Streamlit view layer.
+    print("\n[9] Custom food folding...")
+    custom_recipe = Recipe(
+        name="Custom food test",
+        ingredients=[
+            Ingredient(
+                food_code=-1,
+                food_description="Protein shake (custom)",
+                grams=100,
+            ),
+        ],
+        added_water_mL=0,
+        measured_final_volume_mL=100,
+    )
+    custom_foods = {-1: {"energy_kcal": 50.0, "protein_g": 5.0}}
+    custom_profile = calculate_profile(custom_recipe, na, custom_foods=custom_foods)
+    print(f"    Custom-food kcal/mL: {custom_profile.kcal_per_mL:.3f}")
+    print(f"    Custom-food protein/mL: {custom_profile.protein_per_mL:.3f}")
+    assert custom_profile.kcal_per_mL == 0.5, "custom food kcal/mL should be 50/100 = 0.5"
+    assert custom_profile.protein_per_mL == 0.05, "custom food protein/mL should be 5/100 = 0.05"
+
     print("\n=== ALL BACKEND MODULES VERIFIED ===")
     return 0
 
