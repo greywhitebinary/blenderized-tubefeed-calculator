@@ -151,18 +151,22 @@ blenderized-tubefeed-calculator/
 ├── cnf_fcen_all-files-data_2026/   # raw CNF data (DO NOT MODIFY)
 ├── data/
 │   ├── processed/                   # generated parquet (gitignored)
-│   ├── targets/                     # SME-authored DRI / tube-feed targets
-│   ├── formulas/                    # commercial formula profiles (CSV)
-│   └── thinning_liquids.csv         # thinning liquid presets (CSV)
+│   └── packs/
+│       └── canada/                  # the only pack implemented today
+│           ├── nutrients.csv        # the nutrient registry (what to track, and why)
+│           ├── targets.csv          # SME-authored DRI / tube-feed targets
+│           ├── formulas.csv         # commercial formula profiles (CSV)
+│           └── thinning_liquids.csv # thinning liquid presets (CSV)
 ├── src/
 │   ├── __init__.py
 │   ├── data_loader.py               # CSV → pandas DataFrames (WORKING)
 │   ├── build_parquet.py             # one-time: CSV → parquet (WORKING)
 │   ├── models.py                    # @dataclass Ingredient, Recipe, Profile
+│   ├── nutrients.py                 # per-country nutrient registry (load_registry, NutrientDef)
 │   ├── calculator.py               # core math: recipe → nutrient profile
 │   ├── measures.py                  # household-measure → grams
 │   ├── targets.py                   # load DRI / tube-feed targets
-│   └── report.py                    # profile + targets → gap report
+│   └── report.py                    # profile + targets → tier-based adequacy report
 ├── reference/                        # bug-free reference solutions (per phase; learning project only)
 │   ├── __init__.py
 │   ├── data_loader.py               # Phase 2 reference (verified working)
@@ -172,7 +176,8 @@ blenderized-tubefeed-calculator/
 │   └── streamlit_app.py             # the UI
 ├── scripts/
 │   ├── verify_backend.py            # full backend integration test
-│   └── check_app_imports.py         # app import smoke test
+│   ├── check_app_imports.py         # app import smoke test
+│   └── trace_calculation.py         # hand-checkable calculation + registry trace
 ├── tests/
 ├── notebooks/
 │   ├── 00_explore_cnf.ipynb         # data-exploration sandbox
@@ -329,7 +334,7 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - [x] Week 1 planning — COMPLETE (`BUSINESS_CASE.md` written with full market analysis, competitors, methodology, and 4-week build plan)
 - [x] Phase 3 calculator — COMPLETE & VERIFIED (`src/models.py`, `src/calculator.py`)
 - [x] Phase 4 measures — COMPLETE & VERIFIED (`src/measures.py`)
-- [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv`)
+- [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv` as of 2026-07-15 — since moved to `data/packs/canada/targets.csv`, see the nutrient-registry entry below)
 - [x] Phase 6 Streamlit UI — SCAFFOLDED, bug-fixed post-audit (`app/streamlit_app.py`; recipe builder with CNF search + custom food from label, delivery input, targets (including fluid mL/day), live density panel, adequacy report with color-coded status (including a Free water row), dilution what-if with thinning liquid presets, commercial formula comparator, Excel export with a sanitized filename; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed)
 - [ ] Phase 7 polish — NOT STARTED
 
@@ -338,10 +343,14 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - **App not matching expectations** — author noted "it's not quite what
   I expected." Specific feedback pending after hands-on testing. Week 2
   iteration will address.
-- **Reference data now in CSVs** — commercial formulas live in
-  `data/formulas/commercial_formulas.csv` and thinning liquids in
-  `data/thinning_liquids.csv`. Both load at startup with hardcoded
-  fallbacks. RDs can edit these without touching Python.
+- **Reference data now in CSVs** — every Canadian reference file
+  (nutrient registry, targets, commercial formulas, thinning liquids)
+  lives under `data/packs/canada/` (one "data pack" per country — see
+  `BUSINESS_CASE.md` Appendix C). Formulas and thinning liquids load
+  at startup with hardcoded fallbacks; the nutrient registry
+  (`nutrients.csv`) deliberately does NOT fall back — see §11 and
+  `src/nutrients.py`'s module docstring for why. RDs can edit any of
+  these CSVs without touching Python.
 - **Design gap: dilution-slider vs. live recipe adjustment** — the code
   currently implements the dilution-slider what-if (add X mL of a
   thinning liquid, see new densities), but `BUSINESS_CASE.md` §7 /
@@ -352,8 +361,22 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - **Fluid target default (2700 mL) needs RD review** — added as part of
   the 2026-07-16 audit's fluid-adequacy fix (see below). This is the
   DRI AI for adult women (2.7 L/day); adult men's AI is higher
-  (~3.7 L/day). Edit `data/targets/dri_adult_default.csv` or use the
+  (~3.7 L/day). Edit `data/packs/canada/targets.csv` or use the
   custom-targets sidebar input to correct per patient.
+- **Magnesium and phosphorus are deliberately target-less** — both are
+  tracked (`tier=clinical` in `data/packs/canada/nutrients.csv`, since
+  the author's EN spreadsheet tracks them and CNF covers them at
+  97-98%) but have no row in `targets.csv` and so always render "No
+  target" in the BTF micro screen. This is intentional, not a gap:
+  refeeding-risk monitoring happens in hospital on known formulas, not
+  via a BTF default target. Do not add Mg/P targets without the
+  author's explicit sign-off — see `src/targets.py`'s module docstring.
+- **US/UK/AU data packs are roadmap, not started** — the registry
+  design (`src/nutrients.py`, `data/packs/<pack>/`) is built so that
+  adding a country is writing new CSVs under `data/packs/<pack>/` with
+  zero Python changes (kJ vs kcal and EU "salt" vs sodium are the one
+  documented exception, deferred to a future per-pack `config.yaml` —
+  see `BUSINESS_CASE.md` Appendix C). No non-Canadian pack exists yet.
 
 **Repo audit fixes (2026-07-16, this session) — resolved, no longer pinned:**
 
@@ -362,10 +385,10 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - ~~Food search crashes on regex metacharacters~~ — the search box now
   passes `regex=False` to `str.contains`, matching the `find_food()`
   helper.
-- ~~No fluid-adequacy row~~ — `data/targets/dri_adult_default.csv` now
-  has a `fluid_mL` target; `empty_targets()` and the custom-targets
-  sidebar include it; `generate_adequacy_report()` appends a "Free
-  water (mL)" row.
+- ~~No fluid-adequacy row~~ — the targets CSV (now `data/packs/canada/targets.csv`
+  — see the nutrient-registry entry below) gained a `fluid_mL` target;
+  `empty_targets()` and the custom-targets sidebar include it;
+  `generate_adequacy_report()` appends a "Free water (mL)" row.
 - ~~Excel export filename could break on special characters~~ —
   `sanitize_filename()` strips `/\:*?"<>|` before building the download
   filename.
@@ -378,12 +401,62 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - ~~Stray Cline artifact / duplicate docs in git~~ — see the 2026-07-16
   P0 entry below.
 
+**Nutrient registry & data packs (2026-07-16, this session) — the core
+architectural change since the last audit:**
+
+- `src/calculator.py`'s hardcoded 11-nutrient `NUTRIENT_CODES` dict
+  (which included vitamin D, B12, and zinc — none of which appear on a
+  Canadian label — and omitted magnesium and phosphorus, which the
+  author's EN spreadsheet tracks) is replaced by a per-country
+  **nutrient registry**: `src/nutrients.py::load_registry()` reads
+  `data/packs/<pack>/nutrients.csv`, a 19-row CSV tagging every
+  nutrient with `tier` (`label` | `clinical` | `engine` — WHY it's
+  tracked) and `on_label` (WHETHER a nutrition-facts label can supply
+  it). See `BUSINESS_CASE.md` Appendix C for the full rationale: a
+  country's mandatory Nutrition Facts panel IS that country's
+  public-health nutrient consensus (Health Canada's and the FDA's own
+  stated reasoning, quoted there), so the tracked-nutrient set has to
+  be per-country data, not a Python constant.
+- All Canadian reference CSVs (`nutrients.csv`, `targets.csv`,
+  `formulas.csv`, `thinning_liquids.csv`) now live together under
+  `data/packs/canada/` (moved via `git mv` from `data/targets/`,
+  `data/formulas/`, and `data/thinning_liquids.csv`). `targets.csv`
+  gained a `target_type` column (RDA/AI/UL/estimate).
+- `src/report.py` now produces **two** tables instead of one:
+  `generate_adequacy_report()` (tier="label" + Free water — the main
+  daily-tracked table) and the new `generate_clinical_screen()`
+  (tier="clinical" — a one-time ASPEN-style "does this blend need a
+  multivitamin?" screen, not a daily panel). Sodium (`target_type=UL`)
+  now reports "Above UL"/"Below UL" instead of the misleading "Above
+  target"/"Meeting target". Both tables gained a **Source** column
+  (label-derivable or CNF-only) and a **Coverage** column (P2 — how
+  many of *this recipe's* ingredients actually had CNF data for that
+  nutrient, e.g. "1/2 ingredients"; flagged only when incomplete).
+- `app/streamlit_app.py`'s custom-food entry form and custom-targets
+  sidebar are now generated from the registry instead of hardcoded
+  field lists; the custom-food form gained Fat/Saturated
+  Fat/Trans Fat/Cholesterol/Carbohydrate/Sugars (real Canadian label
+  fields) and lost Vitamin D/B12/Zinc/Water (not on any Canadian
+  label) — with a caption warning that moisture is on no label, so
+  custom-food recipes will underestimate free water. A new "BTF micro
+  screen" expander renders the clinical screen; Excel export gained a
+  "Micro Screen" sheet.
+- Acceptance criterion (verified, not just claimed): adding a country
+  is writing new CSVs under `data/packs/<pack>/` with **zero Python
+  changes** — checked by `load_registry("no_such_pack")` raising
+  `FileNotFoundError` in `verify_backend.py` stage 10, proving the
+  registry is genuinely data-driven, not a Canadian default with a
+  data-shaped facade. kJ/salt-unit handling is the one documented
+  exception (future per-pack `config.yaml`; see Appendix C).
+
 **Backend verification (2026-07-16): PASSED.** The full backend
-integration test lives at `scripts/verify_backend.py` and now runs 9
+integration test lives at `scripts/verify_backend.py` and now runs 11
 stages against real CNF data (data load with Parquet/CSV source timing,
 household measures, profile calculation, delivery, daily totals,
 adequacy report including the Free water row, formula comparison,
-density summary, custom-food folding). To re-verify at any time, run:
+density summary, custom-food folding, nutrient-registry + tier-based
+reporting, and per-recipe coverage provenance). To re-verify at any
+time, run:
 
 ```
 .venv/bin/python scripts/verify_backend.py
@@ -393,20 +466,32 @@ density summary, custom-food folding). To re-verify at any time, run:
 `python -c "..."` commands — use the script above. It exists precisely
 so verification is a single short, approvable command.
 
-Last updated: 2026-07-16 (repo audit & repair session, four commits:
-(1) P0 repo hygiene — merged CONTEXT.md so it matches
-`BUSINESS_CASE.md`'s design framing (competition framing, CNF + USDA SR
-Legacy, sweet-spot/drip-test/thickness-ceiling concepts, live recipe
-adjustment as the stated goal), retired scaffold-and-fix to "learning
-project only", removed references to a non-existent methodology file in
-favor of `BUSINESS_CASE.md` Appendices A/B/C, and removed
-duplicate/generated documents (`CONTEXT.md</path`, `BUS`, `.docx`,
-`.epub`) from git; (2) P1 bug fixes — search-crash regex, fluid-adequacy
-row, emoji removal, Excel filename sanitization; (3) P2-1 — moved
-custom-food math from the UI into `calculate_profile()`; (4) P2-2 —
-`data_loader.py` now prefers Parquet over CSV. Next: Week 3 scope
-(pytest suite, CI, Streamlit Cloud deploy, USDA SR Legacy supplement)
-and the remaining pinned issues above.)
+Last updated: 2026-07-16 (nutrient-registry & data-pack refactor
+session, following the earlier same-day repo audit & repair session.
+Repo-audit commits: (1) P0 repo hygiene — merged CONTEXT.md so it
+matches `BUSINESS_CASE.md`'s design framing (competition framing, CNF
++ USDA SR Legacy, sweet-spot/drip-test/thickness-ceiling concepts,
+live recipe adjustment as the stated goal), retired scaffold-and-fix
+to "learning project only", removed references to a non-existent
+methodology file in favor of `BUSINESS_CASE.md` Appendices A/B/C, and
+removed duplicate/generated documents (`CONTEXT.md</path`, `BUS`,
+`.docx`, `.epub`) from git; (2) P1 bug fixes — search-crash regex,
+fluid-adequacy row, emoji removal, Excel filename sanitization; (3)
+P2-1 — moved custom-food math from the UI into `calculate_profile()`;
+(4) P2-2 — `data_loader.py` now prefers Parquet over CSV.
+Nutrient-registry-refactor commits (same day, separate session): (5)
+committed the pending `scripts/trace_calculation.py`; (6) P1a — built
+`src/nutrients.py` + `data/packs/canada/nutrients.csv` + moved all
+Canadian reference CSVs into `data/packs/canada/`; (7) P1b —
+`src/report.py` tier-based reporting (main table + BTF micro screen)
+and UL status semantics; (8) P1c — wired `app/streamlit_app.py` and
+extended both verification scripts; (9) P2 — per-recipe coverage
+provenance (strictly additive); (10) P3 — this documentation pass
+(`BUSINESS_CASE.md` Appendix C rewrite, §7/A6, this section, §10, §11,
+README). See the "Nutrient registry & data packs" entry above for what
+changed and why. Next: Week 3 scope (pytest suite, CI, Streamlit Cloud
+deploy, USDA SR Legacy supplement), the US/UK/AU data packs (roadmap,
+pure data per Appendix C), and the remaining pinned issues above.)
 
 ---
 
@@ -444,13 +529,23 @@ After restarting your computer:
 
 **To edit reference data (no Python needed):**
 
+All Canadian reference data lives under `data/packs/canada/` — one
+"data pack" per country (see `BUSINESS_CASE.md` Appendix C).
+
 | Data | File |
 |---|---|
-| DRI targets | `data/targets/dri_adult_default.csv` |
-| Commercial formulas | `data/formulas/commercial_formulas.csv` |
-| Thinning liquid presets | `data/thinning_liquids.csv` |
+| Nutrient registry (what to track, and why) | `data/packs/canada/nutrients.csv` |
+| DRI targets | `data/packs/canada/targets.csv` |
+| Commercial formulas | `data/packs/canada/formulas.csv` |
+| Thinning liquid presets | `data/packs/canada/thinning_liquids.csv` |
 
 Edit the CSV, save, and rerun the app. Changes take effect on next load.
+Adding a nutrient to track is a `nutrients.csv` row (see its `tier` /
+`on_label` columns, documented in `src/nutrients.py`'s module
+docstring) — no Python change needed. Unlike the other three files,
+`nutrients.csv` has **no hardcoded fallback**: if it's missing, the app
+fails loudly with `FileNotFoundError` instead of silently guessing —
+this is deliberate, see §11 and `src/nutrients.py`.
 
 ---
 
@@ -467,3 +562,28 @@ Edit the CSV, save, and rerun the app. Changes take effect on next load.
   Code workspace; agent self-imposes project-folder-only access.
 - `reference/` files use the same path resolution as `src/` (both at
   project root); code can be copied between them without path changes.
+- **CNF's sodium row is the literal string `"NA"`, and pandas will eat
+  it.** In `Nutrient_Name.csv`, sodium's `Tagname` and `Nutrient_Symbol`
+  columns both contain the literal text `NA` — and `pd.read_csv()`'s
+  default `na_values` handling parses the string `"NA"` as a missing
+  value (`NaN`), not as the two-letter sodium symbol. Any lookup that
+  joins or filters on `Tagname`/`Nutrient_Symbol` will silently lose
+  sodium — the row doesn't error, it just vanishes. `src/nutrients.py`'s
+  registry sidesteps this entirely by keying on the **numeric**
+  `Nutrient_Code` (307 for sodium) instead, which is safe. If you ever
+  need to look nutrients up by Tagname/Symbol, either avoid sodium that
+  way or pass `pd.read_csv(..., keep_default_na=False)`. Documented
+  here, next to the BOM gotcha in §5, so nobody "fixes" the registry's
+  numeric-code lookup into a Tagname lookup and reintroduces this bug.
+- **`src/nutrients.py::load_registry()` raises `FileNotFoundError` if
+  `nutrients.csv` is missing — deliberately, with no hardcoded
+  fallback**, unlike `_load_commercial_formulas()` /
+  `_load_thinning_liquids()` (which fall back to a small hardcoded
+  dict). Formulas and thinning liquids are reference data — nice to
+  have, safely defaulted. The nutrient registry is structural: it
+  defines which nutrients the whole app tracks and why (`tier` /
+  `on_label`). A silent fallback to a hardcoded Canadian list would
+  defeat the entire data-pack design (a US pack that forgot its
+  `nutrients.csv` would silently render the Canadian panel instead of
+  failing loudly). Do not "fix" this by adding a fallback — see the
+  comment at the top of `_load_registry_cached()` in `src/nutrients.py`.

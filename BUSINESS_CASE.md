@@ -218,9 +218,19 @@ the RD is always the final authority.
    may be thicker than formula"* and *"Pumps are not routinely provided
    because their design does not work well with home blended food."*
 
-4. **Adequacy report.** At the entered daily volume: total kcal, protein,
-   fluid, fibre, and key micronutrients vs. optional target inputs.
-   Status indicators: meeting / below / above target.
+4. **Adequacy report, in two tiers.** At the entered daily volume: a main
+   table of every nutrient on this country's mandatory Nutrition Facts
+   panel (13 for Canada — energy, protein, fat, saturated fat, trans
+   fat, cholesterol, carbohydrate, fibre, sugars, sodium, potassium,
+   calcium, iron) plus free water, vs. optional target inputs. Status
+   indicators: meeting / below / above target — except sodium (a
+   Tolerable Upper Intake Level, not a target to aim for), which reads
+   "Below UL" / "Above UL" instead. A second, collapsed **"BTF micro
+   screen"** shows magnesium, phosphorus, zinc, vitamin D, and vitamin
+   B12 — nutrients not on a Canadian label but clinically relevant to
+   BTF (the author's EN spreadsheet tracks magnesium/phosphorus; the
+   rest are an ASPEN-style one-time supplementation check, not a
+   daily-tracked panel). See Appendix C for why the split exists.
 
 5. **Commercial formula comparator.** Side-by-side: "Your BTF at 1,200
    mL/day = 1,560 kcal, 78 g protein. Peptamen 1.5 at 1,200 mL/day =
@@ -520,14 +530,46 @@ daily_[nutrient] = (recipe_[nutrient] / measured_volume_mL) × daily_volume_mL
 ```
 pct_target = (daily_total / target) × 100
 
-status:
+status (target_type = RDA | AI | estimate):
   < 90% of target  → "Below target"
   90%–110%         → "Meeting target"
   > 110% of target → "Above target"
+
+status (target_type = UL — a ceiling, not a target to aim for):
+  ≤ 100% of target → "Below UL"
+  > 100% of target  → "Above UL"
 ```
 
-Nutrients reported: Energy, Protein, Fluid, Fibre, Sodium, Potassium,
-Calcium, Iron, Zinc, Vitamin D, Vitamin B12.
+Every tracked nutrient carries a `target_type` (RDA / AI / UL /
+estimate) in `data/packs/canada/targets.csv`. Sodium is a UL, so it
+uses the second vocabulary — "Meeting target" would misleadingly imply
+90-110% of the UL is the goal, when the actual goal is simply staying
+under it.
+
+**Two report tables, split by nutrient tier** (see Appendix C for the
+full rationale — which nutrients are worth showing is itself a
+national public-health judgment, encoded per-country in
+`data/packs/<pack>/nutrients.csv`):
+
+- **Main adequacy table** (`tier=label`) — every nutrient on the
+  Canadian Nutrition Facts panel: Energy, Protein, Fat, Saturated Fat,
+  Trans Fat, Cholesterol, Carbohydrate, Fibre, Sugars, Sodium,
+  Potassium, Calcium, Iron — plus the derived Free water row (compared
+  against the Fluid target).
+- **BTF micro screen** (`tier=clinical`) — Magnesium, Phosphorus, Zinc,
+  Vitamin D, Vitamin B12: tracked for BTF-clinical reasons, not because
+  they're on a Canadian label. A one-time ASPEN-style supplementation
+  screen, not a daily-tracked panel. Magnesium and phosphorus
+  deliberately have no default target (refeeding-risk monitoring
+  happens in hospital on known formulas, not via a BTF default) and so
+  render "No target" — that's intentional, not a gap.
+
+Both tables also carry a **Source** column (can a nutrition-facts label
+ever supply this nutrient — "Label + CNF" vs. "CNF only") and a
+**Coverage** column (how many of *this recipe's* ingredients actually
+had CNF data for this nutrient, e.g. "3/5 ingredients" — flagged only
+when incomplete, since a missing CNF row and a true zero otherwise both
+silently read as 0).
 
 ### A7. Commercial formula comparator
 
@@ -642,26 +684,125 @@ Protein = wt_kg × 0.8–2.0 g/kg (factors: stress, wounds, renal, hepatic)
 
 ## Appendix C: Internationalization — data pack specification
 
-Each country is a "data pack" — a folder containing:
+### The insight this section is built on
+
+Early drafts of this appendix framed internationalization as "swap the
+database" — a data task, mechanically true but analytically thin. The
+real finding, reached while building the nutrient tracking layer, is
+sharper: **which nutrients are worth showing is itself a national
+public-health judgment, not an engineering choice.**
+
+A country's mandatory Nutrition Facts panel is not an arbitrary list —
+it is that country's regulator publicly stating which nutrients matter
+enough to legislate. That is not an inference from this project; it is
+the regulators' own stated reasoning:
+
+- **Health Canada**, in its 2022 nutrition labelling regulations,
+  **removed vitamins A and C** from the mandatory panel because *"most
+  Canadians get enough of these nutrients"*, and **added potassium**
+  because Canadian intakes are low.
+- The **FDA**, in its 2016 label overhaul, **added vitamin D and
+  potassium** explicitly as *"nutrients of public health concern"* —
+  nutrients Americans are commonly short on.
+
+So "track what's on the label" and "use public-health measures to
+choose which nutrients to track" turn out to be **the same rule**, and
+that rule is per-country by construction — because the underlying
+public-health judgment is per-country. A single hardcoded nutrient list
+cannot express this; a per-country nutrient *registry* can, and that's
+what this project ships.
+
+### Verified mandatory nutrition panels, four countries
+
+| | Canada (13) | US (15) | EU/UK (7) | Australia/NZ (7) |
+|---|---|---|---|---|
+| Macros | energy, fat, sat, trans, cholesterol, carb, fibre, sugars, protein | same + **added sugars** | energy, fat, saturates, carb, sugars, protein | energy (**kJ**), protein, fat, sat, carb, sugars |
+| Sodium | sodium | sodium | **salt** (Na × 2.5) | sodium |
+| **Micros** | **potassium, calcium, iron** | **vitamin D, calcium, iron, potassium** | **none** | **none** |
+| Fibre | mandatory | mandatory | voluntary | only if a claim is made |
+
+Two consequences fall directly out of this table, and both are things a
+hardcoded nutrient list gets structurally wrong:
+
+1. **EU/UK and Australia/NZ mandate zero micronutrients.** A calculator
+   built around "the 11 nutrients that matter" has silently baked in a
+   Canadian/US assumption that doesn't hold elsewhere.
+2. **Vitamin D flips provenance across the Canada/US border** — on the
+   US label, absent from the Canadian one. Same nutrient, same CNF/USDA
+   lookup code, different truth about whether a consumer-facing label
+   can ever supply it. That's a data fact, not a code fact, and the
+   registry design (below) is built specifically so it stays that way.
+
+### The pack directory
+
+Each country ships as a **data pack** — a folder of plain CSVs, no code:
 
 ```
-data_packs/
+data/packs/
   canada/
-    primary_database.parquet      # CNF 2026
-    supplement_database.parquet   # USDA SR Legacy (whole foods)
-    commercial_formulas.csv       # Canadian formula profiles
-    targets.csv                   # Canadian DRI
-    config.yaml                   # units, language, fortification rules
-  us/
-    primary_database.parquet      # USDA FoodData Central
-    ...
-  uk/
-    primary_database.parquet      # McCance & Widdowson / CoFID
-    ...
+    nutrients.csv          # the registry: what to track, and why
+    targets.csv             # DRI / tube-feed targets, with target_type
+    formulas.csv             # commercial formula profiles (kcal/mL, protein/mL)
+    thinning_liquids.csv     # thinning liquid presets (kcal, protein, water per 100 mL)
+  us/                       # NOT YET BUILT — same four files, US data
+    nutrients.csv            #   e.g. vitamin_d_ug moves to tier=label, on_label=yes
+    targets.csv
+    formulas.csv
+    thinning_liquids.csv
 ```
 
-The calculator engine is country-agnostic. Adding a country is a data
-task, not a code task. Build Canada first, architect for swappability.
+Canada is the only pack implemented today. Adding a country is
+**writing new CSVs under `data/packs/<country>/`, with zero Python
+changes** — that is the acceptance criterion this design is held to.
+(One documented exception, deferred to a future `config.yaml` per pack:
+kJ vs kcal, and the EU's "salt" vs sodium unit convention, which need a
+units-conversion layer this project hasn't built yet.)
+
+### `nutrients.csv` — the registry schema
+
+```csv
+name,code,label,unit,tier,on_label,decimals,notes
+energy_kcal,208,Energy,kcal,label,yes,0,Canadian NFt core
+sodium_mg,307,Sodium,mg,label,yes,0,Canadian NFt core; added 2022 regs
+water_g,255,Water (moisture),g,engine,no,1,Free-water denominator; no label carries moisture
+magnesium_mg,304,Magnesium,mg,clinical,no,1,Author's EN spreadsheet tracks Mg; not on any NFt
+vitamin_d_ug,328,Vitamin D,µg,clinical,no,1,ASPEN BTF supplementation screen; on US labels but not Canadian
+```
+
+Every nutrient the tool tracks carries **two independent axes** — the
+design does not collapse them into one:
+
+- **`tier` — why we track it.**
+  - `label`: on this country's mandatory panel — the public-health set,
+    shown in the main adequacy table.
+  - `clinical`: tracked for a BTF/clinical reason (the author's EN
+    spreadsheet, or ASPEN BTF guidance), not a public-health one —
+    shown in a separate, collapsed "BTF micro screen": a **one-time**
+    "does this blend need a multivitamin?" check, not a daily-tracked
+    panel. Deliberately not hospital-style daily micro tracking — see
+    §1's clinical reasoning for why (commercial formula EN doesn't need
+    it; refeeding-risk patients are monitored in hospital on known
+    formulas; BTF at home is a community/public-health setting).
+  - `engine`: needed internally by the calculator (`water_g` only, to
+    compute `free_water_fraction`) — never its own report row, in
+    either table.
+- **`on_label` — can a nutrition-facts label supply it?** Drives the
+  custom-food-entry form: a food entered from a label can only ever
+  populate the fields that are actually printed on that country's
+  label. For the Canada pack, every `label`-tier row is `on_label=yes`
+  and every `clinical`/`engine` row is `on_label=no` — but that
+  agreement is a fact about *this* pack, not a rule the code enforces.
+  A future US pack would set `vitamin_d_ug` to `tier=label,
+  on_label=yes`: same CNF/USDA code, different country, different
+  truth — pure data, zero code change.
+
+The calculator engine (`src/calculator.py`, `src/report.py`) reads
+`tier` and `on_label` off the registry at runtime; it has no
+Canada-specific branch anywhere. Build Canada first, architect for
+swappability — and the swap is real: it was exercised in this
+project's own verification suite (`load_registry("no_such_pack")` must
+raise `FileNotFoundError`, proving the registry is genuinely
+data-driven rather than a Canadian default with a data-shaped facade).
 
 ---
 
@@ -693,3 +834,18 @@ task, not a code task. Build Canada first, architect for swappability.
 12. Hopkins B, et al. *Prevalence and Management of Enteral Nutrition
     Intolerance in the Non-ICU Setting in Canada.* 2017. (240 RDs,
     ~5,600 EN patients across acute, LTC, and home care.)
+13. Health Canada. *Nutrition Facts Table: Regulatory changes* (Food
+    Labelling Changes, 2022 coming-into-force). Removed mandatory
+    vitamin A and C declarations ("most Canadians get enough of these
+    nutrients"); added mandatory potassium. canada.ca/en/health-canada.
+14. US Food and Drug Administration. *Changes to the Nutrition Facts
+    Label*, 21 CFR 101.9 (2016 final rule). Added vitamin D and
+    potassium as mandatory "nutrients of public health concern";
+    removed vitamins A and C as mandatory. fda.gov.
+15. European Parliament and Council. *Regulation (EU) No 1169/2011 on
+    the provision of food information to consumers*, Article 30
+    (mandatory nutrition declaration: energy, fat, saturates,
+    carbohydrate, sugars, protein, salt). eur-lex.europa.eu.
+16. Food Standards Australia New Zealand. *Australia New Zealand Food
+    Standards Code — Standard 1.2.8, Nutrition information
+    requirements.* foodstandards.gov.au.

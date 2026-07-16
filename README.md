@@ -111,19 +111,39 @@ You should see `IMPORTS OK` at the end.
 
 ## How to edit reference data (no Python needed)
 
-All reference data is in CSV files. You can edit these in VS Code, Excel,
-or any text editor. Save the file and rerun the app — changes take
-effect on next load.
+All reference data lives under `data/packs/canada/` — Canada is one
+"data pack" (see `BUSINESS_CASE.md` Appendix C); a future country would
+be a new `data/packs/<country>/` folder with the same four files, no
+Python changes. You can edit these CSVs in VS Code, Excel, or any text
+editor. Save the file and rerun the app — changes take effect on next
+load.
 
 | Data | File | Format |
 |---|---|---|
-| DRI targets | `data/targets/dri_adult_default.csv` | nutrient, target, unit, source |
-| Commercial formulas | `data/formulas/commercial_formulas.csv` | name, kcal_per_mL, protein_per_mL |
-| Thinning liquid presets | `data/thinning_liquids.csv` | name, kcal_per_100mL, protein_g_per_100mL, water_g_per_100mL |
+| Nutrient registry (what to track, and why) | `data/packs/canada/nutrients.csv` | name, code, label, unit, tier, on_label, decimals, notes |
+| DRI targets | `data/packs/canada/targets.csv` | nutrient, target, unit, target_type, source |
+| Commercial formulas | `data/packs/canada/formulas.csv` | name, kcal_per_mL, protein_per_mL |
+| Thinning liquid presets | `data/packs/canada/thinning_liquids.csv` | name, kcal_per_100mL, protein_g_per_100mL, water_g_per_100mL |
+
+### To add a nutrient to track:
+
+1. Open `data/packs/canada/nutrients.csv` in VS Code.
+2. Add a new line with the CNF `Nutrient_Code` (look it up in
+   `cnf_fcen_all-files-data_2026/Nutrient Name.csv`), a `tier` of
+   `label` (on the Canadian Nutrition Facts panel — shown in the main
+   adequacy table), `clinical` (a BTF-specific reason to track it —
+   shown in the collapsed BTF micro screen), or `engine` (internal use
+   only, never shown), and `on_label` of `yes`/`no` (can a nutrition
+   facts label supply it?).
+3. Save the file. Optionally add a matching row to `targets.csv` if the
+   nutrient should show an adequacy target.
+4. Rerun the app. No Python change needed — this is the whole point of
+   the registry design (see `CONTEXT.md` §11 for why `nutrients.csv`
+   has no hardcoded fallback, unlike the other three files below).
 
 ### To add a new commercial formula:
 
-1. Open `data/formulas/commercial_formulas.csv` in VS Code.
+1. Open `data/packs/canada/formulas.csv` in VS Code.
 2. Add a new line at the bottom, e.g.:
    ```
    Ensure Plus,1.5,0.063
@@ -133,7 +153,7 @@ effect on next load.
 
 ### To add a new thinning liquid:
 
-1. Open `data/thinning_liquids.csv` in VS Code.
+1. Open `data/packs/canada/thinning_liquids.csv` in VS Code.
 2. Add a new line at the bottom, e.g.:
    ```
    Coconut water,19.0,0.7,95.0
@@ -148,14 +168,17 @@ effect on next load.
 ```
 blenderized-tubefeed-calculator/
 ├── app/streamlit_app.py          ← the UI (this is what you run)
-├── src/                          ← backend logic (calculator, data loader, etc.)
-├── data/                         ← editable reference data (CSVs)
-│   ├── targets/                  ← DRI targets
-│   ├── formulas/                 ← commercial formula profiles
-│   └── thinning_liquids.csv      ← thinning liquid presets
+├── src/                          ← backend logic (calculator, data loader, nutrients registry, etc.)
+├── data/
+│   └── packs/canada/             ← editable Canadian reference data (CSVs) — one "data pack"
+│       ├── nutrients.csv         ← nutrient registry (what to track, and why)
+│       ├── targets.csv           ← DRI targets
+│       ├── formulas.csv          ← commercial formula profiles
+│       └── thinning_liquids.csv  ← thinning liquid presets
 ├── cnf_fcen_all-files-data_2026/ ← raw CNF data (DO NOT MODIFY)
 ├── scripts/                      ← verification scripts
 ├── CONTEXT.md                    ← full project context (read this first)
+├── BUSINESS_CASE.md              ← methodology + data-pack design (Appendix C)
 └── requirements.txt              ← Python dependencies
 ```
 

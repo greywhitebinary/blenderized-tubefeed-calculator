@@ -3,10 +3,14 @@
 1. Read CONTEXT.md §9 (Current status) FIRST. Trust its checkboxes —
    do not re-do or re-verify completed phases.
 
-2. The backend (Phases 2–5: data_loader, models, calculator, measures,
-   targets, report) is COMPLETE and VERIFIED as of 2026-07-15.
+2. The backend (Phases 2–5: data_loader, models, nutrients, calculator,
+   measures, targets, report) is COMPLETE and VERIFIED as of 2026-07-16
+   (nutrient-registry & data-pack refactor — see CONTEXT.md §9).
    Do not rewrite, re-scaffold, or re-test these modules unless the
-   user explicitly asks or a change breaks them.
+   user explicitly asks or a change breaks them. Reference data
+   (nutrient registry, targets, formulas, thinning liquids) now lives
+   under data/packs/canada/, not data/targets/ or data/formulas/ —
+   those directories no longer exist.
 
 3. To verify the backend, run:
 
