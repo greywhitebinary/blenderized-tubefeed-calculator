@@ -335,7 +335,7 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - [x] Phase 3 calculator — COMPLETE & VERIFIED (`src/models.py`, `src/calculator.py`)
 - [x] Phase 4 measures — COMPLETE & VERIFIED (`src/measures.py`)
 - [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv` as of 2026-07-15 — since moved to `data/packs/canada/targets.csv`, see the nutrient-registry entry below)
-- [x] Phase 6 Streamlit UI — SCAFFOLDED, bug-fixed post-audit (`app/streamlit_app.py`; recipe builder with CNF search + custom food from label, delivery input, targets (including fluid mL/day), live density panel, adequacy report with color-coded status (including a Free water row), dilution what-if with thinning liquid presets, commercial formula comparator, Excel export with a sanitized filename; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed)
+- [x] Phase 6 Streamlit UI — SCAFFOLDED, bug-fixed post-audit, restructured 2026-07-17 (`app/streamlit_app.py`; recipe builder with CNF search + food-group filter + custom food from label, delivery input, targets (including fluid mL/day), live density panel, adequacy report with color-coded status (including a Free water row), dilution what-if with thinning liquid presets, commercial formula comparator, Excel export with a sanitized filename; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed; see the "UI restructure" entry below for the Build/Results tabs + persistent banner layout change)
 - [ ] Phase 7 polish — NOT STARTED
 
 **Pinned issues (to revisit after user testing):**
@@ -358,6 +358,11 @@ author can compare their fixes or unblock themselves if stuck for too long.
   what-if mode — every edit to the recipe itself updates everything
   instantly). UI iteration pending after user testing. (Deferred by
   design — this is a UI rework, not a bug; roadmap item for Week 3/4.)
+  **Still open after the 2026-07-17 Build/Results tabs restructuring**
+  (see below) — that work reorganized *where* things live on the page
+  (a layout/navigation change) and left the dilution-slider what-if's
+  *behavior* untouched. It is a distinct feature gap from the layout
+  question and is not resolved by the tab restructuring.
 - ~~Fluid target default (2700 mL) needs RD review~~ — **RD-reviewed and
   accepted 2026-07-16.** 2700 mL is the DRI AI for adult women and stands
   as the *guideline default*; adult men's AI is higher (~3.7 L/day). The
@@ -464,6 +469,85 @@ architectural change since the last audit:**
   - Deferred by design: kJ/salt-unit handling (future per-pack
     `config.yaml`; see Appendix C).
 
+**UI restructure: Build/Results tabs + persistent banner (2026-07-17) —
+a layout/navigation change, not a feature or calculation change:**
+
+- `app/streamlit_app.py`'s single, continuously-scrolling page (sidebar
+  doing double duty as both "global recipe identity" and "the one place
+  you add every ingredient," density panel through Excel export all
+  stacked below the ingredient table) is reorganized into: a
+  **decluttered sidebar** (title/branding, recipe name, "Load example
+  recipe" only), a **persistent "Patient, Delivery & Targets" banner**
+  (collapsible detail — delivery method/params + DRI-default-or-custom
+  targets — plus an always-visible one-line summary showing daily
+  volume and active kcal/protein/fluid targets) sitting above two
+  **`st.tabs`**: **"🔨 Build"** (CNF ingredient search — now full-width
+  instead of sidebar-cramped, with a new food-group filter over CNF's
+  own 23 native `CNF_Food_Group` categories — custom-food-from-label
+  entry, blend details, and the editable ingredient table) and
+  **"📊 Results"** (density panel, daily totals & adequacy, BTF micro
+  screen, dilution what-if, commercial formula comparator, Excel
+  export). Grounded in the author's own hospital EN spreadsheet's
+  two-sheet structure (Assessment vs. EN Initiation) and a review of
+  the Compleat® recipe builder's persistent target strip.
+- **The banner deliberately bundles Delivery together with Targets**,
+  not Targets alone — both are patient-side, set-once,
+  referenced-everywhere inputs (unlike ingredients, which are
+  blender-side and edited constantly), and the banner's one-line daily
+  volume comes directly from Delivery. This was flagged as an
+  overridable call in the handoff plan; kept as specified — no reason
+  surfaced during implementation to move Delivery back to the sidebar.
+- **Real behavior fix, not just a code move:** the two former global
+  `st.stop()` calls (empty ingredients; `measured_volume <= 0`) — which
+  would have halted the *entire* script run and broken Results-tab
+  rendering if left in place inside a tab block — are now **tab-local
+  guards**. The Build tab always renders its add-ingredient UI even
+  with zero ingredients (only the ingredient-table section is skipped,
+  with an inline prompt); the Results tab shows an inline "add
+  ingredients in the Build tab" guidance message instead of raising or
+  halting when ingredients are missing or volume is unset. `recipe` and
+  `profile` are now constructed inside the guarded Results-tab branch
+  only. Verified explicitly with a Streamlit `AppTest` harness (see
+  below) on a fresh, ingredient-free session — both tabs render their
+  full shell with no exception.
+- No calculation, data-model, or `src/` change. `color_status()`,
+  `generate_adequacy_report()`, `generate_clinical_screen()`,
+  `generate_formula_comparison()`, `generate_density_summary()`,
+  `dilute()`, `required_daily_volume()`, and the Excel sheet structure
+  are all relocated verbatim.
+- **New:** `get_food_group()` (cached, mirrors `get_food_name()`) wraps
+  `src/data_loader.py::load_food_group()`, which already existed but was
+  unused. The food-group filter narrows the CNF food-name DataFrame by
+  `CNF_Food_Group_Code` *before* the existing substring search — same
+  `regex=False` search behavior as before, just pre-narrowed by group
+  when one is selected.
+- **Explicitly deferred, not built now** (per the handoff plan's
+  Decision 4 — a separate design session, not a layout-change bundle):
+  purpose-based nutrient category cards (Compleat's "Protein-Rich
+  Foods" / "Vitamin C-Rich Fruits & Vegetables" groupings). These would
+  need either hand-tagging ~5,993 CNF foods or a nutrient-threshold
+  heuristic — real clinical-judgment design work.
+- **Does NOT resolve** the pinned "dilution-slider vs. live recipe
+  adjustment" item above — that's a feature gap (the tool still adds a
+  what-if liquid rather than adjusting the recipe itself live); this
+  work only changed where things live on the page, not the dilution
+  what-if's behavior.
+- Verified with: the three existing regression scripts (still pass
+  unchanged, since the backend wasn't touched); a new Streamlit
+  `AppTest` harness driving the app programmatically (fresh-load
+  rendering of both tab shells and their empty-state guards, example-
+  recipe load populating the Build tab and blend details, the Results
+  tab rendering density metrics/adequacy table/BTF micro screen/formula
+  comparator once ingredients exist, the persistent banner rendering
+  once at top level — not duplicated inside either tab, Excel export
+  not raising, and the food-group filter both narrowing results to a
+  selected group and behaving like today's unfiltered search under
+  "All"); and a live `.venv/bin/streamlit run` boot/log check plus an
+  `AppTest`-driven interactive-style pass (custom-food-from-label entry,
+  food-group filter + search, dilution slider) exercising the real
+  script engine end to end, since no browser-automation tool was
+  available to click through a live page in this environment.
+
 **Backend verification (2026-07-16): PASSED.** The full backend
 integration test lives at `scripts/verify_backend.py` and now runs 11
 stages against real CNF data (data load with Parquet/CSV source timing,
@@ -506,7 +590,14 @@ provenance (strictly additive); (10) P3 — this documentation pass
 README). See the "Nutrient registry & data packs" entry above for what
 changed and why. Next: Week 3 scope (pytest suite, CI, Streamlit Cloud
 deploy, USDA SR Legacy supplement), the US/UK/AU data packs (roadmap,
-pure data per Appendix C), and the remaining pinned issues above.)
+pure data per Appendix C), and the remaining pinned issues above.
+
+2026-07-17 update (separate session): UI restructuring only — Build/
+Results `st.tabs` + persistent "Patient, Delivery & Targets" banner +
+CNF food-group filter, per an approved handoff plan. See the "UI
+restructure" entry above for full detail. No backend/`src/` change; the
+pinned "dilution-slider vs. live recipe adjustment" item is explicitly
+NOT resolved by this work — it's a layout change, that's a feature gap.)
 
 ---
 
