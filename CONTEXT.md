@@ -18,17 +18,25 @@ to it. The full business case, market analysis, and methodology are in
 **App flow — "start with the blender":**
 
 1. **Recipe builder** — search CNF or USDA supplement or add a custom
-   food from a nutrition facts label; enter grams per ingredient, added
-   water, measured final volume.
-2. **Delivery input** — how is the feed given? Syringe bolus (mL ×
-   times/day), pump (mL/hr × hours/day), or direct mL/day. The tool does
-   the multiplication.
+   food from a nutrition facts label (g or mL basis); enter grams (or
+   mL) per ingredient and measured final volume. No separate "added
+   water" field — water is an ordinary ingredient, flagged "counts as
+   fluid" like any other liquid.
+2. **Delivery input** — how is the feed given? Syringe bolus as an
+   editable (time, volume) schedule, or a single total feed volume per
+   day. Water flushes use the same schedule pattern. (Pump delivery is
+   not offered in the UI — AHS: almost never used for BTF.)
 3. **Targets (optional)** — RD enters kcal/day, protein g/day, fluid
-   mL/day they already know. No assessment page, no energy equations in
-   the app (those are documented in `BUSINESS_CASE.md` Appendix B as
-   reference).
-4. **Results (live)** — densities, daily totals, adequacy vs targets,
-   commercial formula comparator, live recipe adjustment.
+   mL/day they already know. Always blank until entered — no
+   population defaults. No assessment page, no energy equations in the
+   app (those are documented in `BUSINESS_CASE.md` Appendix B as
+   reference); an optional patient weight adds a DISPLAY-only per-kg
+   row, never a target.
+4. **Results (live)** — densities (+ optional per-kg row), daily
+   totals, adequacy vs targets (with a fluids ledger driving the fluid
+   row), commercial formula comparator, combined BTF+formula regimen,
+   flow-test documentation, copy-pasteable chart note, live recipe
+   adjustment.
 
 **Design commitments:**
 
@@ -44,7 +52,14 @@ to it. The full business case, market analysis, and methodology are in
    (add/remove/swap ingredients, change amounts, swap water for juice
    or broth) updates everything instantly. The RD iterates: tweak →
    check numbers → drip test → tweak again. The tool handles the
-   numbers side; the RD handles the physical flow side.
+   numbers side; the RD handles the physical flow side. **Resolved
+   2026-07-17 (round-2 clinical feedback):** this — not the Dilution
+   What-If slider — is the core interaction; the Dilution What-If is a
+   secondary recipe-development aid ("if we must thin, what does it
+   cost in density") that previews a hypothetical without touching the
+   real recipe. See the §9 entry below and `BUSINESS_CASE.md` §7 item 6
+   / Appendix A8 for the full resolution of the long-pinned
+   "dilution-slider vs. live recipe adjustment" question.
 
 **The sweet spot — thin enough to flow, dense enough to nourish:**
 Every BTF recipe lives in a tension between two physical realities:
@@ -153,8 +168,7 @@ blenderized-tubefeed-calculator/
 │   ├── processed/                   # generated parquet (gitignored)
 │   └── packs/
 │       └── canada/                  # the only pack implemented today
-│           ├── nutrients.csv        # the nutrient registry (what to track, and why)
-│           ├── targets.csv          # SME-authored DRI / tube-feed targets
+│           ├── nutrients.csv        # the nutrient registry (what to track, why, and target_type)
 │           ├── formulas.csv         # commercial formula profiles (CSV)
 │           └── thinning_liquids.csv # thinning liquid presets (CSV)
 ├── src/
@@ -344,39 +358,76 @@ author can compare their fixes or unblock themselves if stuck for too long.
   I expected." Specific feedback pending after hands-on testing. Week 2
   iteration will address.
 - **Reference data now in CSVs** — every Canadian reference file
-  (nutrient registry, targets, commercial formulas, thinning liquids)
-  lives under `data/packs/canada/` (one "data pack" per country — see
+  (nutrient registry, commercial formulas, thinning liquids) lives
+  under `data/packs/canada/` (one "data pack" per country — see
   `BUSINESS_CASE.md` Appendix C). Formulas and thinning liquids load
   at startup with hardcoded fallbacks; the nutrient registry
   (`nutrients.csv`) deliberately does NOT fall back — see §11 and
   `src/nutrients.py`'s module docstring for why. RDs can edit any of
-  these CSVs without touching Python.
-- **Design gap: dilution-slider vs. live recipe adjustment** — the code
-  currently implements the dilution-slider what-if (add X mL of a
-  thinning liquid, see new densities), but `BUSINESS_CASE.md` §7 /
-  Appendix A8 describes live recipe adjustment as the goal (no separate
-  what-if mode — every edit to the recipe itself updates everything
-  instantly). UI iteration pending after user testing. (Deferred by
-  design — this is a UI rework, not a bug; roadmap item for Week 3/4.)
-  **Still open after the 2026-07-17 Build/Results tabs restructuring**
-  (see below) — that work reorganized *where* things live on the page
-  (a layout/navigation change) and left the dilution-slider what-if's
-  *behavior* untouched. It is a distinct feature gap from the layout
-  question and is not resolved by the tab restructuring.
+  these CSVs without touching Python. (`targets.csv` — see below —
+  was deleted in the round-2 clinical feedback pass; no longer part of
+  this list.)
+- ~~Design gap: dilution-slider vs. live recipe adjustment~~ —
+  **RESOLVED 2026-07-17 (round-2 clinical feedback).** The code
+  previously implemented the dilution-slider what-if (add X mL of a
+  thinning liquid, see new densities) as if it might be the core
+  interaction, while `BUSINESS_CASE.md` §7 / Appendix A8 described live
+  recipe adjustment as the goal — an unresolved tension between the
+  shipped feature and the stated design commitment. The author's
+  explicit ruling settles it: **live recipe adjustment (editing the
+  actual recipe — the editor itself is the what-if) is the core
+  interaction; the Dilution What-If is a demoted, secondary
+  recipe-development aid** ("if we must thin, what does it cost in
+  density" — a preview, not a substitute for making the real edit). The
+  app's caption was changed to match ("If the blend needs thinning, see
+  the density impact before you commit" — the self-congratulatory "The
+  core feature" framing is gone); `BUSINESS_CASE.md` §7 item 6 and
+  Appendix A8 were rewritten to state this explicitly. No longer pinned
+  — this was a genuine design-commitment gap, not a layout question (the
+  2026-07-17 Build/Results tabs restructuring earlier the same day only
+  moved *where* things live on the page and explicitly did NOT resolve
+  this; this later same-day round-2 pass is what actually resolves it).
 - ~~Fluid target default (2700 mL) needs RD review~~ — **RD-reviewed and
-  accepted 2026-07-16.** 2700 mL is the DRI AI for adult women and stands
-  as the *guideline default*; adult men's AI is higher (~3.7 L/day). The
-  author's ruling: fluid clearly has to be individualised per patient —
-  that's what the custom-targets sidebar input is for — but a guideline
-  default is the right thing to ship. No longer pinned.
+  accepted 2026-07-16, then superseded 2026-07-17.** 2700 mL was
+  initially accepted as a *guideline default* (DRI AI for adult women).
+  The round-2 clinical feedback pass overturned this: **no default
+  targets exist anywhere in the app now** (Part 0 #2 — a default is not
+  defensible for tube-fed patients in general, not just for fluid;
+  protein practice runs 1.0-1.5 g/kg, not the population RDA). Targets
+  always start blank; `data/packs/canada/targets.csv` is deleted. See
+  the round-2 entry below.
 - **Magnesium and phosphorus are deliberately target-less** — both are
   tracked (`tier=clinical` in `data/packs/canada/nutrients.csv`, since
   the author's EN spreadsheet tracks them and CNF covers them at
-  97-98%) but have no row in `targets.csv` and so always render "No
+  97-98%) and, as of the round-2 clinical feedback pass, carry
+  `offer_target=no` in that same registry (no more separate
+  `targets.csv` to have a missing row in) — so they always render "No
   target" in the BTF micro screen. This is intentional, not a gap:
   refeeding-risk monitoring happens in hospital on known formulas, not
-  via a BTF default target. Do not add Mg/P targets without the
-  author's explicit sign-off — see `src/targets.py`'s module docstring.
+  via a BTF default target. Do not flip `offer_target` to yes for these
+  two without the author's explicit sign-off — see `src/targets.py`'s
+  module docstring.
+- **Ask practicing RDs which nutrients they'd track in their own area of
+  practice.** The current displayed-nutrient set (main table: energy,
+  carbohydrate, protein, fat, fluid, fibre, sodium, potassium, calcium,
+  iron; micro screen: magnesium, phosphorus, zinc, vitamin D, B12) is
+  the author's own clinical judgment as one RD. Any future addition or
+  removal goes through the registry's `tier`/`show_in_report`/
+  `offer_target` columns (`data/packs/canada/nutrients.csv`), never a
+  hardcoded Python list — but which nutrients belong there at all is a
+  clinical-practice question this project hasn't surveyed beyond its
+  own author.
+- **Fluids-ledger convention is flagged overridable after further
+  clinical use.** The "Fluid provided" figure uses full-volume I&O
+  counting for anything flagged "counts as fluid" (liquids count at
+  full volume, not a moisture-adjusted fraction), and the per-ingredient
+  toggle IS the clinical policy for judgment calls like soup (no
+  validated rule of thumb exists for how much of a soup's volume
+  "counts"). The author signed off on this convention for the round-2
+  pass but explicitly flagged it as revisitable once used on real
+  patients — see the round-2 entry below and Part 0 #8 of the handoff
+  plan (`.claude/plans/btf-clinical-feedback-round1.md`, if still
+  present) for the full reasoning.
 - **US/UK/AU data packs are roadmap, not started** — the registry
   design (`src/nutrients.py`, `data/packs/<pack>/`) is built so that
   adding a country is writing new CSVs under `data/packs/<pack>/` with
@@ -548,14 +599,121 @@ a layout/navigation change, not a feature or calculation change:**
   script engine end to end, since no browser-automation tool was
   available to click through a live page in this environment.
 
-**Backend verification (2026-07-16): PASSED.** The full backend
-integration test lives at `scripts/verify_backend.py` and now runs 11
+**Round-2 clinical feedback (2026-07-17, separate session, same day as
+the tabs restructuring above) — the author's own hands-on test-drive,
+followed by a Q&A that settled every open design question. Unlike the
+tabs restructuring, this round deliberately touches `src/`, reference
+data, and the app together. Full handoff:
+`.claude/plans/btf-clinical-feedback-round1.md` (if still present in
+the repo/plans directory).**
+
+- **No default targets anywhere (Part 0 #2).** `data/packs/canada/
+  targets.csv` is DELETED outright — see the superseded pinned-issue
+  entries above. `src/targets.py` loses `load_targets()`/
+  `default_targets()`/`load_target_types()`; `empty_targets()` derives
+  its keys from the registry's `offer_target=yes` rows + `fluid_mL`
+  instead. `target_type` (RDA/AI/UL/estimate — the UL wording driver)
+  moved into `nutrients.csv` itself (a property of the nutrient, not of
+  a default value that no longer exists).
+- **Registry gains `show_in_report`/`offer_target`/`target_type`
+  columns** (`data/packs/canada/nutrients.csv`, `src/nutrients.py`'s
+  `NutrientDef`). The main adequacy table now shows 9 nutrients (energy,
+  protein, fat, carbohydrate, fibre, sodium, potassium, calcium, iron)
+  instead of all 13 label-tier ones — saturated fat, trans fat,
+  cholesterol, and sugars are still tracked/exported, just not
+  displayed daily ("show what's needed," the author's call). The
+  registry CSV's row order was also reordered to CFIA label order
+  (Energy, Fat/Sat/Trans, Carbohydrate/Fibre/Sugars, Protein,
+  Cholesterol, Sodium, Potassium, Calcium, Iron) so both the
+  custom-food form and the targets-entry loop can iterate registry
+  order directly with no hardcoded nutrient sequence in Python.
+- **Zero-coverage hiding is first-class.** Any adequacy-table or
+  micro-screen row with 0/N ingredients supplying a value is hidden
+  entirely (never a confident "0"), with a footnote listing what was
+  hidden. `generate_adequacy_report()`/`generate_clinical_screen()` now
+  return `(DataFrame, hidden_names)`.
+- **Fluids ledger replaces the Added-water field (Part 0 #8).** The
+  Added-water input is deleted — water is an ordinary ingredient (CNF
+  carries it at ~99.9% moisture). Every ingredient gets a
+  `counts_as_fluid` checkbox (auto-on for CNF Beverages and a
+  description starting with "Water"; always overridable — the toggle
+  IS the policy for judgment calls like soup, flagged revisitable
+  above). Two fluid numbers now exist: **Fluid provided** (full I&O-
+  convention volume of counts-as-fluid ingredients, scaled to daily
+  intake, plus water flushes — drives the adequacy row and chart note)
+  and **Free water (CNF-estimated)** (the old moisture-based figure,
+  demoted to secondary/informational with its own completeness flag).
+  The example recipe now includes "Water, municipal" (CNF Food_Code
+  2933, 200 g, counts_as_fluid=True) in place of the old
+  `added_water_mL=200`.
+- **Delivery rework (Part 2.5).** Syringe bolus is now an editable
+  (time, volume) schedule (`st.data_editor`, dynamic rows) instead of a
+  single bolus-volume × times/day pair; "Direct mL/day" is renamed
+  "Total feed volume per day"; Pump is removed from the UI radio (the
+  `PUMP` enum stays in `src/models.py`, unused — not removed, to avoid
+  backend churn for nothing). New water-flush schedule (same pattern),
+  separate from the recipe, feeding the fluids ledger and chart note.
+- **Patient weight (display-only), per Part 0 #3.** An optional weight
+  (kg) input adds kcal/kg/day, protein g/kg/day, and fluid mL/kg/day
+  rows to the density panel. No target, no equation, no IBW — assessment
+  stays out of the app, same as always.
+- **Custom-food label redesigned as a Canadian Nutrition Facts
+  lookalike (Part 0 #7).** A g-or-mL basis selector whose unit flows
+  through unchanged to a clearly-separate "Amount used in recipe" field
+  outside the label box — no cross-conversion, ever (that would require
+  guessing a density). Fields render single-column (a real label IS a
+  single column; a two-column zigzag also turned out to scramble the
+  intended CFIA order, since Streamlit lays out `st.columns()` content
+  column-major, not in loop order). A collapsed "Optional nutrients on
+  this label?" expander offers the five clinical-tier fields.
+- **Comparator redesigned (Part 0 #11):** `st.multiselect` (max 4
+  formulas), transposed — metrics as columns, BTF as the first row.
+  `formulas.csv` gained `free_water_per_mL` (source: the author's own EN
+  spreadsheet, same sheet as `kcal_per_mL`/`protein_per_mL`) feeding
+  this table and the new combined-regimen summary.
+- **New features:** flow-test documentation (date/result/notes,
+  export-only); combined BTF + commercial-formula regimen summary
+  (`src/report.py::generate_regimen_summary()` — BTF/Formula/Flushes/
+  TOTAL rows, vs-targets caption); copy-pasteable chart-note text in
+  `st.code` (schedule, macros, fluid math, flow-test result — bracketed
+  pieces omitted when their inputs are absent).
+- **Tab labels enlarged via injected CSS** (Part 0 #10). Verified
+  against Streamlit 1.58's actual compiled frontend bundle (grepped the
+  installed `streamlit/static/static/js/*.js`) rather than trusting a
+  guess: tabs render as `button[data-testid="stTab"]`, not
+  `[data-baseweb="tab"]`.
+- **Dilution What-If resolved as a secondary aid, not the core
+  feature** — see the superseded pinned-issue entry above and
+  `BUSINESS_CASE.md` §7 item 6 / Appendix A8.
+- **One judgment call made without an explicit spec:** the custom-food
+  form was folding EVERY field into `custom_foods` regardless of
+  whether the RD touched it (untouched 0.0 defaults included), which
+  gave every custom food full "coverage" on every nutrient by
+  construction and silently defeated zero-coverage hiding for
+  clinical-tier fields through the real UI. Fixed by only folding in
+  fields where the RD entered a value greater than 0 — an explicit "0"
+  typed for a genuinely-zero label value (e.g., "0 g Trans Fat") now
+  reads as "not entered" rather than a supplied zero. This
+  under-reports coverage in that one specific case but never fabricates
+  it, consistent with the "never a confident 0" principle elsewhere in
+  this round. Flagged for the author's awareness, not yet explicitly
+  signed off.
+- Verified with the three regression scripts (`verify_backend.py`
+  extended with new stages for the registry columns and zero-coverage
+  hiding; `trace_calculation.py` and `check_app_imports.py` pass
+  unchanged in shape) plus several scratch Streamlit `AppTest` scripts
+  (not committed, matching this project's established convention of ad
+  hoc AppTest verification rather than a committed `tests/` suite) and
+  a live `.venv/bin/streamlit run` smoke test.
+
+**Backend verification (2026-07-16, extended 2026-07-17): PASSED.** The full backend
+integration test lives at `scripts/verify_backend.py` and now runs 12
 stages against real CNF data (data load with Parquet/CSV source timing,
 household measures, profile calculation, delivery, daily totals,
-adequacy report including the Free water row, formula comparison,
+adequacy report including the fluid rows, formula comparison,
 density summary, custom-food folding, nutrient-registry + tier-based
-reporting, and per-recipe coverage provenance). To re-verify at any
-time, run:
+reporting, per-recipe coverage provenance, and zero-coverage hiding). To
+re-verify at any time, run:
 
 ```
 .venv/bin/python scripts/verify_backend.py
@@ -597,7 +755,33 @@ Results `st.tabs` + persistent "Patient, Delivery & Targets" banner +
 CNF food-group filter, per an approved handoff plan. See the "UI
 restructure" entry above for full detail. No backend/`src/` change; the
 pinned "dilution-slider vs. live recipe adjustment" item is explicitly
-NOT resolved by this work — it's a layout change, that's a feature gap.)
+NOT resolved by this work — it's a layout change, that's a feature gap.
+
+2026-07-17 update (round-2 clinical feedback, separate later session
+same day): the author's own hands-on test-drive plus a settled Q&A,
+DELIBERATELY touching `src/`, reference data, and the app together (six
+commits: registry+report+targets backend, formulas free-water column,
+banner, Build tab, Results tab, docs). Deletes `data/packs/canada/
+targets.csv` and all default-target machinery; adds `show_in_report`/
+`offer_target`/`target_type` to the nutrient registry and zero-coverage
+hiding to both report tables; replaces Added-water with a per-ingredient
+fluids ledger (Fluid provided + demoted Free water); reworks delivery
+into bolus/flush schedules with Pump removed from the UI; adds a
+display-only patient-weight per-kg row; redesigns the custom-food form
+as a Nutrition-Facts lookalike with a g/mL basis unit; redesigns the
+comparator as a multi-formula transposed table; adds flow-test
+documentation, a combined BTF+formula regimen summary, and a
+copy-pasteable chart note; enlarges tab labels via CSS verified against
+the real Streamlit 1.58 bundle. **This is the session that resolves the
+long-pinned "dilution-slider vs. live recipe adjustment" item** — see
+the superseded pinned-issue entry above and the "Round-2 clinical
+feedback" entry above for full detail. `BUSINESS_CASE.md` (§7, Appendix
+A6/A7/A8/A9, Appendix C's registry schema) and `README.md` (reference-
+data table, Added-water/DRI-default mentions) were updated in the same
+pass. Two new pins added: ask practicing RDs which nutrients they'd
+track in their own practice area; the fluids-ledger convention
+(full-volume I&O counting, per-ingredient toggle as policy) is
+author-approved but flagged revisitable after further clinical use.
 
 ---
 
@@ -640,15 +824,20 @@ All Canadian reference data lives under `data/packs/canada/` — one
 
 | Data | File |
 |---|---|
-| Nutrient registry (what to track, and why) | `data/packs/canada/nutrients.csv` |
-| DRI targets | `data/packs/canada/targets.csv` |
-| Commercial formulas | `data/packs/canada/formulas.csv` |
+| Nutrient registry (what to track, why, and its target_type) | `data/packs/canada/nutrients.csv` |
+| Commercial formulas (incl. free_water_per_mL) | `data/packs/canada/formulas.csv` |
 | Thinning liquid presets | `data/packs/canada/thinning_liquids.csv` |
+
+There is no `targets.csv` — deleted in the round-2 clinical feedback
+pass (see §9). There are no default targets anywhere in the app; the
+RD always enters patient-specific numbers at runtime, or leaves them
+blank.
 
 Edit the CSV, save, and rerun the app. Changes take effect on next load.
 Adding a nutrient to track is a `nutrients.csv` row (see its `tier` /
-`on_label` columns, documented in `src/nutrients.py`'s module
-docstring) — no Python change needed. Unlike the other three files,
+`on_label` / `show_in_report` / `offer_target` / `target_type` columns,
+documented in `src/nutrients.py`'s module
+docstring) — no Python change needed. Unlike the other two files,
 `nutrients.csv` has **no hardcoded fallback**: if it's missing, the app
 fails loudly with `FileNotFoundError` instead of silently guessing —
 this is deliberate, see §11 and `src/nutrients.py`.

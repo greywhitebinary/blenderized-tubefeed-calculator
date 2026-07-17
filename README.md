@@ -104,11 +104,21 @@ If any of these are missing, see `CONTEXT.md` §3 for the tech stack and
 
 ### Step 6: Use the app
 
-- Click **"Load example recipe"** in the sidebar (left side) to quickly
-  see all the results panels with a preloaded chicken/rice/oil recipe.
-- Try the **dilution slider** — slide it to 150 mL and switch between
-  Water, Broth, and Milk to see how densities change.
-- Try searching for a food (e.g., type "banana" in the search box).
+- Click **"Load example recipe"** in the top row to quickly see all the
+  results panels with a preloaded chicken/rice/water/oil recipe.
+- In the **"Patient, Delivery & Targets"** banner, expand "Delivery &
+  targets" to see the syringe bolus schedule, water-flush schedule, and
+  blank target fields (there are no default targets — enter your own or
+  leave them blank).
+- In the **🔨 Build** tab, try searching for a food (e.g., type "banana"
+  in the search box), or switch to "Enter information on the food
+  label" to see the Nutrition-Facts-lookalike custom-food form.
+- In the **📊 Results** tab, try the **Dilution What-If** slider — it's
+  a secondary aid ("what would thinning cost?"), not the main way to
+  change the recipe (that's editing ingredients directly in the Build
+  tab, which updates every number live). Also try the formula
+  comparator multiselect and the copy-pasteable chart note at the
+  bottom.
 
 ### Step 7: Stop the app
 
@@ -183,8 +193,8 @@ In the running app, load the example recipe, then on a calculator:
 Your EN spreadsheet computes Peptamen 1.5 at any volume, and the app's
 formula profiles came from that spreadsheet. So:
 
-1. In the app, set delivery to **Direct, 1200 mL/day** and the
-   comparator to **Peptamen 1.5**.
+1. In the app, set delivery to **Total feed volume per day, 1200 mL/day**
+   and add **Peptamen 1.5** to the comparator's multiselect.
 2. In your spreadsheet, run Peptamen 1.5 at 1200 mL.
 3. The kcal and protein must match (1800 kcal, 81.6 g protein).
 
@@ -251,16 +261,20 @@ recoverable.
 
 All reference data lives under `data/packs/canada/` — Canada is one
 "data pack" (see `BUSINESS_CASE.md` Appendix C); a future country would
-be a new `data/packs/<country>/` folder with the same four files, no
-Python changes. You can edit these CSVs in VS Code, Excel, or any text
-editor. Save the file and rerun the app — changes take effect on next
-load.
+be a new `data/packs/<country>/` folder with the same files, no Python
+changes. You can edit these CSVs in VS Code, Excel, or any text editor.
+Save the file and rerun the app — changes take effect on next load.
+
+**There is no `targets.csv`.** It was deleted — a default target (even
+a "just a guideline") isn't defensible for tube-fed patients (e.g.
+protein practice runs 1.0-1.5 g/kg, not the 0.8 g/kg population RDA a
+default would imply). The RD always enters patient-specific targets in
+the app itself, at runtime, or leaves them blank.
 
 | Data | File | Format |
 |---|---|---|
-| Nutrient registry (what to track, and why) | `data/packs/canada/nutrients.csv` | name, code, label, unit, tier, on_label, decimals, notes |
-| DRI targets | `data/packs/canada/targets.csv` | nutrient, target, unit, target_type, source |
-| Commercial formulas | `data/packs/canada/formulas.csv` | name, kcal_per_mL, protein_per_mL, source, verified |
+| Nutrient registry (what to track, why, and target_type) | `data/packs/canada/nutrients.csv` | name, code, label, unit, tier, on_label, show_in_report, offer_target, target_type, decimals, notes |
+| Commercial formulas | `data/packs/canada/formulas.csv` | name, kcal_per_mL, protein_per_mL, free_water_per_mL, source, verified |
 | Thinning liquid presets | `data/packs/canada/thinning_liquids.csv` | name, kcal_per_100mL, protein_g_per_100mL, water_g_per_100mL |
 
 ### To add a nutrient to track:
@@ -268,29 +282,36 @@ load.
 1. Open `data/packs/canada/nutrients.csv` in VS Code.
 2. Add a new line with the CNF `Nutrient_Code` (look it up in
    `cnf_fcen_all-files-data_2026/Nutrient Name.csv`), a `tier` of
-   `label` (on the Canadian Nutrition Facts panel — shown in the main
-   adequacy table), `clinical` (a BTF-specific reason to track it —
+   `label` (on the Canadian Nutrition Facts panel — eligible for the
+   main adequacy table), `clinical` (a BTF-specific reason to track it —
    shown in the collapsed BTF micro screen), or `engine` (internal use
-   only, never shown), and `on_label` of `yes`/`no` (can a nutrition
-   facts label supply it?).
-3. Save the file. Optionally add a matching row to `targets.csv` if the
-   nutrient should show an adequacy target.
+   only, never shown); `on_label` of `yes`/`no` (can a nutrition facts
+   label supply it?); `show_in_report` of `yes`/`no` (is it actually
+   displayed daily, or just tracked/exported? — this is how "show what's
+   needed, not everything" works: a nutrient can be `tier=label` but
+   `show_in_report=no`); `offer_target` of `yes`/`no` (does the
+   custom-targets form in the banner offer a field for it?); and an
+   optional `target_type` (`RDA`/`AI`/`UL`/`estimate` — only `UL`
+   changes the adequacy wording; leave blank otherwise).
+3. Save the file.
 4. Rerun the app. No Python change needed — this is the whole point of
    the registry design (see `CONTEXT.md` §11 for why `nutrients.csv`
-   has no hardcoded fallback, unlike the other three files below).
+   has no hardcoded fallback, unlike the other two files below).
 
 ### To add a new commercial formula:
 
 1. Open `data/packs/canada/formulas.csv` in VS Code.
 2. Add a new line at the bottom, e.g.:
    ```
-   Ensure Plus,1.5,0.063,2026_ensure-plus-hcp.pdf,2026-07-16
+   Ensure Plus,1.5,0.063,0.80,2026_ensure-plus-hcp.pdf,2026-07-16
    ```
-   The last two columns (`source`, `verified`) are your audit trail —
-   which PDF the numbers came from and when you checked them. The app
-   ignores them; they're for the next human. Fine to leave empty.
+   `free_water_per_mL` is optional — leave it blank if you don't have
+   the figure (the app shows "—" rather than guessing 0). The last two
+   columns (`source`, `verified`) are your audit trail — which PDF the
+   numbers came from and when you checked them. The app ignores them;
+   they're for the next human. Fine to leave empty.
 3. Save the file (`Cmd + S`).
-4. Rerun the app. The new formula appears in the comparator dropdown.
+4. Rerun the app. The new formula appears in the comparator's multiselect.
 
 ### To add a new thinning liquid:
 
@@ -312,9 +333,8 @@ blenderized-tubefeed-calculator/
 ├── src/                          ← backend logic (calculator, data loader, nutrients registry, etc.)
 ├── data/
 │   └── packs/canada/             ← editable Canadian reference data (CSVs) — one "data pack"
-│       ├── nutrients.csv         ← nutrient registry (what to track, and why)
-│       ├── targets.csv           ← DRI targets
-│       ├── formulas.csv          ← commercial formula profiles
+│       ├── nutrients.csv         ← nutrient registry (what to track, why, and target_type; no targets.csv -- no default targets anywhere)
+│       ├── formulas.csv          ← commercial formula profiles (incl. free_water_per_mL)
 │       └── thinning_liquids.csv  ← thinning liquid presets
 ├── cnf_fcen_all-files-data_2026/ ← raw CNF data (DO NOT MODIFY)
 ├── scripts/                      ← verification scripts
