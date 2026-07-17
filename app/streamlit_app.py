@@ -544,13 +544,18 @@ def color_status(val: str) -> str:
     and "Meeting target" are both fine (green) — a UL is a ceiling, not
     an aim, so "Below UL" reads as "fine" the same way "Meeting target"
     does for an RDA/AI nutrient. See src/report.py::_adequacy_status.
+
+    Text colour is set explicitly alongside each pale background: without
+    it, a dark theme renders near-white text on pale pink and the status
+    becomes unreadable. .streamlit/config.toml pins the light theme, and
+    this keeps the table legible even if that's overridden.
     """
     if val in ("Below target", "Above UL"):
-        return "background-color: #ffcccc"
+        return "background-color: #ffcccc; color: #1a1a1a"
     elif val == "Above target":
-        return "background-color: #ffe0b2"
+        return "background-color: #ffe0b2; color: #1a1a1a"
     elif val in ("Meeting target", "Below UL"):
-        return "background-color: #c8e6c9"
+        return "background-color: #c8e6c9; color: #1a1a1a"
     return ""
 
 
