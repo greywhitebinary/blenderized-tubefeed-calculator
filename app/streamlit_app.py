@@ -678,124 +678,191 @@ with build_tab:
         _registry_map = registry_by_name(DEFAULT_PACK)
         cv: dict[str, float] = {}
 
-        with st.container(border=True):
-            st.markdown("#### Nutrition Facts")
-            cname = st.text_input("Food name", "")
-            cserving = st.number_input(
-                f"Serving size ({basis})", min_value=1.0, value=100.0, step=1.0
-            )
-            st.divider()
-
-            # CFIA ordering (Calories, then Fat/Sat/Trans, Carbohydrate/
-            # Fibre/Sugars, Protein, Cholesterol, Sodium, Potassium,
-            # Calcium, Iron) comes for free from data/packs/canada/
-            # nutrients.csv's own row order — the registry CSV was
-            # reordered to match the label layout the author asked for, so
-            # this loop needs no hardcoded nutrient name list in Python;
-            # a future country pack orders its own nutrients.csv to match
-            # ITS label convention. Energy is rendered first and on its
-            # own row (the "Calories" line reads differently from the
-            # rest of the panel on a real label). Single column, not a
-            # two-column zigzag — a real Nutrition Facts panel IS a single
-            # narrow column top-to-bottom, and (Streamlit detail) widgets
-            # assigned to st.columns() render column-major, not in loop
-            # order, which would scramble this exact sequence apart
-            # (Saturated Fat landing far from Fat) — the opposite of
-            # "resemble a label as closely as possible."
-            label_defs = [d for d in defs_for_tier("label", pack=DEFAULT_PACK) if d.on_label]
-            energy_def = next(d for d in label_defs if d.name == "energy_kcal")
-            cv[energy_def.name] = st.number_input(
-                f"{energy_def.label} ({energy_def.unit})", min_value=0.0, value=0.0, step=1.0
-            )
-            st.divider()
-
-            remaining_defs = [d for d in label_defs if d.name != "energy_kcal"]
-            for d in remaining_defs:
-                step = 1.0 if d.decimals == 0 else round(10 ** (-d.decimals), d.decimals)
-                cv[d.name] = st.number_input(
-                    f"{d.label} ({d.unit})", min_value=0.0, value=0.0, step=step
-                )
-
-            with st.expander("Optional nutrients on this label?"):
-                st.caption(
-                    "Vitamin D, B12, zinc, magnesium, and phosphorus are "
-                    "CFIA-optional. Enter them if this label carries them "
-                    "so the values reach the BTF micro screen."
-                )
-                clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
-                for d in clinical_defs:
-                    step = 1.0 if d.decimals == 0 else round(10 ** (-d.decimals), d.decimals)
-                    cv[d.name] = st.number_input(
-                        f"{d.label} ({d.unit})", min_value=0.0, value=0.0, step=step
-                    )
-
-        st.caption(
-            "Water/moisture is on no nutrition facts label, so recipes using "
-            "custom foods will underestimate the free-water fraction — the "
-            "label simply has nowhere to report it."
+        # NFt lookalike styling (visual only — no field/registry change).
+        # Thick/thin rules and the bold/indent hierarchy are plain CSS
+        # scoped to this form: `.nft-*` classes for text weight/indent and
+        # the divider rules, and `.st-key-nft_box` (Streamlit's documented
+        # per-container CSS hook — set via st.container(..., key=...)) to
+        # right-align just this box's number inputs without touching any
+        # other number_input in the app (e.g. the CNF-search half above).
+        st.markdown(
+            """
+            <style>
+            .nft-title { font-size: 1.9rem; font-weight: 800;
+                         letter-spacing: -0.02em; margin-bottom: 0.1rem; }
+            .nft-main { font-weight: 700; padding-top: 0.5rem; }
+            .nft-sub { font-weight: 400; padding-top: 0.5rem;
+                       padding-left: 1.4em; }
+            .nft-cal { font-weight: 800; font-size: 1.3rem;
+                       padding-top: 0.4rem; }
+            hr.nft-thick { border: none; border-top: 6px solid #000;
+                            margin: 0.4rem 0; }
+            hr.nft-thin { border: none; border-top: 1px solid #000;
+                           margin: 0.3rem 0; }
+            .st-key-nft_box input[type="number"] { text-align: right; }
+            </style>
+            """,
+            unsafe_allow_html=True,
         )
 
-        # Clearly separate from the label box above (Part 0 #7) — same
-        # basis unit as the label's serving size, never converted.
-        st.markdown("**Amount used in recipe**")
-        cgrams = st.number_input(
-            f"Amount used ({basis})",
-            min_value=0.0,
-            value=100.0,
-            step=1.0,
-            help=f"Same unit as the label basis above ({basis}) — an "
-                 f"mL-basis food's usage can only be entered in mL, by "
-                 f"design (no cross-conversion between g and mL).",
-        )
+        def _nft_step(d) -> float:
+            return 1.0 if d.decimals == 0 else round(10 ** (-d.decimals), d.decimals)
 
-        if st.button("➕ Add custom food"):
-            if not cname:
-                st.warning("Please enter a food name.")
-            elif cserving <= 0:
-                st.warning("Serving size must be positive.")
-            else:
-                code = st.session_state.next_custom_code
-                st.session_state.next_custom_code -= 1
-                # Convert label values to per-100-[basis] (same math either
-                # way — label_to_per_100g() just divides by serving size
-                # and multiplies by 100; it doesn't care whether that 100
-                # means grams or mL, since the recipe-usage amount below is
-                # scaled by the same basis).
-                #
-                # Only fold in fields the RD actually changed from the
-                # form's 0.0 default. This matters for zero-coverage
-                # hiding (Part 0 #6): every field on this form defaults to
-                # 0.0 whether or not the RD touched it, and there's no way
-                # to tell "label prints 0" from "I don't have this field's
-                # value" from a bare number_input. Treating an untouched
-                # 0.0 as "supplied" would give every custom food full
-                # coverage on every nutrient by construction, which
-                # defeats the whole point of coverage tracking -- a
-                # custom-food-only recipe would never show a hidden row,
-                # even for nutrients (vitamin D, zinc, ...) no label could
-                # ever have supplied. Treating it as "not entered" is the
-                # safer read for a nutrient count that otherwise silently
-                # under-reports (never over-reports) intake.
-                st.session_state.custom_foods[code] = {
-                    name: label_to_per_100g(val, cserving)
-                    for name, val in cv.items()
-                    if val > 0
+        def _nft_field(text: str, css_class: str, key: str, **kwargs) -> float:
+            """One label-style row: nutrient name on the left (bold for
+            main nutrients, indented regular for sub-nutrients), a
+            compact number input on the right — e.g. per-row
+            st.columns([3, 2]) as suggested in the handoff plan. Each
+            call resolves its own pair of columns immediately, so (unlike
+            a single shared st.columns() reused across a loop, which
+            renders column-major) rows still print top-to-bottom in CFIA
+            order — Saturated/Trans stay right under Fat.
+            """
+            name_col, val_col = st.columns([3, 2])
+            with name_col:
+                st.markdown(f'<div class="{css_class}">{text}</div>', unsafe_allow_html=True)
+            with val_col:
+                return st.number_input(
+                    text, label_visibility="collapsed", key=key, **kwargs
+                )
+
+        # Narrow, boxed column — a real Nutrition Facts table is a narrow
+        # label, not a page-wide panel. Judge the [2, 3] ratio by eye at
+        # default window width; widen/narrow the first number to taste.
+        label_col, _spacer = st.columns([2, 3])
+        with label_col:
+            with st.container(border=True, key="nft_box"):
+                st.markdown('<div class="nft-title">Nutrition Facts</div>', unsafe_allow_html=True)
+                cname = st.text_input("Food name", "")
+                cserving = _nft_field(
+                    f"Serving size ({basis})", "nft-main", "cv_serving",
+                    min_value=1.0, value=100.0, step=1.0,
+                )
+                st.markdown('<hr class="nft-thick">', unsafe_allow_html=True)
+
+                # CFIA ordering (Calories, then Fat/Sat/Trans, Carbohydrate/
+                # Fibre/Sugars, Protein, Cholesterol, Sodium, Potassium,
+                # Calcium, Iron) comes for free from data/packs/canada/
+                # nutrients.csv's own row order — the registry CSV was
+                # reordered to match the label layout the author asked for,
+                # so this loop needs no hardcoded nutrient name list in
+                # Python; a future country pack orders its own
+                # nutrients.csv to match ITS label convention. Energy is
+                # rendered first and on its own row (the "Calories" line
+                # reads differently from the rest of the panel on a real
+                # label).
+                label_defs = [d for d in defs_for_tier("label", pack=DEFAULT_PACK) if d.on_label]
+                energy_def = next(d for d in label_defs if d.name == "energy_kcal")
+                cv[energy_def.name] = _nft_field(
+                    f"{energy_def.label} ({energy_def.unit})", "nft-cal", "cv_energy",
+                    min_value=0.0, value=0.0, step=1.0,
+                )
+                st.markdown('<hr class="nft-thin">', unsafe_allow_html=True)
+
+                # Bold main nutrients at the left margin (Fat, Carbohydrate,
+                # Protein, Cholesterol, Sodium, then the Potassium/Calcium/
+                # Iron minerals block); Saturated/Trans/Fibre/Sugars render
+                # indented and regular-weight as their sub-nutrients. A
+                # thick rule separates the Sodium row from the minerals
+                # block, per the Directory's Standard Format.
+                NFT_MAIN_NAMES = {
+                    "fat_g", "carbohydrate_g", "protein_g", "cholesterol_mg",
+                    "sodium_mg", "potassium_mg", "calcium_mg", "iron_mg",
                 }
-                st.session_state.next_ingr_id += 1
-                st.session_state.ingredients.append({
-                    "id": st.session_state.next_ingr_id,
-                    "food_code": code,
-                    "food_description": f"{cname} (custom)",
-                    "grams": float(cgrams),
-                    "unit": basis,
-                    # mL-basis custom foods default to counts-as-fluid=True
-                    # (Part 2.4) — a liquid entered from a label (e.g. a
-                    # protein shake) has no CNF moisture data, so the I&O
-                    # full-volume convention is the only fluid signal
-                    # available for it. Still user-toggleable.
-                    "counts_as_fluid": basis == "mL",
-                })
-                st.rerun()
+                remaining_defs = [d for d in label_defs if d.name != "energy_kcal"]
+                for d in remaining_defs:
+                    css_class = "nft-main" if d.name in NFT_MAIN_NAMES else "nft-sub"
+                    cv[d.name] = _nft_field(
+                        f"{d.label} ({d.unit})", css_class, f"cv_{d.name}",
+                        min_value=0.0, value=0.0, step=_nft_step(d),
+                    )
+                    if d.name == "sodium_mg":
+                        st.markdown('<hr class="nft-thick">', unsafe_allow_html=True)
+
+                # Closing rule for the box, then the CFIA-optional nutrients
+                # (Directory: "Presentation of Additional Information"
+                # appends optional nutrients below the minerals block).
+                st.markdown('<hr class="nft-thick">', unsafe_allow_html=True)
+                with st.expander("Optional nutrients on this label?"):
+                    st.caption(
+                        "Vitamin D, B12, zinc, magnesium, and phosphorus are "
+                        "CFIA-optional. Enter them if this label carries them "
+                        "so the values reach the BTF micro screen."
+                    )
+                    clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
+                    for d in clinical_defs:
+                        cv[d.name] = _nft_field(
+                            f"{d.label} ({d.unit})", "nft-sub", f"cv_clin_{d.name}",
+                            min_value=0.0, value=0.0, step=_nft_step(d),
+                        )
+
+            st.caption(
+                "Water/moisture is on no nutrition facts label, so recipes "
+                "using custom foods will underestimate the free-water "
+                "fraction — the label simply has nowhere to report it."
+            )
+
+            # Clearly separate from the label box above (Part 0 #7) — same
+            # basis unit as the label's serving size, never converted.
+            st.markdown("**Amount used in recipe**")
+            cgrams = st.number_input(
+                f"Amount used ({basis})",
+                min_value=0.0,
+                value=100.0,
+                step=1.0,
+                help=f"Same unit as the label basis above ({basis}) — an "
+                     f"mL-basis food's usage can only be entered in mL, by "
+                     f"design (no cross-conversion between g and mL).",
+            )
+
+            if st.button("➕ Add custom food"):
+                if not cname:
+                    st.warning("Please enter a food name.")
+                elif cserving <= 0:
+                    st.warning("Serving size must be positive.")
+                else:
+                    code = st.session_state.next_custom_code
+                    st.session_state.next_custom_code -= 1
+                    # Convert label values to per-100-[basis] (same math either
+                    # way — label_to_per_100g() just divides by serving size
+                    # and multiplies by 100; it doesn't care whether that 100
+                    # means grams or mL, since the recipe-usage amount below is
+                    # scaled by the same basis).
+                    #
+                    # Only fold in fields the RD actually changed from the
+                    # form's 0.0 default. This matters for zero-coverage
+                    # hiding (Part 0 #6): every field on this form defaults to
+                    # 0.0 whether or not the RD touched it, and there's no way
+                    # to tell "label prints 0" from "I don't have this field's
+                    # value" from a bare number_input. Treating an untouched
+                    # 0.0 as "supplied" would give every custom food full
+                    # coverage on every nutrient by construction, which
+                    # defeats the whole point of coverage tracking -- a
+                    # custom-food-only recipe would never show a hidden row,
+                    # even for nutrients (vitamin D, zinc, ...) no label could
+                    # ever have supplied. Treating it as "not entered" is the
+                    # safer read for a nutrient count that otherwise silently
+                    # under-reports (never over-reports) intake.
+                    st.session_state.custom_foods[code] = {
+                        name: label_to_per_100g(val, cserving)
+                        for name, val in cv.items()
+                        if val > 0
+                    }
+                    st.session_state.next_ingr_id += 1
+                    st.session_state.ingredients.append({
+                        "id": st.session_state.next_ingr_id,
+                        "food_code": code,
+                        "food_description": f"{cname} (custom)",
+                        "grams": float(cgrams),
+                        "unit": basis,
+                        # mL-basis custom foods default to counts-as-fluid=True
+                        # (Part 2.4) — a liquid entered from a label (e.g. a
+                        # protein shake) has no CNF moisture data, so the I&O
+                        # full-volume convention is the only fluid signal
+                        # available for it. Still user-toggleable.
+                        "counts_as_fluid": basis == "mL",
+                    })
+                    st.rerun()
 
     # --- Blend details ---
     st.subheader("Blend details")
