@@ -430,3 +430,167 @@ def generate_density_summary(profile: NutrientProfile) -> pd.DataFrame:
             },
         ]
     )
+
+
+def generate_comparator_table(
+    profile: NutrientProfile,
+    daily_volume_mL: float,
+    formula_names: list[str],
+) -> pd.DataFrame:
+    """Generate the multi-formula comparator table (round-2 clinical
+    feedback, Part 0 #11): TRANSPOSED from the old generate_formula_
+    comparison() shape — metrics as COLUMNS, one row per recipe/formula,
+    BTF always first. Supports comparing against up to several formulas
+    at once (the app enforces "up to 4" via st.multiselect's
+    max_selections; this function itself doesn't cap the list).
+
+    Columns: Name, Energy (kcal), Protein (g), Free water (mL), kcal/mL,
+    Protein g/mL. Free water uses each formula's free_water_per_mL
+    (data/packs/canada/formulas.csv, Part 2.6) — "—" when a formula's
+    CSV row omits it (never a fabricated 0).
+
+    Args:
+        profile:         The BTF recipe's NutrientProfile.
+        daily_volume_mL: Daily volume to compare all rows at (the BTF and
+                          every formula are shown at the SAME volume, so
+                          the comparison isolates density, not dose).
+        formula_names:   Which COMMERCIAL_FORMULAS keys to include as
+                          additional rows, in the order given.
+    """
+    rows = [
+        {
+            "Name": "BTF (this recipe)",
+            "Energy (kcal)": round(profile.kcal_per_mL * daily_volume_mL, 0),
+            "Protein (g)": round(profile.protein_per_mL * daily_volume_mL, 1),
+            "Free water (mL)": round(profile.free_water_fraction * daily_volume_mL, 0),
+            "kcal/mL": round(profile.kcal_per_mL, 3),
+            "Protein g/mL": round(profile.protein_per_mL, 3),
+        }
+    ]
+    for name in formula_names:
+        formula = COMMERCIAL_FORMULAS[name]
+        fw_per_mL = formula.get("free_water_per_mL")
+        rows.append(
+            {
+                "Name": name,
+                "Energy (kcal)": round(formula["kcal_per_mL"] * daily_volume_mL, 0),
+                "Protein (g)": round(formula["protein_per_mL"] * daily_volume_mL, 1),
+                "Free water (mL)": (
+                    round(fw_per_mL * daily_volume_mL, 0) if fw_per_mL is not None else "—"
+                ),
+                "kcal/mL": formula["kcal_per_mL"],
+                "Protein g/mL": formula["protein_per_mL"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def generate_regimen_summary(
+    profile: NutrientProfile,
+    daily_volume_mL: float,
+    btf_fluid_mL: float,
+    flush_mL: float = 0.0,
+    formula_name: str | None = None,
+    formula_daily_volume_mL: float = 0.0,
+) -> pd.DataFrame:
+    """Generate the combined BTF + commercial-formula regimen summary
+    (round-2 clinical feedback, Part 2.7 — the author's spreadsheet's
+    "Totals from EN + BP + Propofol" concept reborn).
+
+    Rows: BTF (daily kcal/CHO/protein/fat + its own fluid contribution +
+    free water), optionally Formula (from its per-mL values × volume;
+    fluid = full volume at the I&O convention, same as the fluids
+    ledger; free water = free_water_per_mL × volume, "—" if the formula's
+    CSV row omits that column), optionally Flushes (fluid only), then
+    TOTAL. Carbohydrate and fat are BTF-only columns — formulas.csv
+    doesn't carry per-mL CHO/fat data, so those cells read "—" rather
+    than a fabricated number; TOTAL reflects only the components that
+    have a real value for that column.
+
+    Args:
+        profile:                  The BTF recipe's NutrientProfile.
+        daily_volume_mL:          BTF daily delivery volume.
+        btf_fluid_mL:             Fluid contributed by the BTF recipe
+                                   ITSELF (fluids-ledger figure scaled to
+                                   daily volume) — flushes are a separate
+                                   row below, not folded in here (unlike
+                                   the adequacy table's single combined
+                                   "Fluid provided" row).
+        flush_mL:                 Daily water-flush volume. 0 omits the
+                                   Flushes row.
+        formula_name:             Optional COMMERCIAL_FORMULAS key to add
+                                   to the regimen. None omits the Formula
+                                   row.
+        formula_daily_volume_mL:  mL/day of the added formula.
+    """
+    daily_totals = calculate_daily_totals(profile, daily_volume_mL)
+    free_water_mL = profile.free_water_fraction * daily_volume_mL
+
+    total_kcal = daily_totals.get("energy_kcal", 0.0)
+    total_cho = daily_totals.get("carbohydrate_g", 0.0)
+    total_protein = daily_totals.get("protein_g", 0.0)
+    total_fat = daily_totals.get("fat_g", 0.0)
+    total_fluid = btf_fluid_mL
+    total_free_water = free_water_mL
+
+    rows = [
+        {
+            "Component": "BTF",
+            "Energy (kcal)": round(total_kcal, 0),
+            "Carbohydrate (g)": round(total_cho, 1),
+            "Protein (g)": round(total_protein, 1),
+            "Fat (g)": round(total_fat, 1),
+            "Fluid provided (mL)": round(btf_fluid_mL, 0),
+            "Free water (mL)": round(free_water_mL, 0),
+        }
+    ]
+
+    if formula_name and formula_daily_volume_mL > 0:
+        formula = COMMERCIAL_FORMULAS[formula_name]
+        f_kcal = formula["kcal_per_mL"] * formula_daily_volume_mL
+        f_protein = formula["protein_per_mL"] * formula_daily_volume_mL
+        fw_per_mL = formula.get("free_water_per_mL")
+        f_free_water = fw_per_mL * formula_daily_volume_mL if fw_per_mL is not None else None
+        rows.append(
+            {
+                "Component": formula_name,
+                "Energy (kcal)": round(f_kcal, 0),
+                "Carbohydrate (g)": "—",
+                "Protein (g)": round(f_protein, 1),
+                "Fat (g)": "—",
+                "Fluid provided (mL)": round(formula_daily_volume_mL, 0),
+                "Free water (mL)": round(f_free_water, 0) if f_free_water is not None else "—",
+            }
+        )
+        total_kcal += f_kcal
+        total_protein += f_protein
+        total_fluid += formula_daily_volume_mL
+        if f_free_water is not None:
+            total_free_water += f_free_water
+
+    if flush_mL > 0:
+        rows.append(
+            {
+                "Component": "Flushes",
+                "Energy (kcal)": "—",
+                "Carbohydrate (g)": "—",
+                "Protein (g)": "—",
+                "Fat (g)": "—",
+                "Fluid provided (mL)": round(flush_mL, 0),
+                "Free water (mL)": "—",
+            }
+        )
+        total_fluid += flush_mL
+
+    rows.append(
+        {
+            "Component": "TOTAL",
+            "Energy (kcal)": round(total_kcal, 0),
+            "Carbohydrate (g)": round(total_cho, 1),
+            "Protein (g)": round(total_protein, 1),
+            "Fat (g)": round(total_fat, 1),
+            "Fluid provided (mL)": round(total_fluid, 0),
+            "Free water (mL)": round(total_free_water, 0),
+        }
+    )
+    return pd.DataFrame(rows)

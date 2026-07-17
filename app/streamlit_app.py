@@ -35,6 +35,7 @@ from src.data_loader import load_food_name, load_nutrient_amount, load_food_grou
 from src.models import Ingredient, Recipe, Delivery, DeliveryMethod
 from src.calculator import (
     calculate_profile,
+    calculate_daily_totals,
     daily_volume_from_delivery,
     dilute,
     required_daily_volume,
@@ -46,7 +47,8 @@ from src.targets import empty_targets
 from src.report import (
     generate_adequacy_report,
     generate_clinical_screen,
-    generate_formula_comparison,
+    generate_comparator_table,
+    generate_regimen_summary,
     generate_density_summary,
 )
 from src.nutrients import defs_for_tier, registry_by_name, DEFAULT_PACK
@@ -759,9 +761,25 @@ with build_tab:
                 # and multiplies by 100; it doesn't care whether that 100
                 # means grams or mL, since the recipe-usage amount below is
                 # scaled by the same basis).
+                #
+                # Only fold in fields the RD actually changed from the
+                # form's 0.0 default. This matters for zero-coverage
+                # hiding (Part 0 #6): every field on this form defaults to
+                # 0.0 whether or not the RD touched it, and there's no way
+                # to tell "label prints 0" from "I don't have this field's
+                # value" from a bare number_input. Treating an untouched
+                # 0.0 as "supplied" would give every custom food full
+                # coverage on every nutrient by construction, which
+                # defeats the whole point of coverage tracking -- a
+                # custom-food-only recipe would never show a hidden row,
+                # even for nutrients (vitamin D, zinc, ...) no label could
+                # ever have supplied. Treating it as "not entered" is the
+                # safer read for a nutrient count that otherwise silently
+                # under-reports (never over-reports) intake.
                 st.session_state.custom_foods[code] = {
                     name: label_to_per_100g(val, cserving)
                     for name, val in cv.items()
+                    if val > 0
                 }
                 st.session_state.next_ingr_id += 1
                 st.session_state.ingredients.append({
@@ -901,16 +919,42 @@ with results_tab:
         )
 
         profile = calculate_profile(recipe, na, custom_foods=st.session_state.custom_foods)
+        daily_totals = calculate_daily_totals(profile, daily_vol)
+
+        # --- Fluids ledger (Part 2.4/2.5): the daily "Fluid provided"
+        # figure that drives the adequacy row, the per-kg row, the
+        # regimen summary, and the chart note. btf_fluid_mL is the BTF
+        # recipe's OWN contribution (fluid_from_recipe_mL, computed in the
+        # Build tab from each ingredient's counts-as-fluid flag, scaled to
+        # daily volume); flush_total_mL is added separately so the
+        # regimen summary can show flushes as their own row without
+        # double-counting them into the BTF row too.
+        btf_fluid_mL = (
+            fluid_from_recipe_mL * (daily_vol / measured_volume)
+            if measured_volume > 0 else 0.0
+        )
+        fluid_provided_mL = btf_fluid_mL + flush_total_mL
 
         # --- Density panel ---
         st.subheader("Density Panel")
         st.caption("Per-mL is the primary lens — patient tolerates limited mL/day.")
 
-        d1, d2, d3, d4 = st.columns(4)
+        d1, d2, d3 = st.columns(3)
         d1.metric("Energy density", f"{profile.kcal_per_mL:.3f}", "kcal/mL")
         d2.metric("Protein density", f"{profile.protein_per_mL:.3f}", "g/mL")
-        d3.metric("Free-water fraction", f"{profile.free_water_fraction:.3f}")
-        d4.metric("Measured volume", f"{profile.measured_final_volume_mL:.0f} mL")
+        d3.metric("Measured volume", f"{profile.measured_final_volume_mL:.0f} mL")
+        # Free-water fraction demoted out of the headline metrics (Part
+        # 2.4) -- it's a per-recipe ratio, not the daily fluid-adequacy
+        # figure (that's "Fluid provided" in the table below).
+        st.caption(f"Free-water fraction: {profile.free_water_fraction:.3f} (food moisture / volume)")
+
+        if patient_weight_kg > 0:
+            st.markdown(f"**Per-kg (at {patient_weight_kg:.1f} kg)**")
+            pk1, pk2, pk3 = st.columns(3)
+            pk1.metric("Energy", f"{daily_totals.get('energy_kcal', 0.0) / patient_weight_kg:.1f}", "kcal/kg/day")
+            pk2.metric("Protein", f"{daily_totals.get('protein_g', 0.0) / patient_weight_kg:.2f}", "g/kg/day")
+            pk3.metric("Fluid provided", f"{fluid_provided_mL / patient_weight_kg:.1f}", "mL/kg/day")
+            st.caption("Display only -- no target, equation, or IBW is computed from weight.")
 
         with st.expander("Full density summary"):
             st.dataframe(
@@ -923,11 +967,9 @@ with results_tab:
         st.subheader("Daily Totals & Adequacy")
         st.caption(f"At **{daily_vol:.0f} mL/day** delivery")
 
-        # NOTE: generate_adequacy_report() now returns (df, hidden_names) --
-        # zero-coverage-hiding footnote wiring lands in a later commit
-        # (Results-tab rework); this stopgap just keeps the app from
-        # crashing now that the Build tab no longer feeds it added_water.
-        adequacy_df, _hidden_main_names = generate_adequacy_report(profile, daily_vol, targets)
+        adequacy_df, hidden_main_names = generate_adequacy_report(
+            profile, daily_vol, targets, fluid_provided_mL=fluid_provided_mL
+        )
 
         # The report uses "—" (string) for missing targets alongside floats,
         # which breaks Arrow serialization in st.dataframe. Convert mixed
@@ -941,6 +983,10 @@ with results_tab:
             width="stretch",
             hide_index=True,
         )
+        if hidden_main_names:
+            st.caption(
+                "Not shown — no data from any ingredient: " + ", ".join(hidden_main_names)
+            )
 
         with st.expander("BTF micro screen — vitamins & minerals not on labels"):
             st.caption(
@@ -952,19 +998,24 @@ with results_tab:
                 "them — vitamin D is present for only ~88% of foods — so a low "
                 "number may reflect missing CNF data rather than missing nutrition."
             )
-            clinical_df, _hidden_clinical_names = generate_clinical_screen(profile, daily_vol, targets)
-            clinical_display = clinical_df.copy()
-            clinical_display["Target"] = clinical_display["Target"].astype(str)
-            clinical_display["% Target"] = clinical_display["% Target"].astype(str)
-            st.dataframe(
-                clinical_display.style.map(color_status, subset=["Status"]),
-                width="stretch",
-                hide_index=True,
-            )
+            clinical_df, hidden_clinical_names = generate_clinical_screen(profile, daily_vol, targets)
+            if len(clinical_df) > 0:
+                clinical_display = clinical_df.copy()
+                clinical_display["Target"] = clinical_display["Target"].astype(str)
+                clinical_display["% Target"] = clinical_display["% Target"].astype(str)
+                st.dataframe(
+                    clinical_display.style.map(color_status, subset=["Status"]),
+                    width="stretch",
+                    hide_index=True,
+                )
+            if hidden_clinical_names:
+                st.caption(
+                    "Not shown — no data from any ingredient: " + ", ".join(hidden_clinical_names)
+                )
 
         # --- Dilution what-if ---
         st.subheader("Dilution What-If")
-        st.caption("The core feature: see what a thinning decision *costs*.")
+        st.caption("If the blend needs thinning, see the density impact before you commit.")
 
         w1, w2 = st.columns([1, 2])
 
@@ -1044,19 +1095,141 @@ with results_tab:
                 st.caption("Slide the slider to see the effect of adding thinning liquid.")
 
         # --- Commercial formula comparator ---
+        # Round-2 clinical feedback, Part 0 #11: multiselect up to 4
+        # formulas, transposed -- metrics as COLUMNS, BTF as the FIRST
+        # data row, selected formulas below (replaces the old single-
+        # formula two-column BTF/Formula table).
         st.subheader("Commercial Formula Comparator")
+        selected_formulas = st.multiselect(
+            "Compare against (up to 4)",
+            list(COMMERCIAL_FORMULAS.keys()),
+            max_selections=4,
+        )
+        comparator_df = generate_comparator_table(profile, daily_vol, selected_formulas)
+        st.dataframe(comparator_df, width="stretch", hide_index=True)
 
-        f1, f2 = st.columns([1, 3])
-        formula_name = f1.selectbox("Formula", list(COMMERCIAL_FORMULAS.keys()))
+        # --- Flow test documentation (new — Part 3) ---
+        # Documentation only, never computation -- the drip test itself
+        # needs hands, not a formula. This just records what the RD did.
+        st.subheader("Flow Test")
+        st.caption(
+            "The tool can't measure viscosity or tube flow — this is "
+            "documentation only, for the chart note and export."
+        )
+        ft1, ft2 = st.columns(2)
+        flow_test_date = ft1.date_input("Date", value=None)
+        flow_test_result = ft2.selectbox("Result", ["Not done", "Passed", "Needs thinning"])
+        flow_test_notes = st.text_area(
+            "Notes", "", placeholder="e.g., flowed through a 60 mL syringe without resistance"
+        )
 
-        if daily_vol > 0:
-            f2.dataframe(
-                generate_formula_comparison(profile, formula_name, daily_vol),
-                width="stretch",
-                hide_index=True,
+        # --- Combined BTF + formula regimen summary (new — Part 2.7) ---
+        st.subheader("Combined BTF + Formula Regimen")
+        st.caption(
+            "The author's spreadsheet's \"Totals from EN + BP + Propofol\" "
+            "concept — add one commercial formula to see the combined "
+            "regimen's daily totals."
+        )
+        add_regimen = st.checkbox("Add a commercial formula to the regimen")
+        regimen_formula_name = None
+        regimen_formula_vol = 0.0
+        if add_regimen:
+            rg1, rg2 = st.columns(2)
+            regimen_formula_name = rg1.selectbox(
+                "Formula", list(COMMERCIAL_FORMULAS.keys()), key="regimen_formula_name"
             )
+            regimen_formula_vol = rg2.number_input(
+                "Volume (mL/day)", min_value=0.0, value=500.0, step=50.0, key="regimen_formula_vol"
+            )
+
+        regimen_df = generate_regimen_summary(
+            profile,
+            daily_vol,
+            btf_fluid_mL=btf_fluid_mL,
+            flush_mL=flush_total_mL,
+            formula_name=regimen_formula_name,
+            formula_daily_volume_mL=regimen_formula_vol,
+        )
+        regimen_display = regimen_df.copy()
+        for _col in ("Energy (kcal)", "Carbohydrate (g)", "Protein (g)", "Fat (g)",
+                     "Fluid provided (mL)", "Free water (mL)"):
+            regimen_display[_col] = regimen_display[_col].astype(str)
+        st.dataframe(regimen_display, width="stretch", hide_index=True)
+
+        _regimen_total = regimen_df[regimen_df["Component"] == "TOTAL"].iloc[0]
+        _vs_target_bits = []
+        if targets.get("energy_kcal", 0.0) > 0:
+            _pct = _regimen_total["Energy (kcal)"] / targets["energy_kcal"] * 100
+            _vs_target_bits.append(
+                f"{_regimen_total['Energy (kcal)']:.0f} kcal ({_pct:.0f}% of {targets['energy_kcal']:.0f} target)"
+            )
+        if targets.get("fluid_mL", 0.0) > 0:
+            _pct = _regimen_total["Fluid provided (mL)"] / targets["fluid_mL"] * 100
+            _vs_target_bits.append(
+                f"{_regimen_total['Fluid provided (mL)']:.0f} mL fluid "
+                f"({_pct:.0f}% of {targets['fluid_mL']:.0f} target)"
+            )
+        if _vs_target_bits:
+            st.caption("TOTAL vs targets: " + "; ".join(_vs_target_bits))
+
+        # --- Chart note (new — Part 3) ---
+        # Copy-pasteable summary in the author's spec'd sentence form. No
+        # PHI fields -- the RD pastes this into their own chart. Bracketed
+        # pieces in the spec are omitted here whenever their inputs are
+        # absent (no regimen formula set, no flow test result recorded).
+        st.subheader("Chart Note")
+        st.caption("Copy-paste into your own chart. No patient-identifying fields.")
+
+        _route = "syringe bolus" if method_label.startswith("Syringe") else "total feed volume"
+        if method_label.startswith("Syringe") and len(bolus_schedule.dropna()) > 0:
+            _sched_text = format_schedule_for_note(bolus_schedule)
+            _note = f"BTF via {_route}: {_sched_text} (total {daily_vol:.0f} mL/day)."
         else:
-            f2.info("Set a delivery method in the banner above to see comparison.")
+            _note = f"BTF via {_route}: {daily_vol:.0f} mL/day."
+
+        _daily_kcal = daily_totals.get("energy_kcal", 0.0)
+        _daily_cho = daily_totals.get("carbohydrate_g", 0.0)
+        _daily_protein = daily_totals.get("protein_g", 0.0)
+        _daily_fat = daily_totals.get("fat_g", 0.0)
+        _weight_bit = f" ({_daily_protein / patient_weight_kg:.1f} g/kg)" if patient_weight_kg > 0 else ""
+        _note += (
+            f" Provides ~{_daily_kcal:.0f} kcal, {_daily_cho:.0f} g CHO, "
+            f"{_daily_protein:.0f} g protein{_weight_bit}, {_daily_fat:.0f} g fat."
+        )
+
+        _flush_bit = f" + {flush_total_mL:.0f} mL flushes" if flush_total_mL > 0 else ""
+        _note += (
+            f" Fluid provided: {btf_fluid_mL:.0f} mL from fluids{_flush_bit} "
+            f"= {fluid_provided_mL:.0f} mL/day."
+        )
+
+        _water_n_supplying, _water_n_total = profile.nutrient_coverage.get("water_g", (0, 0))
+        if _water_n_supplying > 0:
+            _free_water_mL = profile.free_water_fraction * daily_vol
+            _note += (
+                f" Free water (CNF-estimated, {_water_n_supplying}/{_water_n_total} "
+                f"ingredients): ~{_free_water_mL:.0f} mL/day."
+            )
+
+        if add_regimen and regimen_formula_name and regimen_formula_vol > 0:
+            _f = COMMERCIAL_FORMULAS[regimen_formula_name]
+            _f_kcal = _f["kcal_per_mL"] * regimen_formula_vol
+            _f_protein = _f["protein_per_mL"] * regimen_formula_vol
+            _note += (
+                f" Formula ({regimen_formula_name}, {regimen_formula_vol:.0f} mL/day): "
+                f"~{_f_kcal:.0f} kcal, {_f_protein:.0f} g protein. "
+                f"TOTAL: ~{_regimen_total['Energy (kcal)']:.0f} kcal, "
+                f"{_regimen_total['Protein (g)']:.0f} g protein, "
+                f"{_regimen_total['Fluid provided (mL)']:.0f} mL fluid provided."
+            )
+
+        if flow_test_result in ("Passed", "Needs thinning"):
+            _result_word = "passed" if flow_test_result == "Passed" else "needs thinning"
+            _date_bit = f" {flow_test_date.isoformat()}" if flow_test_date else ""
+            _notes_bit = f" — {flow_test_notes}" if flow_test_notes else ""
+            _note += f" Flow test:{_date_bit} {_result_word}{_notes_bit}."
+
+        st.code(_note, language=None)
 
         # --- Export to Excel ---
         st.subheader("Export")
@@ -1069,31 +1242,49 @@ with results_tab:
                     "Field": [
                         "Recipe name",
                         "Ingredients",
-                        "Added water (mL)",
                         "Measured volume (mL)",
                         "Delivery method",
-                        "Daily volume (mL)",
+                        "Total feed volume per day (mL)",
+                        "Flush volume (mL/day)",
+                        "Patient weight (kg)",
                     ],
                     "Value": [
                         recipe.name,
                         len(recipe.ingredients),
-                        recipe.added_water_mL,
                         recipe.measured_final_volume_mL,
                         method_label,
                         daily_vol,
+                        flush_total_mL,
+                        patient_weight_kg,
                     ],
                 }
             ).to_excel(writer, sheet_name="Recipe", index=False)
 
-            # Ingredient list
+            # Ingredient list / fluids ledger (unit + counts-as-fluid)
             if st.session_state.ingredients:
                 pd.DataFrame(st.session_state.ingredients)[
-                    ["food_description", "grams"]
+                    ["food_description", "grams", "unit", "counts_as_fluid"]
                 ].to_excel(writer, sheet_name="Ingredients", index=False)
             else:
                 pd.DataFrame(
-                    {"food_description": [], "grams": []}
+                    {"food_description": [], "grams": [], "unit": [], "counts_as_fluid": []}
                 ).to_excel(writer, sheet_name="Ingredients", index=False)
+
+            # Bolus + flush schedules (time column as text -- some Excel
+            # readers mishandle bare datetime.time objects from openpyxl)
+            _bolus_export = bolus_schedule.copy()
+            if len(_bolus_export) and "time" in _bolus_export.columns:
+                _bolus_export["time"] = _bolus_export["time"].apply(
+                    lambda t: t.strftime("%H:%M") if hasattr(t, "strftime") else t
+                )
+            _bolus_export.to_excel(writer, sheet_name="Bolus Schedule", index=False)
+
+            _flush_export = flush_schedule.copy()
+            if len(_flush_export) and "time" in _flush_export.columns:
+                _flush_export["time"] = _flush_export["time"].apply(
+                    lambda t: t.strftime("%H:%M") if hasattr(t, "strftime") else t
+                )
+            _flush_export.to_excel(writer, sheet_name="Flush Schedule", index=False)
 
             # Density summary
             generate_density_summary(profile).to_excel(
@@ -1101,9 +1292,9 @@ with results_tab:
             )
 
             # Adequacy report (tier="label" nutrients + fluid rows)
-            generate_adequacy_report(profile, daily_vol, targets)[0].to_excel(
-                writer, sheet_name="Adequacy", index=False
-            )
+            generate_adequacy_report(
+                profile, daily_vol, targets, fluid_provided_mL=fluid_provided_mL
+            )[0].to_excel(writer, sheet_name="Adequacy", index=False)
 
             # BTF micro screen (tier="clinical" nutrients — one-time ASPEN-style
             # supplementation screen, not on any Canadian label; see the
@@ -1112,10 +1303,25 @@ with results_tab:
                 writer, sheet_name="Micro Screen", index=False
             )
 
-            # Formula comparison
-            generate_formula_comparison(
-                profile, formula_name, daily_vol
-            ).to_excel(writer, sheet_name="Formula Comparison", index=False)
+            # Formula comparator (BTF first row + selected formulas)
+            comparator_df.to_excel(writer, sheet_name="Formula Comparator", index=False)
+
+            # Combined BTF + formula regimen summary
+            regimen_df.to_excel(writer, sheet_name="Regimen Summary", index=False)
+
+            # Flow test documentation
+            pd.DataFrame(
+                {
+                    "Date": [flow_test_date.isoformat() if flow_test_date else ""],
+                    "Result": [flow_test_result],
+                    "Notes": [flow_test_notes],
+                }
+            ).to_excel(writer, sheet_name="Flow Test", index=False)
+
+            # Chart note text
+            pd.DataFrame({"Chart note": [_note]}).to_excel(
+                writer, sheet_name="Chart Note", index=False
+            )
 
         st.download_button(
             label="📥 Export to Excel",
