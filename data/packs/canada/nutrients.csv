@@ -1,13 +1,13 @@
 name,code,label,unit,tier,on_label,show_in_report,offer_target,target_type,decimals,notes
 energy_kcal,208,Energy,kcal,label,yes,yes,yes,,0,Canadian NFt core
-protein_g,203,Protein,g,label,yes,yes,yes,,1,Canadian NFt core
 fat_g,204,Fat,g,label,yes,yes,yes,,1,Canadian NFt core
 saturated_fat_g,606,Saturated Fat,g,label,yes,no,no,,1,"Canadian NFt core; computed and exported, not shown in main table (author's call -- show what's needed, not everything)"
 trans_fat_g,605,Trans Fat,g,label,yes,no,no,,1,"Canadian NFt core; computed and exported, not shown in main table (author's call -- show what's needed, not everything)"
-cholesterol_mg,601,Cholesterol,mg,label,yes,no,no,,0,"Canadian NFt core; computed and exported, not shown in main table (author's call -- show what's needed, not everything)"
 carbohydrate_g,205,Carbohydrate,g,label,yes,yes,yes,,1,Canadian NFt core
 fibre_g,291,Fibre,g,label,yes,yes,yes,,1,Canadian NFt core
 sugars_g,269,Sugars,g,label,yes,no,no,,1,"Canadian NFt core; computed and exported, not shown in main table (author's call -- show what's needed, not everything)"
+protein_g,203,Protein,g,label,yes,yes,yes,,1,Canadian NFt core
+cholesterol_mg,601,Cholesterol,mg,label,yes,no,no,,0,"Canadian NFt core; computed and exported, not shown in main table (author's call -- show what's needed, not everything)"
 sodium_mg,307,Sodium,mg,label,yes,yes,yes,UL,0,"Canadian NFt core; CNF Tagname/Nutrient_Symbol for this row is the literal string NA -- look up by numeric code, see CONTEXT.md section 11"
 potassium_mg,306,Potassium,mg,label,yes,yes,yes,,0,Canadian NFt core; added 2022 regs -- intakes are low
 calcium_mg,301,Calcium,mg,label,yes,yes,yes,,0,Canadian NFt core

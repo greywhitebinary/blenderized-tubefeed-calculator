@@ -142,6 +142,34 @@ def find_food(fn_df: pd.DataFrame, desc: str) -> int | None:
     return int(m.iloc[0]["Food_Code"])
 
 
+# CNF_Food_Group_Code for "Beverages" — see data/packs/canada's
+# CNF_Food_Group table (loaded via src.data_loader.load_food_group()).
+# Used only to seed the counts-as-fluid checkbox's default; the RD can
+# always override per ingredient (Part 0 #8 of the round-2 clinical
+# feedback plan — the toggle IS the policy, this default is a starting
+# point, not a rule).
+_BEVERAGES_GROUP_CODE = 14
+
+
+def default_counts_as_fluid(food_desc: str, group_code) -> bool:
+    """Starting value for a CNF ingredient's counts-as-fluid checkbox.
+
+    True when the food is in CNF's own Beverages group (14), or its
+    description starts with the word "Water" (CNF's four standalone
+    water entries: "Water, municipal", "Water, mineral, ...", etc. — a
+    plain substring match would also catch "Watermelon" or any of the
+    176 CNF foods with "water added" in a soup description, which is why
+    this checks for the word at the START of the description, not
+    anywhere in it). Always user-toggleable afterward — see the
+    ingredient table's checkbox.
+    """
+    if group_code == _BEVERAGES_GROUP_CODE:
+        return True
+    if re.match(r"^water\b", (food_desc or "").strip(), re.IGNORECASE):
+        return True
+    return False
+
+
 def init_state():
     """Initialize session_state keys for ingredient list and custom foods."""
     if "ingredients" not in st.session_state:
@@ -265,6 +293,34 @@ st.set_page_config(
     layout="wide",
 )
 
+# Tab labels as big as a subheading (Part 0 #10 — Streamlit doesn't expose
+# this as a parameter, so it's injected CSS). Verified against Streamlit
+# 1.58's actual compiled frontend bundle (grepped the installed
+# streamlit/static/static/js/*.js), not the plan's guessed selector: each
+# tab button renders as `<button data-testid="stTab">` (a stable,
+# Streamlit-owned test id — NOT `data-baseweb="tab"`, which doesn't appear
+# as a literal attribute anywhere in the bundle) wrapping a
+# `[data-testid="stMarkdownContainer"]` div whose `<p>` carries the label
+# text at the framework's small font size (isLabel -> fontSizes.sm). Both
+# levels are targeted below so the rule holds even if a future Streamlit
+# version drops one wrapper.
+st.markdown(
+    """
+    <style>
+    button[data-testid="stTab"] [data-testid="stMarkdownContainer"] p,
+    button[data-testid="stTab"] p {
+        font-size: 1.4rem;
+        font-weight: 600;
+    }
+    button[data-testid="stTab"] {
+        padding-top: 0.4rem;
+        padding-bottom: 0.4rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 init_state()
 
 # Load cached CNF data (runs once, then served from cache)
@@ -298,12 +354,19 @@ if load_example_clicked:
     chicken = find_food(fn, "Chicken, broiler, breast, skinless, boneless, meat, raw")
     rice = find_food(fn, "Grains, rice, white, long-grain, parboiled, cooked")
     oil = find_food(fn, "Vegetable oil, canola")
-    if chicken and rice and oil:
-        st.session_state.next_ingr_id = 3
+    water = find_food(fn, "Water, municipal")
+    if chicken and rice and oil and water:
+        st.session_state.next_ingr_id = 4
         st.session_state.ingredients = [
-            {"id": 1, "food_code": chicken, "food_description": "Chicken breast", "grams": 200.0},
-            {"id": 2, "food_code": rice, "food_description": "Rice, cooked", "grams": 150.0},
-            {"id": 3, "food_code": oil, "food_description": "Canola oil", "grams": 15.0},
+            {"id": 1, "food_code": chicken, "food_description": "Chicken breast", "grams": 200.0, "unit": "g", "counts_as_fluid": False},
+            {"id": 2, "food_code": rice, "food_description": "Rice, cooked", "grams": 150.0, "unit": "g", "counts_as_fluid": False},
+            {"id": 3, "food_code": oil, "food_description": "Canola oil", "grams": 15.0, "unit": "g", "counts_as_fluid": False},
+            # Round-2 clinical feedback (Part 0 #8): the Added-water field
+            # is deleted; water is an ordinary CNF ingredient like anything
+            # else (CNF has it at 99.9% moisture — nothing is lost), and
+            # this is the ingredient that demonstrates the fluids ledger's
+            # counts-as-fluid toggle in the example recipe.
+            {"id": 4, "food_code": water, "food_description": "Water, municipal", "grams": 200.0, "unit": "g", "counts_as_fluid": True},
         ]
         st.session_state.custom_foods = {}
         st.session_state.next_custom_code = -1
@@ -481,11 +544,14 @@ with build_tab:
     st.subheader("Add ingredient")
     add_mode = st.radio(
         "Source",
-        ["CNF search", "Custom food (label)"],
+        [
+            "Search foods from the Canadian Nutrient File",
+            "Enter information on the food label",
+        ],
         horizontal=True,
     )
 
-    if add_mode == "CNF search":
+    if add_mode == "Search foods from the Canadian Nutrient File":
         # Food-group filter: CNF's own 23 native CNF_Food_Group categories
         # (already in Food_Name.csv as CNF_Food_Group_Code) — narrows the
         # search pool *before* the existing substring search below, same
@@ -576,6 +642,7 @@ with build_tab:
             st.caption("Type at least 2 characters to search.")
 
         if food_code is not None and calculated_grams > 0:
+            _default_fluid = default_counts_as_fluid(food_desc, _sel_group_code)
             if st.button("➕ Add to recipe"):
                 st.session_state.next_ingr_id += 1
                 st.session_state.ingredients.append({
@@ -583,40 +650,100 @@ with build_tab:
                     "food_code": food_code,
                     "food_description": food_desc,
                     "grams": float(calculated_grams),
+                    "unit": "g",
+                    "counts_as_fluid": _default_fluid,
                 })
                 st.rerun()
 
-    else:  # Custom food from label
-        st.caption("Enter values from the nutrition facts label (per serving).")
-        cname = st.text_input("Food name", "")
-        cserving = st.number_input(
-            "Serving size (g)", min_value=1.0, value=100.0, step=1.0
+    else:  # Custom food from label — a Canadian Nutrition Facts lookalike
+        # Round-2 clinical feedback, Part 0 #7 / Part 3: the label offers a
+        # g-or-mL basis unit that flows through, UNCHANGED, to "Amount used
+        # in recipe" below — no cross-conversion, ever (that would require
+        # guessing a density). An mL-basis food's usage can only be entered
+        # in mL, by construction (same widget, same unit, just placed
+        # outside the label box so it reads as a clearly separate step).
+        st.caption(
+            "Enter values exactly as printed on the nutrition facts label."
         )
-        cgrams = st.number_input(
-            "Grams to use in recipe", min_value=0.0, value=100.0, step=1.0
+        basis_choice = st.radio(
+            "Label basis",
+            ["per ___ g", "per ___ mL"],
+            horizontal=True,
+            label_visibility="collapsed",
         )
+        basis = "g" if basis_choice == "per ___ g" else "mL"
 
-        # Fields are generated from the registry's tier="label" rows (the
-        # nutrients actually printed on a Canadian nutrition facts label) —
-        # NOT the full tracked-nutrient list. That's why this form has fat,
-        # saturated fat, trans fat, cholesterol, carbohydrate, and sugars
-        # (a real Canadian label has them) but no vitamin D, B12, or zinc
-        # (no Canadian label carries those — see src/nutrients.py). A future
-        # US pack would show vitamin D here instead, with zero code changes.
-        with st.expander("Nutrition facts (per serving)"):
-            c1, c2 = st.columns(2)
-            cv: dict[str, float] = {}
+        _registry_map = registry_by_name(DEFAULT_PACK)
+        cv: dict[str, float] = {}
+
+        with st.container(border=True):
+            st.markdown("#### Nutrition Facts")
+            cname = st.text_input("Food name", "")
+            cserving = st.number_input(
+                f"Serving size ({basis})", min_value=1.0, value=100.0, step=1.0
+            )
+            st.divider()
+
+            # CFIA ordering (Calories, then Fat/Sat/Trans, Carbohydrate/
+            # Fibre/Sugars, Protein, Cholesterol, Sodium, Potassium,
+            # Calcium, Iron) comes for free from data/packs/canada/
+            # nutrients.csv's own row order — the registry CSV was
+            # reordered to match the label layout the author asked for, so
+            # this loop needs no hardcoded nutrient name list in Python;
+            # a future country pack orders its own nutrients.csv to match
+            # ITS label convention. Energy is rendered first and on its
+            # own row (the "Calories" line reads differently from the
+            # rest of the panel on a real label). Single column, not a
+            # two-column zigzag — a real Nutrition Facts panel IS a single
+            # narrow column top-to-bottom, and (Streamlit detail) widgets
+            # assigned to st.columns() render column-major, not in loop
+            # order, which would scramble this exact sequence apart
+            # (Saturated Fat landing far from Fat) — the opposite of
+            # "resemble a label as closely as possible."
             label_defs = [d for d in defs_for_tier("label", pack=DEFAULT_PACK) if d.on_label]
-            for i, d in enumerate(label_defs):
-                col = c1 if i % 2 == 0 else c2
+            energy_def = next(d for d in label_defs if d.name == "energy_kcal")
+            cv[energy_def.name] = st.number_input(
+                f"{energy_def.label} ({energy_def.unit})", min_value=0.0, value=0.0, step=1.0
+            )
+            st.divider()
+
+            remaining_defs = [d for d in label_defs if d.name != "energy_kcal"]
+            for d in remaining_defs:
                 step = 1.0 if d.decimals == 0 else round(10 ** (-d.decimals), d.decimals)
-                cv[d.name] = col.number_input(
+                cv[d.name] = st.number_input(
                     f"{d.label} ({d.unit})", min_value=0.0, value=0.0, step=step
                 )
+
+            with st.expander("Optional nutrients on this label?"):
+                st.caption(
+                    "Vitamin D, B12, zinc, magnesium, and phosphorus are "
+                    "CFIA-optional. Enter them if this label carries them "
+                    "so the values reach the BTF micro screen."
+                )
+                clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
+                for d in clinical_defs:
+                    step = 1.0 if d.decimals == 0 else round(10 ** (-d.decimals), d.decimals)
+                    cv[d.name] = st.number_input(
+                        f"{d.label} ({d.unit})", min_value=0.0, value=0.0, step=step
+                    )
+
         st.caption(
             "Water/moisture is on no nutrition facts label, so recipes using "
             "custom foods will underestimate the free-water fraction — the "
             "label simply has nowhere to report it."
+        )
+
+        # Clearly separate from the label box above (Part 0 #7) — same
+        # basis unit as the label's serving size, never converted.
+        st.markdown("**Amount used in recipe**")
+        cgrams = st.number_input(
+            f"Amount used ({basis})",
+            min_value=0.0,
+            value=100.0,
+            step=1.0,
+            help=f"Same unit as the label basis above ({basis}) — an "
+                 f"mL-basis food's usage can only be entered in mL, by "
+                 f"design (no cross-conversion between g and mL).",
         )
 
         if st.button("➕ Add custom food"):
@@ -627,7 +754,11 @@ with build_tab:
             else:
                 code = st.session_state.next_custom_code
                 st.session_state.next_custom_code -= 1
-                # Convert label values to per-100g basis
+                # Convert label values to per-100-[basis] (same math either
+                # way — label_to_per_100g() just divides by serving size
+                # and multiplies by 100; it doesn't care whether that 100
+                # means grams or mL, since the recipe-usage amount below is
+                # scaled by the same basis).
                 st.session_state.custom_foods[code] = {
                     name: label_to_per_100g(val, cserving)
                     for name, val in cv.items()
@@ -638,60 +769,104 @@ with build_tab:
                     "food_code": code,
                     "food_description": f"{cname} (custom)",
                     "grams": float(cgrams),
+                    "unit": basis,
+                    # mL-basis custom foods default to counts-as-fluid=True
+                    # (Part 2.4) — a liquid entered from a label (e.g. a
+                    # protein shake) has no CNF moisture data, so the I&O
+                    # full-volume convention is the only fluid signal
+                    # available for it. Still user-toggleable.
+                    "counts_as_fluid": basis == "mL",
                 })
                 st.rerun()
 
     # --- Blend details ---
     st.subheader("Blend details")
-    # Check if example recipe was loaded (flag set by the sidebar button
-    # above). Must pop before the two number_inputs below render, so their
+    # Check if example recipe was loaded (flag set by the top-row button
+    # above). Must pop before the number_input below renders, so its
     # `value=` argument actually takes effect on this rerun.
     _example_loaded = st.session_state.pop("load_example", False)
     if _example_loaded:
-        st.session_state.pop("sb_added_water", None)
         st.session_state.pop("sb_measured_volume", None)
 
-    added_water = st.number_input(
-        "Added water (mL)",
-        min_value=0.0,
-        value=200.0 if _example_loaded else 0.0,
-        step=10.0,
-        key="sb_added_water",
-    )
+    # Round-2 clinical feedback (Part 0 #8): the Added-water field is
+    # DELETED. All liquids — including plain water — are ordinary
+    # ingredients now (see the fluids ledger in the Ingredients section
+    # below); nothing is lost, since CNF carries water at 99.9% moisture.
     measured_volume = st.number_input(
         "**Measured final volume (mL)**",
         min_value=0.0,
         value=550.0 if _example_loaded else 0.0,
         step=10.0,
-        help="The volume you measured after blending — this is the denominator for all densities.",
+        help="Read it off the side of the blender jug, or pour into a "
+             "measuring cup after blending. Ingredient weights feed the "
+             "nutrient math; volume is always this measured number.",
         key="sb_measured_volume",
     )
 
     # --- Ingredient table ---
     st.subheader("Ingredients")
+    fluid_from_recipe_mL = 0.0
 
     if not st.session_state.ingredients:
         st.info("Add ingredients above to get started.")
     else:
-        # Display each ingredient with editable grams and a remove button
+        st.caption(
+            "\"Counts as fluid\" drives the Results tab's Fluid provided "
+            "row (full-volume I&O convention) — auto-checked for CNF "
+            "Beverages and mL-basis custom foods, always your call "
+            "otherwise (e.g. soup has no validated rule of thumb)."
+        )
+        # Display each ingredient with editable amount, unit, a
+        # counts-as-fluid toggle, and a remove button.
         for i, ing in enumerate(st.session_state.ingredients):
-            cols = st.columns([5, 2, 1])
+            unit = ing.get("unit", "g")
+            cols = st.columns([4, 2, 2, 1])
             cols[0].write(f"{i + 1}. {ing['food_description']}")
-            new_grams = cols[1].number_input(
-                f"Grams for {ing['food_description']}",
+            new_amount = cols[1].number_input(
+                f"Amount for {ing['food_description']}",
                 value=float(ing["grams"]),
                 min_value=0.0,
                 step=1.0,
                 key=f"grams_{ing['id']}",
                 label_visibility="collapsed",
             )
-            st.session_state.ingredients[i]["grams"] = new_grams
-            if cols[2].button("❌", key=f"del_{ing['id']}"):
+            cols[1].caption(unit)
+            st.session_state.ingredients[i]["grams"] = new_amount
+            new_fluid_flag = cols[2].checkbox(
+                "Counts as fluid",
+                value=bool(ing.get("counts_as_fluid", False)),
+                key=f"fluid_{ing['id']}",
+            )
+            st.session_state.ingredients[i]["counts_as_fluid"] = new_fluid_flag
+            if cols[3].button("❌", key=f"del_{ing['id']}"):
                 st.session_state.ingredients.pop(i)
                 st.rerun()
 
-        total_grams = sum(ing["grams"] for ing in st.session_state.ingredients)
-        st.caption(f"Total ingredient weight: **{total_grams:.0f} g** + {added_water:.0f} mL water")
+        # Weight caption: "X g + Y mL" when mL-basis foods are present
+        # (Part 0 #7's accepted consequence — no cross-conversion means
+        # the two units can't be summed into one number).
+        total_g = sum(
+            ing["grams"] for ing in st.session_state.ingredients
+            if ing.get("unit", "g") == "g"
+        )
+        total_mL = sum(
+            ing["grams"] for ing in st.session_state.ingredients
+            if ing.get("unit", "g") == "mL"
+        )
+        if total_mL > 0:
+            st.caption(f"Total ingredient weight: **{total_g:.0f} g** + **{total_mL:.0f} mL**")
+        else:
+            st.caption(f"Total ingredient weight: **{total_g:.0f} g**")
+
+        # Fluid-from-recipe (Part 2.4): sum of counts-as-fluid ingredient
+        # amounts, treating gram-entered liquids as mL 1:1 (the standard
+        # clinical approximation already used for free water). Scaled to
+        # daily intake + flushes in the Results tab, where daily_vol and
+        # measured_volume are both in scope.
+        fluid_from_recipe_mL = sum(
+            ing["grams"] for ing in st.session_state.ingredients
+            if ing.get("counts_as_fluid", False)
+        )
 
         if st.button("🗑️ Clear all ingredients"):
             st.session_state.ingredients = []
@@ -717,7 +892,11 @@ with results_tab:
                 )
                 for ing in st.session_state.ingredients
             ],
-            added_water_mL=added_water,
+            # The Added-water field is gone (Part 0 #8) -- water is an
+            # ordinary ingredient now. added_water_mL stays 0 here; the
+            # model field itself is untouched (Part 4: don't change
+            # src/models.py) even though the UI no longer feeds it.
+            added_water_mL=0.0,
             measured_final_volume_mL=measured_volume,
         )
 
@@ -744,7 +923,11 @@ with results_tab:
         st.subheader("Daily Totals & Adequacy")
         st.caption(f"At **{daily_vol:.0f} mL/day** delivery")
 
-        adequacy_df = generate_adequacy_report(profile, daily_vol, targets)
+        # NOTE: generate_adequacy_report() now returns (df, hidden_names) --
+        # zero-coverage-hiding footnote wiring lands in a later commit
+        # (Results-tab rework); this stopgap just keeps the app from
+        # crashing now that the Build tab no longer feeds it added_water.
+        adequacy_df, _hidden_main_names = generate_adequacy_report(profile, daily_vol, targets)
 
         # The report uses "—" (string) for missing targets alongside floats,
         # which breaks Arrow serialization in st.dataframe. Convert mixed
@@ -769,7 +952,7 @@ with results_tab:
                 "them — vitamin D is present for only ~88% of foods — so a low "
                 "number may reflect missing CNF data rather than missing nutrition."
             )
-            clinical_df = generate_clinical_screen(profile, daily_vol, targets)
+            clinical_df, _hidden_clinical_names = generate_clinical_screen(profile, daily_vol, targets)
             clinical_display = clinical_df.copy()
             clinical_display["Target"] = clinical_display["Target"].astype(str)
             clinical_display["% Target"] = clinical_display["% Target"].astype(str)
@@ -917,15 +1100,15 @@ with results_tab:
                 writer, sheet_name="Density", index=False
             )
 
-            # Adequacy report (tier="label" nutrients + Free water)
-            generate_adequacy_report(profile, daily_vol, targets).to_excel(
+            # Adequacy report (tier="label" nutrients + fluid rows)
+            generate_adequacy_report(profile, daily_vol, targets)[0].to_excel(
                 writer, sheet_name="Adequacy", index=False
             )
 
             # BTF micro screen (tier="clinical" nutrients — one-time ASPEN-style
             # supplementation screen, not on any Canadian label; see the
             # "BTF micro screen" expander in the app for the full caveat).
-            generate_clinical_screen(profile, daily_vol, targets).to_excel(
+            generate_clinical_screen(profile, daily_vol, targets)[0].to_excel(
                 writer, sheet_name="Micro Screen", index=False
             )
 
