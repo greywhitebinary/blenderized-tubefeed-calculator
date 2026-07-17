@@ -41,7 +41,7 @@ from src.calculator import (
     COMMERCIAL_FORMULAS,
 )
 from src.measures import load_measure_lookup, get_measures_for_food
-from src.targets import default_targets, empty_targets
+from src.targets import empty_targets
 from src.report import (
     generate_adequacy_report,
     generate_clinical_screen,
@@ -309,38 +309,38 @@ with st.container(border=True):
         daily_vol = daily_volume_from_delivery(delivery)
 
         # --- Targets (optional) ---
+        # Round-2 clinical feedback (Part 0 #2): there is no default-DRI
+        # option anymore. "2000 kcal / 75 g protein" as a population
+        # default is not defensible for tube-fed patients (protein
+        # practice runs 1.0-1.5 g/kg, not the 0.8 g/kg population RDA).
+        # Targets always start blank; blank = no adequacy %, daily totals
+        # are still shown regardless.
         st.markdown("**Targets (optional)**")
-        use_defaults = st.checkbox(
-            "Use default DRI adult targets", value=True
-        )
-
-        if use_defaults:
-            targets = default_targets()
-        else:
-            targets = empty_targets()
-            st.caption("Enter patient-specific targets (0 = no target):")
-            tc1, tc2 = st.columns(2)
-            cols = (tc1, tc2)
-            # Generated from the registry: iterate every nutrient that HAS a
-            # target in data/packs/canada/targets.csv (default_targets()' keys,
-            # in CSV row order), not a hardcoded field list. "fluid_mL" isn't a
-            # CNF nutrient (it's the target for the derived Free water row), so
-            # it gets a hand-written label/unit; everything else reads its
-            # label/unit straight off the registry.
-            _registry_map = registry_by_name(DEFAULT_PACK)
-            for i, nutrient_name in enumerate(default_targets()):
-                col = cols[i % 2]
-                if nutrient_name == "fluid_mL":
-                    disp_label, unit, decimals = "Fluid", "mL", 0
-                else:
-                    d = _registry_map[nutrient_name]
-                    disp_label, unit, decimals = d.label, d.unit, d.decimals
-                step = _TARGET_STEP_OVERRIDES.get(
-                    nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
-                )
-                targets[nutrient_name] = col.number_input(
-                    f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step
-                )
+        st.caption("Blank = no target; enter patient-specific values.")
+        targets = empty_targets()
+        tc1, tc2 = st.columns(2)
+        cols = (tc1, tc2)
+        # Generated from the registry: iterate every nutrient with
+        # offer_target="yes" (data/packs/canada/nutrients.csv — the nine
+        # displayed label-tier nutrients, in registry row order), not a
+        # hardcoded field list. "fluid_mL" isn't a CNF nutrient (it's the
+        # target for the fluids-ledger adequacy row), so it gets a
+        # hand-written label/unit; everything else reads its label/unit
+        # straight off the registry.
+        _registry_map = registry_by_name(DEFAULT_PACK)
+        for i, nutrient_name in enumerate(empty_targets()):
+            col = cols[i % 2]
+            if nutrient_name == "fluid_mL":
+                disp_label, unit, decimals = "Fluid", "mL", 0
+            else:
+                d = _registry_map[nutrient_name]
+                disp_label, unit, decimals = d.label, d.unit, d.decimals
+            step = _TARGET_STEP_OVERRIDES.get(
+                nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
+            )
+            targets[nutrient_name] = col.number_input(
+                f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step
+            )
 
     # Always-visible one-line summary, rendered OUTSIDE the expander above so
     # it's visible whether that detail is expanded or collapsed — the "1800

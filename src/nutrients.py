@@ -22,14 +22,39 @@ data/packs/<pack>/ — not a code task. Canada is the only pack shipped
 today; US/UK/AU are documented roadmap (see CONTEXT.md §9).
 
 nutrients.csv columns:
-    name       internal nutrient key, e.g. "energy_kcal"
-    code       CNF Nutrient_Code (numeric — see the NA/NaN gotcha below)
-    label      human-readable name, e.g. "Energy"
-    unit       display unit, e.g. "kcal"
-    tier       "label" | "clinical" | "engine" — WHY we track it (see below)
-    on_label   "yes" | "no" — WHETHER a nutrition facts label can supply it
-    decimals   how many decimal places to display this nutrient at
-    notes      free-text provenance / rationale
+    name            internal nutrient key, e.g. "energy_kcal"
+    code            CNF Nutrient_Code (numeric — see the NA/NaN gotcha below)
+    label           human-readable name, e.g. "Energy"
+    unit            display unit, e.g. "kcal"
+    tier            "label" | "clinical" | "engine" — WHY we track it (see below)
+    on_label        "yes" | "no" — WHETHER a nutrition facts label can supply it
+    show_in_report  "yes" | "no" — WHETHER this nutrient gets a row in its
+                    tier's report table. Lets a tier's data be tracked
+                    (computed, exported) without necessarily being displayed
+                    — e.g. saturated fat/trans fat/cholesterol/sugars are
+                    tier="label" (on the Canadian panel, computed, exported)
+                    but show_in_report="no" (the author chose "show what's
+                    needed" over "show everything" for the main daily-tracked
+                    table — see CONTEXT.md §9). Every tier="clinical" row is
+                    show_in_report="yes" today (the micro screen shows all
+                    five), and tier="engine" is always "no" (water_g never
+                    gets a row in any report, in either tier).
+    offer_target    "yes" | "no" — WHETHER the custom-targets form in the app
+                    offers a target-entry field for this nutrient. Only the
+                    nine core tier="label"+show_in_report="yes" nutrients are
+                    offer_target="yes"; the tier="clinical" screen nutrients
+                    (magnesium, phosphorus, zinc, vitamin D, B12) are
+                    deliberately target-less — see src/targets.py's module
+                    docstring.
+    target_type     "RDA" | "AI" | "UL" | "estimate" | "" (empty) — the
+                    nature of a target, if one is ever entered for this
+                    nutrient. The only behavioral consumer is UL wording
+                    ("Above UL"/"Below UL" instead of "Above/Meeting/Below
+                    target") — see src/report.py. Only sodium_mg is "UL"
+                    today; every other row may be left empty (report.py
+                    treats empty as "estimate", the default vocabulary).
+    decimals        how many decimal places to display this nutrient at
+    notes           free-text provenance / rationale
 
 `tier` and `on_label` are two independent axes — do not collapse them:
   - tier="label":    on this country's mandatory panel; the public-health
@@ -74,10 +99,17 @@ class NutrientDef:
         code:      CNF Nutrient_Code (numeric — see module docstring).
         label:     Human-readable display name, e.g. "Energy".
         unit:      Display unit, e.g. "kcal".
-        tier:      "label" | "clinical" | "engine" — why we track it.
-        on_label:  Whether a nutrition-facts label can supply this value.
-        decimals:  Display precision for daily totals.
-        notes:     Free-text provenance / clinical rationale.
+        tier:           "label" | "clinical" | "engine" — why we track it.
+        on_label:       Whether a nutrition-facts label can supply this value.
+        show_in_report: Whether this nutrient gets a row in its tier's
+                         report table (see module docstring).
+        offer_target:   Whether the custom-targets form offers a target
+                         field for this nutrient (see module docstring).
+        target_type:    "RDA" | "AI" | "UL" | "estimate" | "" — nature of
+                         a target if one is entered; only "UL" changes
+                         report wording (see module docstring).
+        decimals:       Display precision for daily totals.
+        notes:          Free-text provenance / clinical rationale.
     """
 
     name: str
@@ -86,6 +118,9 @@ class NutrientDef:
     unit: str
     tier: str
     on_label: bool
+    show_in_report: bool
+    offer_target: bool
+    target_type: str
     decimals: int
     notes: str
 
@@ -132,6 +167,7 @@ def _load_registry_cached(pack: str) -> tuple[NutrientDef, ...]:
                 f"{csv_path}: nutrient '{row['name']}' has invalid tier "
                 f"'{tier}' — must be one of {VALID_TIERS}"
             )
+        target_type = str(row["target_type"]).strip() if pd.notna(row["target_type"]) else ""
         defs.append(
             NutrientDef(
                 name=str(row["name"]).strip(),
@@ -140,6 +176,9 @@ def _load_registry_cached(pack: str) -> tuple[NutrientDef, ...]:
                 unit=str(row["unit"]).strip(),
                 tier=tier,
                 on_label=str(row["on_label"]).strip().lower() == "yes",
+                show_in_report=str(row["show_in_report"]).strip().lower() == "yes",
+                offer_target=str(row["offer_target"]).strip().lower() == "yes",
+                target_type=target_type,
                 decimals=int(row["decimals"]),
                 notes=str(row["notes"]).strip(),
             )
