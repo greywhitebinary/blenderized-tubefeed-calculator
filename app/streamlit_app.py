@@ -210,21 +210,26 @@ fg = get_food_group()
 
 
 # ===========================================================================
-# SIDEBAR — chrome only: title, recipe name, load example.
-# Everything else (add-ingredient, blend details, delivery, targets) moved
-# out into the persistent banner and the Build tab below — see CONTEXT.md
-# §9 for why (the sidebar was doing double duty as both "global recipe
-# identity" and "the one place you add every ingredient").
+# TOP BAR — chrome only: recipe name, load example. No sidebar.
+#
+# There used to be one here. Across two restructuring sessions,
+# ingredient search, blend details, delivery, and targets all moved out
+# of it (see CONTEXT.md §9) — leaving three sparse fields that didn't
+# earn a persistent side rail. Streamlit's sidebar takes a fixed slice of
+# horizontal width on every load; keeping it around empty would have
+# quietly taken back the width that moving CNF search out of it was
+# trying to win in the first place. So it's gone, and everything it held
+# lives in this top row instead.
 # ===========================================================================
 
-st.sidebar.title("🥣 BTF Calculator")
-st.sidebar.caption("For RD use — estimates only")
+top_l, top_r = st.columns([4, 1])
+with top_l:
+    recipe_name = st.text_input("Recipe name", "My BTF recipe")
+with top_r:
+    st.write("")  # vertical spacer so the button aligns with the text input
+    load_example_clicked = st.button("📋 Load example recipe", width="stretch")
 
-# --- Recipe name ---
-recipe_name = st.sidebar.text_input("Recipe name", "My BTF recipe")
-
-# --- Load example recipe ---
-if st.sidebar.button("📋 Load example recipe"):
+if load_example_clicked:
     chicken = find_food(fn, "Chicken, broiler, breast, skinless, boneless, meat, raw")
     rice = find_food(fn, "Grains, rice, white, long-grain, parboiled, cooked")
     oil = find_food(fn, "Vegetable oil, canola")
@@ -240,9 +245,10 @@ if st.sidebar.button("📋 Load example recipe"):
         st.session_state["load_example"] = True
         st.rerun()
     else:
-        st.sidebar.error("Could not find example foods in CNF.")
+        st.error("Could not find example foods in CNF.")
 
 st.title(f"🥣 {recipe_name or 'BTF Recipe'}")
+st.caption("For RD use — estimates only")
 
 
 # ===========================================================================
