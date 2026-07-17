@@ -1,9 +1,9 @@
-name,kcal_per_mL,protein_per_mL,source,verified
-Isosource Fibre 1.5,1.5,0.068,EN spreadsheet 2018,
-Isosource Fibre 1.2,1.2,0.054,EN spreadsheet 2018,
-Isosource Fibre 1.0 HP,1.0,0.062,EN spreadsheet 2018,
-Nepro,1.8,0.081,EN spreadsheet 2018,
-Peptamen AF 1.2,1.2,0.076,EN spreadsheet 2018,
-Peptamen Intense High Protein,1.0,0.092,EN spreadsheet 2018,
-Resource 2.0,2.01,0.08,EN spreadsheet 2018,
-Peptamen 1.5,1.5,0.068,EN spreadsheet 2018,
+name,kcal_per_mL,protein_per_mL,free_water_per_mL,source,verified
+Isosource Fibre 1.5,1.5,0.068,0.765,EN spreadsheet 2018,
+Isosource Fibre 1.2,1.2,0.054,0.804,EN spreadsheet 2018,
+Isosource Fibre 1.0 HP,1.0,0.062,0.839,EN spreadsheet 2018,
+Nepro,1.8,0.081,0.727,EN spreadsheet 2018,
+Peptamen AF 1.2,1.2,0.076,0.810,EN spreadsheet 2018,
+Peptamen Intense High Protein,1.0,0.092,0.840,EN spreadsheet 2018,
+Resource 2.0,2.01,0.08,0.684,EN spreadsheet 2018,
+Peptamen 1.5,1.5,0.068,0.770,EN spreadsheet 2018,

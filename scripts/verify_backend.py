@@ -176,6 +176,19 @@ def main() -> int:
     print(formula_cmp.to_string(index=False))
     assert len(formula_cmp) == 4, "formula comparison should have 4 metric rows"
 
+    # 7b. free_water_per_mL (round-2 clinical feedback, Part 2.6) — loaded
+    # from data/packs/canada/formulas.csv, values from the author's own EN
+    # spreadsheet. Every shipped Canadian formula has this column; a
+    # missing/absent value (an RD-added row that omits it) must come back
+    # as None, never a fabricated 0 (0 would falsely claim zero free water).
+    from src.calculator import COMMERCIAL_FORMULAS as _formulas_check
+    peptamen_fw = _formulas_check["Peptamen 1.5"]["free_water_per_mL"]
+    print(f"    Peptamen 1.5 free_water_per_mL: {peptamen_fw}")
+    assert peptamen_fw == 0.770, f"expected 0.770, got {peptamen_fw}"
+    assert all(
+        f.get("free_water_per_mL") is not None for f in _formulas_check.values()
+    ), "every shipped Canadian formula should have a free_water_per_mL value"
+
     # 8. Density summary
     print("\n[8] Density summary...")
     density = generate_density_summary(profile)

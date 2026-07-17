@@ -324,21 +324,30 @@ def required_daily_volume(
 _FORMULAS_CSV = Path(__file__).resolve().parent.parent / "data" / "packs" / "canada" / "formulas.csv"
 
 _FORMULAS_FALLBACK: dict[str, dict[str, float]] = {
-    "Isosource Fibre 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068},
-    "Isosource Fibre 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.054},
-    "Isosource Fibre 1.0 HP": {"kcal_per_mL": 1.0, "protein_per_mL": 0.062},
-    "Nepro": {"kcal_per_mL": 1.8, "protein_per_mL": 0.081},
-    "Peptamen AF 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.076},
-    "Peptamen Intense High Protein": {"kcal_per_mL": 1.0, "protein_per_mL": 0.092},
-    "Resource 2.0": {"kcal_per_mL": 2.01, "protein_per_mL": 0.08},
-    "Peptamen 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068},
+    "Isosource Fibre 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068, "free_water_per_mL": 0.765},
+    "Isosource Fibre 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.054, "free_water_per_mL": 0.804},
+    "Isosource Fibre 1.0 HP": {"kcal_per_mL": 1.0, "protein_per_mL": 0.062, "free_water_per_mL": 0.839},
+    "Nepro": {"kcal_per_mL": 1.8, "protein_per_mL": 0.081, "free_water_per_mL": 0.727},
+    "Peptamen AF 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.076, "free_water_per_mL": 0.810},
+    "Peptamen Intense High Protein": {"kcal_per_mL": 1.0, "protein_per_mL": 0.092, "free_water_per_mL": 0.840},
+    "Resource 2.0": {"kcal_per_mL": 2.01, "protein_per_mL": 0.08, "free_water_per_mL": 0.684},
+    "Peptamen 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068, "free_water_per_mL": 0.770},
 }
 
 
 def _load_commercial_formulas() -> dict[str, dict[str, float]]:
     """Load commercial formulas from CSV, falling back to hardcoded dict.
 
-    CSV format: name,kcal_per_mL,protein_per_mL
+    CSV format: name,kcal_per_mL,protein_per_mL,free_water_per_mL,source,verified
+
+    free_water_per_mL (round-2 clinical feedback, Part 2.6) is the
+    formula's free-water content per mL, from the author's own EN
+    spreadsheet. It's OPTIONAL in the CSV — an RD adding a new formula
+    row without knowing this figure gets None here rather than a
+    fabricated number; callers (the comparator, the combined regimen
+    summary) must handle None (e.g. render "—" / skip the free-water
+    line) rather than treating it as 0, since 0 would falsely claim the
+    formula has zero free water.
     """
     if not _FORMULAS_CSV.exists():
         return dict(_FORMULAS_FALLBACK)
@@ -346,9 +355,13 @@ def _load_commercial_formulas() -> dict[str, dict[str, float]]:
     df = pd.read_csv(_FORMULAS_CSV)
     formulas: dict[str, dict[str, float]] = {}
     for _, row in df.iterrows():
+        free_water = row.get("free_water_per_mL")
         formulas[row["name"]] = {
             "kcal_per_mL": float(row["kcal_per_mL"]),
             "protein_per_mL": float(row["protein_per_mL"]),
+            "free_water_per_mL": (
+                float(free_water) if pd.notna(free_water) else None
+            ),
         }
     return formulas
 
