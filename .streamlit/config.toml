@@ -1,18 +1,12 @@
 # Streamlit theme for the BTF Calculator.
 #
-# Pinned to light on purpose — not just personal preference. The adequacy
-# table's status cells use pale backgrounds (see color_status() in
-# app/streamlit_app.py: pale red / amber / green). Streamlit's dark theme
-# renders text near-white, which on a pale pink cell is unreadable — and
-# that column is where the clinical meaning lives.
+# Deliberately NOT setting a [theme] block. Setting one — even just
+# `base = "light"` — replaces Streamlit's built-in Light/Dark/"Use system
+# setting" choice in the hamburger menu (☰ → Settings) with a single fixed
+# theme, removing the viewer's toggle. The author wants that toggle kept.
 #
-# Without this file, Streamlit follows each viewer's OS light/dark setting,
-# so the app would silently look broken for anyone whose Mac is in dark
-# mode. Pinning light makes it look the same for every RD, including on
-# Streamlit Community Cloud when this deploys.
-#
-# (color_status() also sets an explicit text colour, so the table stays
-# readable even if someone overrides this. Belt and braces.)
-
-[theme]
-base = "light"
+# The bug that originally motivated pinning light is fixed at the source
+# instead: the adequacy table's status cells (color_status() in
+# app/streamlit_app.py) set an explicit dark text colour on their pale
+# backgrounds, so the Status column stays readable in both Light and Dark
+# — no theme lock needed. See the comment there for details.
