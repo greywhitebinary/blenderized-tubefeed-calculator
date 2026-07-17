@@ -30,7 +30,7 @@ import streamlit as st
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.data_loader import load_food_name, load_nutrient_amount
+from src.data_loader import load_food_name, load_nutrient_amount, load_food_group
 from src.models import Ingredient, Recipe, Delivery, DeliveryMethod
 from src.calculator import (
     calculate_profile,
@@ -112,6 +112,11 @@ def get_measure_lookup():
     return load_measure_lookup()
 
 
+@st.cache_data
+def get_food_group():
+    return load_food_group()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -148,6 +153,43 @@ def init_state():
         st.session_state.next_ingr_id = 0
 
 
+def color_status(val: str) -> str:
+    """Color-code adequacy status cells.
+
+    "Above UL" and "Below target" are both concerning (red); "Below UL"
+    and "Meeting target" are both fine (green) — a UL is a ceiling, not
+    an aim, so "Below UL" reads as "fine" the same way "Meeting target"
+    does for an RDA/AI nutrient. See src/report.py::_adequacy_status.
+
+    Text colour is set explicitly alongside each pale background: without
+    it, a dark theme renders near-white text on pale pink and the status
+    becomes unreadable. This keeps the table legible whether the viewer
+    has the native Streamlit theme set to light or dark.
+    """
+    if val in ("Below target", "Above UL"):
+        return "background-color: #ffcccc; color: #1a1a1a"
+    elif val == "Above target":
+        return "background-color: #ffe0b2; color: #1a1a1a"
+    elif val in ("Meeting target", "Below UL"):
+        return "background-color: #c8e6c9; color: #1a1a1a"
+    return ""
+
+
+# Per-nutrient step sizes for the custom-target number_inputs in the
+# Patient, Delivery & Targets banner below — a UX nicety only (e.g. kcal
+# steps by 50, not 1). Nutrients not listed fall back to a step derived
+# from their registry `decimals`.
+_TARGET_STEP_OVERRIDES: dict[str, float] = {
+    "energy_kcal": 50.0,
+    "fluid_mL": 100.0,
+    "sodium_mg": 100.0,
+    "potassium_mg": 100.0,
+    "calcium_mg": 50.0,
+    "protein_g": 5.0,
+    "vitamin_b12_ug": 0.5,
+}
+
+
 # ---------------------------------------------------------------------------
 # Page configuration
 # ---------------------------------------------------------------------------
@@ -164,10 +206,15 @@ init_state()
 fn = get_food_name()
 na = get_nutrient_amount()
 lookup = get_measure_lookup()
+fg = get_food_group()
 
 
 # ===========================================================================
-# SIDEBAR — Inputs
+# SIDEBAR — chrome only: title, recipe name, load example.
+# Everything else (add-ingredient, blend details, delivery, targets) moved
+# out into the persistent banner and the Build tab below — see CONTEXT.md
+# §9 for why (the sidebar was doing double duty as both "global recipe
+# identity" and "the one place you add every ingredient").
 # ===========================================================================
 
 st.sidebar.title("🥣 BTF Calculator")
@@ -195,8 +242,129 @@ if st.sidebar.button("📋 Load example recipe"):
     else:
         st.sidebar.error("Could not find example foods in CNF.")
 
-# --- Add ingredient ---
-with st.sidebar.expander("➕ Add ingredient", expanded=True):
+st.title(f"🥣 {recipe_name or 'BTF Recipe'}")
+
+
+# ===========================================================================
+# Persistent "Patient, Delivery & Targets" banner — sits above the tabs, so
+# it's visible regardless of which tab is active (matches Compleat's
+# persistent "1800 Calories" strip). Bundles Delivery together with
+# Targets: both are patient-side, set-once, referenced-everywhere inputs,
+# and the daily volume the banner's one-line summary always shows comes
+# directly from Delivery. See the handoff plan Part 1 for the full
+# reasoning behind this placement call.
+# ===========================================================================
+
+with st.container(border=True):
+    st.subheader("Patient, Delivery & Targets")
+
+    with st.expander("Delivery & targets — set once, referenced throughout", expanded=False):
+        # --- Delivery ---
+        st.markdown("**Delivery**")
+        method_label = st.radio(
+            "Method",
+            ["Syringe bolus", "Pump", "Direct mL/day"],
+            label_visibility="collapsed",
+        )
+
+        if method_label == "Syringe bolus":
+            bolus_vol = st.number_input(
+                "Bolus volume (mL)", min_value=0.0, value=300.0, step=10.0
+            )
+            times_day = st.number_input(
+                "Times per day", min_value=0.0, value=4.0, step=1.0
+            )
+            delivery = Delivery(
+                method=DeliveryMethod.SYRINGE_BOLUS,
+                bolus_volume_mL=bolus_vol,
+                times_per_day=times_day,
+            )
+        elif method_label == "Pump":
+            rate = st.number_input(
+                "Rate (mL/hr)", min_value=0.0, value=100.0, step=10.0
+            )
+            hours = st.number_input(
+                "Hours per day", min_value=0.0, value=12.0, step=1.0
+            )
+            delivery = Delivery(
+                method=DeliveryMethod.PUMP,
+                rate_mL_per_hr=rate,
+                hours_per_day=hours,
+            )
+        else:
+            direct_vol = st.number_input(
+                "Daily volume (mL)", min_value=0.0, value=1200.0, step=50.0
+            )
+            delivery = Delivery(
+                method=DeliveryMethod.DIRECT,
+                daily_volume_mL=direct_vol,
+            )
+
+        daily_vol = daily_volume_from_delivery(delivery)
+
+        # --- Targets (optional) ---
+        st.markdown("**Targets (optional)**")
+        use_defaults = st.checkbox(
+            "Use default DRI adult targets", value=True
+        )
+
+        if use_defaults:
+            targets = default_targets()
+        else:
+            targets = empty_targets()
+            st.caption("Enter patient-specific targets (0 = no target):")
+            tc1, tc2 = st.columns(2)
+            cols = (tc1, tc2)
+            # Generated from the registry: iterate every nutrient that HAS a
+            # target in data/packs/canada/targets.csv (default_targets()' keys,
+            # in CSV row order), not a hardcoded field list. "fluid_mL" isn't a
+            # CNF nutrient (it's the target for the derived Free water row), so
+            # it gets a hand-written label/unit; everything else reads its
+            # label/unit straight off the registry.
+            _registry_map = registry_by_name(DEFAULT_PACK)
+            for i, nutrient_name in enumerate(default_targets()):
+                col = cols[i % 2]
+                if nutrient_name == "fluid_mL":
+                    disp_label, unit, decimals = "Fluid", "mL", 0
+                else:
+                    d = _registry_map[nutrient_name]
+                    disp_label, unit, decimals = d.label, d.unit, d.decimals
+                step = _TARGET_STEP_OVERRIDES.get(
+                    nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
+                )
+                targets[nutrient_name] = col.number_input(
+                    f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step
+                )
+
+    # Always-visible one-line summary, rendered OUTSIDE the expander above so
+    # it's visible whether that detail is expanded or collapsed — the "1800
+    # Calories" strip is set once, glanced at constantly, rarely touched.
+    _summary_bits = [f"Daily volume: {daily_vol:.0f} mL/day"]
+    if targets.get("energy_kcal", 0.0) > 0:
+        _summary_bits.append(f"{targets['energy_kcal']:.0f} kcal")
+    if targets.get("protein_g", 0.0) > 0:
+        _summary_bits.append(f"{targets['protein_g']:.0f} g protein")
+    if targets.get("fluid_mL", 0.0) > 0:
+        _summary_bits.append(f"{targets['fluid_mL']:.0f} mL fluid")
+    st.caption("**" + "  |  ".join(_summary_bits) + "**")
+
+
+# ===========================================================================
+# Build / Results tabs
+# ===========================================================================
+# Both tabs must always render their shell correctly, even on a fresh/empty
+# recipe — that's why the old global `st.stop()` calls (empty ingredients /
+# measured_volume <= 0) are gone. `st.stop()` halts the ENTIRE script run,
+# which would have broken tab rendering (tabs are still linear script
+# execution under the hood): once inside the Build tab, `st.stop()` would
+# have prevented the Results tab from ever rendering its own shell. Each
+# guard below is now tab-local — it only skips content inside that tab.
+
+build_tab, results_tab = st.tabs(["🔨 Build", "📊 Results"])
+
+with build_tab:
+    # --- Add ingredient ---
+    st.subheader("Add ingredient")
     add_mode = st.radio(
         "Source",
         ["CNF search", "Custom food (label)"],
@@ -204,7 +372,23 @@ with st.sidebar.expander("➕ Add ingredient", expanded=True):
     )
 
     if add_mode == "CNF search":
-        search_term = st.text_input(
+        # Food-group filter: CNF's own 23 native CNF_Food_Group categories
+        # (already in Food_Name.csv as CNF_Food_Group_Code) — narrows the
+        # search pool *before* the existing substring search below, same
+        # regex=False behavior as before, just pre-narrowed by group.
+        group_options = ["All"] + sorted(
+            fg["CNF_Food_Group_Description_EN"].tolist()
+        )
+        group_code_by_desc = dict(
+            zip(fg["CNF_Food_Group_Description_EN"], fg["CNF_Food_Group_Code"])
+        )
+        group_desc_by_code = dict(
+            zip(fg["CNF_Food_Group_Code"], fg["CNF_Food_Group_Description_EN"])
+        )
+
+        gc1, gc2 = st.columns([1, 2])
+        selected_group = gc1.selectbox("Food group", group_options)
+        search_term = gc2.text_input(
             "Search foods",
             "",
             placeholder="e.g., chicken, rice, oil",
@@ -214,8 +398,14 @@ with st.sidebar.expander("➕ Add ingredient", expanded=True):
         food_desc: str | None = None
         calculated_grams = 0.0
 
+        search_pool = fn
+        if selected_group != "All":
+            search_pool = fn[
+                fn["CNF_Food_Group_Code"] == group_code_by_desc[selected_group]
+            ]
+
         if len(search_term) >= 2:
-            matches = fn[fn["Food_Description_EN"].str.contains(
+            matches = search_pool[search_pool["Food_Description_EN"].str.contains(
                 search_term, case=False, na=False, regex=False
             )]
             matches = matches.sort_values("Food_Description_EN").head(50)
@@ -231,6 +421,12 @@ with st.sidebar.expander("➕ Add ingredient", expanded=True):
                 idx = food_options.index(selected)
                 food_code = int(matches.iloc[idx]["Food_Code"])
                 food_desc = str(matches.iloc[idx]["Food_Description_EN"])
+                # Orientation caption — which CNF group this result belongs
+                # to, useful even when "All" is selected.
+                _sel_group_code = matches.iloc[idx].get("CNF_Food_Group_Code")
+                _sel_group_desc = group_desc_by_code.get(_sel_group_code)
+                if _sel_group_desc:
+                    st.caption(f"Food group: {_sel_group_desc}")
 
                 # Household measure dropdown
                 measures = get_measures_for_food(food_code, lookup)
@@ -331,421 +527,306 @@ with st.sidebar.expander("➕ Add ingredient", expanded=True):
                 })
                 st.rerun()
 
-# --- Blend details ---
-st.sidebar.subheader("Blend details")
-# Check if example recipe was loaded (flag set by the button above)
-_example_loaded = st.session_state.pop("load_example", False)
-if _example_loaded:
-    st.session_state.pop("sb_added_water", None)
-    st.session_state.pop("sb_measured_volume", None)
+    # --- Blend details ---
+    st.subheader("Blend details")
+    # Check if example recipe was loaded (flag set by the sidebar button
+    # above). Must pop before the two number_inputs below render, so their
+    # `value=` argument actually takes effect on this rerun.
+    _example_loaded = st.session_state.pop("load_example", False)
+    if _example_loaded:
+        st.session_state.pop("sb_added_water", None)
+        st.session_state.pop("sb_measured_volume", None)
 
-added_water = st.sidebar.number_input(
-    "Added water (mL)",
-    min_value=0.0,
-    value=200.0 if _example_loaded else 0.0,
-    step=10.0,
-    key="sb_added_water",
-)
-measured_volume = st.sidebar.number_input(
-    "**Measured final volume (mL)**",
-    min_value=0.0,
-    value=550.0 if _example_loaded else 0.0,
-    step=10.0,
-    help="The volume you measured after blending — this is the denominator for all densities.",
-    key="sb_measured_volume",
-)
-
-# --- Delivery ---
-st.sidebar.subheader("Delivery")
-method_label = st.sidebar.radio(
-    "Method",
-    ["Syringe bolus", "Pump", "Direct mL/day"],
-    label_visibility="collapsed",
-)
-
-if method_label == "Syringe bolus":
-    bolus_vol = st.sidebar.number_input(
-        "Bolus volume (mL)", min_value=0.0, value=300.0, step=10.0
-    )
-    times_day = st.sidebar.number_input(
-        "Times per day", min_value=0.0, value=4.0, step=1.0
-    )
-    delivery = Delivery(
-        method=DeliveryMethod.SYRINGE_BOLUS,
-        bolus_volume_mL=bolus_vol,
-        times_per_day=times_day,
-    )
-elif method_label == "Pump":
-    rate = st.sidebar.number_input(
-        "Rate (mL/hr)", min_value=0.0, value=100.0, step=10.0
-    )
-    hours = st.sidebar.number_input(
-        "Hours per day", min_value=0.0, value=12.0, step=1.0
-    )
-    delivery = Delivery(
-        method=DeliveryMethod.PUMP,
-        rate_mL_per_hr=rate,
-        hours_per_day=hours,
-    )
-else:
-    direct_vol = st.sidebar.number_input(
-        "Daily volume (mL)", min_value=0.0, value=1200.0, step=50.0
-    )
-    delivery = Delivery(
-        method=DeliveryMethod.DIRECT,
-        daily_volume_mL=direct_vol,
-    )
-
-daily_vol = daily_volume_from_delivery(delivery)
-st.sidebar.caption(f"**Daily volume: {daily_vol:.0f} mL/day**")
-
-# --- Targets (optional) ---
-st.sidebar.subheader("Targets (optional)")
-use_defaults = st.sidebar.checkbox(
-    "Use default DRI adult targets", value=True
-)
-
-# Per-nutrient step sizes for the custom-target number_inputs below —
-# a UX nicety only (e.g. kcal steps by 50, not 1). Nutrients not listed
-# fall back to a step derived from their registry `decimals`.
-_TARGET_STEP_OVERRIDES: dict[str, float] = {
-    "energy_kcal": 50.0,
-    "fluid_mL": 100.0,
-    "sodium_mg": 100.0,
-    "potassium_mg": 100.0,
-    "calcium_mg": 50.0,
-    "protein_g": 5.0,
-    "vitamin_b12_ug": 0.5,
-}
-
-if use_defaults:
-    targets = default_targets()
-else:
-    targets = empty_targets()
-    st.sidebar.caption("Enter patient-specific targets (0 = no target):")
-    tc1, tc2 = st.sidebar.columns(2)
-    cols = (tc1, tc2)
-    # Generated from the registry: iterate every nutrient that HAS a
-    # target in data/packs/canada/targets.csv (default_targets()' keys,
-    # in CSV row order), not a hardcoded field list. "fluid_mL" isn't a
-    # CNF nutrient (it's the target for the derived Free water row), so
-    # it gets a hand-written label/unit; everything else reads its
-    # label/unit straight off the registry.
-    _registry_map = registry_by_name(DEFAULT_PACK)
-    for i, nutrient_name in enumerate(default_targets()):
-        col = cols[i % 2]
-        if nutrient_name == "fluid_mL":
-            disp_label, unit, decimals = "Fluid", "mL", 0
-        else:
-            d = _registry_map[nutrient_name]
-            disp_label, unit, decimals = d.label, d.unit, d.decimals
-        step = _TARGET_STEP_OVERRIDES.get(
-            nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
-        )
-        targets[nutrient_name] = col.number_input(
-            f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step
-        )
-
-
-# ===========================================================================
-# MAIN AREA — Ingredient table + Results
-# ===========================================================================
-
-st.title(f"🥣 {recipe_name or 'BTF Recipe'}")
-
-# --- Ingredient table ---
-st.subheader("Ingredients")
-
-if not st.session_state.ingredients:
-    st.info("👈 Add ingredients using the sidebar to get started.")
-    st.stop()
-
-# Display each ingredient with editable grams and a remove button
-for i, ing in enumerate(st.session_state.ingredients):
-    cols = st.columns([5, 2, 1])
-    cols[0].write(f"{i + 1}. {ing['food_description']}")
-    new_grams = cols[1].number_input(
-        f"Grams for {ing['food_description']}",
-        value=float(ing["grams"]),
+    added_water = st.number_input(
+        "Added water (mL)",
         min_value=0.0,
-        step=1.0,
-        key=f"grams_{ing['id']}",
-        label_visibility="collapsed",
+        value=200.0 if _example_loaded else 0.0,
+        step=10.0,
+        key="sb_added_water",
     )
-    st.session_state.ingredients[i]["grams"] = new_grams
-    if cols[2].button("❌", key=f"del_{ing['id']}"):
-        st.session_state.ingredients.pop(i)
-        st.rerun()
-
-total_grams = sum(ing["grams"] for ing in st.session_state.ingredients)
-st.caption(f"Total ingredient weight: **{total_grams:.0f} g** + {added_water:.0f} mL water")
-
-if st.button("🗑️ Clear all ingredients"):
-    st.session_state.ingredients = []
-    st.session_state.custom_foods = {}
-    st.session_state.next_custom_code = -1
-    st.rerun()
-
-# --- Build recipe and calculate profile ---
-if measured_volume <= 0:
-    st.warning("⚠️ Enter a measured final volume in the sidebar to see results.")
-    st.stop()
-
-recipe = Recipe(
-    name=recipe_name,
-    ingredients=[
-        Ingredient(
-            food_code=ing["food_code"],
-            food_description=ing["food_description"],
-            grams=ing["grams"],
-        )
-        for ing in st.session_state.ingredients
-    ],
-    added_water_mL=added_water,
-    measured_final_volume_mL=measured_volume,
-)
-
-profile = calculate_profile(recipe, na, custom_foods=st.session_state.custom_foods)
-
-# --- Density panel ---
-st.subheader("Density Panel")
-st.caption("Per-mL is the primary lens — patient tolerates limited mL/day.")
-
-d1, d2, d3, d4 = st.columns(4)
-d1.metric("Energy density", f"{profile.kcal_per_mL:.3f}", "kcal/mL")
-d2.metric("Protein density", f"{profile.protein_per_mL:.3f}", "g/mL")
-d3.metric("Free-water fraction", f"{profile.free_water_fraction:.3f}")
-d4.metric("Measured volume", f"{profile.measured_final_volume_mL:.0f} mL")
-
-with st.expander("Full density summary"):
-    st.dataframe(
-        generate_density_summary(profile),
-        width="stretch",
-        hide_index=True,
+    measured_volume = st.number_input(
+        "**Measured final volume (mL)**",
+        min_value=0.0,
+        value=550.0 if _example_loaded else 0.0,
+        step=10.0,
+        help="The volume you measured after blending — this is the denominator for all densities.",
+        key="sb_measured_volume",
     )
 
-# --- Daily totals + adequacy report ---
-st.subheader("Daily Totals & Adequacy")
-st.caption(f"At **{daily_vol:.0f} mL/day** delivery")
+    # --- Ingredient table ---
+    st.subheader("Ingredients")
 
-adequacy_df = generate_adequacy_report(profile, daily_vol, targets)
-
-# The report uses "—" (string) for missing targets alongside floats, which
-# breaks Arrow serialization in st.dataframe. Convert mixed columns to str.
-adequacy_display = adequacy_df.copy()
-adequacy_display["Target"] = adequacy_display["Target"].astype(str)
-adequacy_display["% Target"] = adequacy_display["% Target"].astype(str)
-
-
-def color_status(val: str) -> str:
-    """Color-code adequacy status cells.
-
-    "Above UL" and "Below target" are both concerning (red); "Below UL"
-    and "Meeting target" are both fine (green) — a UL is a ceiling, not
-    an aim, so "Below UL" reads as "fine" the same way "Meeting target"
-    does for an RDA/AI nutrient. See src/report.py::_adequacy_status.
-
-    Text colour is set explicitly alongside each pale background: without
-    it, a dark theme renders near-white text on pale pink and the status
-    becomes unreadable. .streamlit/config.toml pins the light theme, and
-    this keeps the table legible even if that's overridden.
-    """
-    if val in ("Below target", "Above UL"):
-        return "background-color: #ffcccc; color: #1a1a1a"
-    elif val == "Above target":
-        return "background-color: #ffe0b2; color: #1a1a1a"
-    elif val in ("Meeting target", "Below UL"):
-        return "background-color: #c8e6c9; color: #1a1a1a"
-    return ""
-
-
-st.dataframe(
-    adequacy_display.style.map(color_status, subset=["Status"]),
-    width="stretch",
-    hide_index=True,
-)
-
-with st.expander("BTF micro screen — vitamins & minerals not on labels"):
-    st.caption(
-        "A one-time supplementation screen (ASPEN-style: \"does this blend "
-        "need a multivitamin?\"), not a daily-tracked panel like the table "
-        "above. These nutrients aren't on a Canadian nutrition facts label "
-        "(Source column), so a custom food entered from a label always "
-        "contributes zero here. CNF coverage is also partial for some of "
-        "them — vitamin D is present for only ~88% of foods — so a low "
-        "number may reflect missing CNF data rather than missing nutrition."
-    )
-    clinical_df = generate_clinical_screen(profile, daily_vol, targets)
-    clinical_display = clinical_df.copy()
-    clinical_display["Target"] = clinical_display["Target"].astype(str)
-    clinical_display["% Target"] = clinical_display["% Target"].astype(str)
-    st.dataframe(
-        clinical_display.style.map(color_status, subset=["Status"]),
-        width="stretch",
-        hide_index=True,
-    )
-
-# --- Dilution what-if ---
-st.subheader("Dilution What-If")
-st.caption("The core feature: see what a thinning decision *costs*.")
-
-w1, w2 = st.columns([1, 2])
-
-with w1:
-    liquid_type = st.selectbox(
-        "Thinning liquid", list(THINNING_LIQUIDS.keys())
-    )
-    added_mL = st.slider("Add liquid (mL)", 0, 500, 0, step=10)
-
-    preset = THINNING_LIQUIDS[liquid_type]
-    if liquid_type == "Custom" and added_mL > 0:
-        cc1, cc2, cc3 = st.columns(3)
-        liq_kcal = cc1.number_input("kcal", min_value=0.0, value=0.0, step=1.0)
-        liq_protein = cc2.number_input(
-            "Protein (g)", min_value=0.0, value=0.0, step=0.1
-        )
-        liq_water = cc3.number_input(
-            "Water (g)", min_value=0.0, value=float(added_mL), step=1.0
-        )
+    if not st.session_state.ingredients:
+        st.info("Add ingredients above to get started.")
     else:
-        scale = added_mL / 100.0
-        liq_kcal = preset["kcal"] * scale
-        liq_protein = preset["protein_g"] * scale
-        liq_water = preset["water_g"] * scale
-        if added_mL > 0:
+        # Display each ingredient with editable grams and a remove button
+        for i, ing in enumerate(st.session_state.ingredients):
+            cols = st.columns([5, 2, 1])
+            cols[0].write(f"{i + 1}. {ing['food_description']}")
+            new_grams = cols[1].number_input(
+                f"Grams for {ing['food_description']}",
+                value=float(ing["grams"]),
+                min_value=0.0,
+                step=1.0,
+                key=f"grams_{ing['id']}",
+                label_visibility="collapsed",
+            )
+            st.session_state.ingredients[i]["grams"] = new_grams
+            if cols[2].button("❌", key=f"del_{ing['id']}"):
+                st.session_state.ingredients.pop(i)
+                st.rerun()
+
+        total_grams = sum(ing["grams"] for ing in st.session_state.ingredients)
+        st.caption(f"Total ingredient weight: **{total_grams:.0f} g** + {added_water:.0f} mL water")
+
+        if st.button("🗑️ Clear all ingredients"):
+            st.session_state.ingredients = []
+            st.session_state.custom_foods = {}
+            st.session_state.next_custom_code = -1
+            st.rerun()
+
+
+with results_tab:
+    if not st.session_state.ingredients:
+        st.info("Add ingredients in the Build tab to see results.")
+    elif measured_volume <= 0:
+        st.warning("⚠️ Enter a measured final volume in the Build tab to see results.")
+    else:
+        # --- Build recipe and calculate profile ---
+        recipe = Recipe(
+            name=recipe_name,
+            ingredients=[
+                Ingredient(
+                    food_code=ing["food_code"],
+                    food_description=ing["food_description"],
+                    grams=ing["grams"],
+                )
+                for ing in st.session_state.ingredients
+            ],
+            added_water_mL=added_water,
+            measured_final_volume_mL=measured_volume,
+        )
+
+        profile = calculate_profile(recipe, na, custom_foods=st.session_state.custom_foods)
+
+        # --- Density panel ---
+        st.subheader("Density Panel")
+        st.caption("Per-mL is the primary lens — patient tolerates limited mL/day.")
+
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Energy density", f"{profile.kcal_per_mL:.3f}", "kcal/mL")
+        d2.metric("Protein density", f"{profile.protein_per_mL:.3f}", "g/mL")
+        d3.metric("Free-water fraction", f"{profile.free_water_fraction:.3f}")
+        d4.metric("Measured volume", f"{profile.measured_final_volume_mL:.0f} mL")
+
+        with st.expander("Full density summary"):
+            st.dataframe(
+                generate_density_summary(profile),
+                width="stretch",
+                hide_index=True,
+            )
+
+        # --- Daily totals + adequacy report ---
+        st.subheader("Daily Totals & Adequacy")
+        st.caption(f"At **{daily_vol:.0f} mL/day** delivery")
+
+        adequacy_df = generate_adequacy_report(profile, daily_vol, targets)
+
+        # The report uses "—" (string) for missing targets alongside floats,
+        # which breaks Arrow serialization in st.dataframe. Convert mixed
+        # columns to str.
+        adequacy_display = adequacy_df.copy()
+        adequacy_display["Target"] = adequacy_display["Target"].astype(str)
+        adequacy_display["% Target"] = adequacy_display["% Target"].astype(str)
+
+        st.dataframe(
+            adequacy_display.style.map(color_status, subset=["Status"]),
+            width="stretch",
+            hide_index=True,
+        )
+
+        with st.expander("BTF micro screen — vitamins & minerals not on labels"):
             st.caption(
-                f"Adding {liq_kcal:.0f} kcal, "
-                f"{liq_protein:.1f} g protein, "
-                f"{liq_water:.0f} g water"
+                "A one-time supplementation screen (ASPEN-style: \"does this blend "
+                "need a multivitamin?\"), not a daily-tracked panel like the table "
+                "above. These nutrients aren't on a Canadian nutrition facts label "
+                "(Source column), so a custom food entered from a label always "
+                "contributes zero here. CNF coverage is also partial for some of "
+                "them — vitamin D is present for only ~88% of foods — so a low "
+                "number may reflect missing CNF data rather than missing nutrition."
+            )
+            clinical_df = generate_clinical_screen(profile, daily_vol, targets)
+            clinical_display = clinical_df.copy()
+            clinical_display["Target"] = clinical_display["Target"].astype(str)
+            clinical_display["% Target"] = clinical_display["% Target"].astype(str)
+            st.dataframe(
+                clinical_display.style.map(color_status, subset=["Status"]),
+                width="stretch",
+                hide_index=True,
             )
 
-with w2:
-    if added_mL > 0:
-        diluted = dilute(
-            profile, added_mL, liq_kcal, liq_protein, liq_water
-        )
+        # --- Dilution what-if ---
+        st.subheader("Dilution What-If")
+        st.caption("The core feature: see what a thinning decision *costs*.")
 
-        dil_df = pd.DataFrame(
-            [
-                {
-                    "Metric": "Volume (mL)",
-                    "Original": profile.measured_final_volume_mL,
-                    "After dilution": diluted.measured_final_volume_mL,
-                },
-                {
-                    "Metric": "kcal/mL",
-                    "Original": round(profile.kcal_per_mL, 3),
-                    "After dilution": round(diluted.kcal_per_mL, 3),
-                },
-                {
-                    "Metric": "protein g/mL",
-                    "Original": round(profile.protein_per_mL, 3),
-                    "After dilution": round(diluted.protein_per_mL, 3),
-                },
-                {
-                    "Metric": "free water fraction",
-                    "Original": round(profile.free_water_fraction, 3),
-                    "After dilution": round(diluted.free_water_fraction, 3),
-                },
-            ]
-        )
-        dil_df["Change"] = dil_df["After dilution"] - dil_df["Original"]
-        st.dataframe(dil_df, width="stretch", hide_index=True)
+        w1, w2 = st.columns([1, 2])
 
-        # Required daily volume to meet targets
-        tk = targets.get("energy_kcal", 0.0)
-        tp = targets.get("protein_g", 0.0)
-        if tk > 0 and tp > 0:
-            ro = required_daily_volume(profile, tk, tp)
-            rd = required_daily_volume(diluted, tk, tp)
-            st.info(
-                f"Required daily volume to meet {tk:.0f} kcal + {tp:.0f} g protein:  \n"
-                f"**{ro:.0f} mL** → **{rd:.0f} mL** after dilution "
-                f"(+{rd - ro:.0f} mL)"
+        with w1:
+            liquid_type = st.selectbox(
+                "Thinning liquid", list(THINNING_LIQUIDS.keys())
             )
-    else:
-        st.caption("Slide the slider to see the effect of adding thinning liquid.")
+            added_mL = st.slider("Add liquid (mL)", 0, 500, 0, step=10)
 
-# --- Commercial formula comparator ---
-st.subheader("Commercial Formula Comparator")
+            preset = THINNING_LIQUIDS[liquid_type]
+            if liquid_type == "Custom" and added_mL > 0:
+                cc1, cc2, cc3 = st.columns(3)
+                liq_kcal = cc1.number_input("kcal", min_value=0.0, value=0.0, step=1.0)
+                liq_protein = cc2.number_input(
+                    "Protein (g)", min_value=0.0, value=0.0, step=0.1
+                )
+                liq_water = cc3.number_input(
+                    "Water (g)", min_value=0.0, value=float(added_mL), step=1.0
+                )
+            else:
+                scale = added_mL / 100.0
+                liq_kcal = preset["kcal"] * scale
+                liq_protein = preset["protein_g"] * scale
+                liq_water = preset["water_g"] * scale
+                if added_mL > 0:
+                    st.caption(
+                        f"Adding {liq_kcal:.0f} kcal, "
+                        f"{liq_protein:.1f} g protein, "
+                        f"{liq_water:.0f} g water"
+                    )
 
-f1, f2 = st.columns([1, 3])
-formula_name = f1.selectbox("Formula", list(COMMERCIAL_FORMULAS.keys()))
+        with w2:
+            if added_mL > 0:
+                diluted = dilute(
+                    profile, added_mL, liq_kcal, liq_protein, liq_water
+                )
 
-if daily_vol > 0:
-    f2.dataframe(
-        generate_formula_comparison(profile, formula_name, daily_vol),
-        width="stretch",
-        hide_index=True,
-    )
-else:
-    f2.info("Set a delivery method in the sidebar to see comparison.")
+                dil_df = pd.DataFrame(
+                    [
+                        {
+                            "Metric": "Volume (mL)",
+                            "Original": profile.measured_final_volume_mL,
+                            "After dilution": diluted.measured_final_volume_mL,
+                        },
+                        {
+                            "Metric": "kcal/mL",
+                            "Original": round(profile.kcal_per_mL, 3),
+                            "After dilution": round(diluted.kcal_per_mL, 3),
+                        },
+                        {
+                            "Metric": "protein g/mL",
+                            "Original": round(profile.protein_per_mL, 3),
+                            "After dilution": round(diluted.protein_per_mL, 3),
+                        },
+                        {
+                            "Metric": "free water fraction",
+                            "Original": round(profile.free_water_fraction, 3),
+                            "After dilution": round(diluted.free_water_fraction, 3),
+                        },
+                    ]
+                )
+                dil_df["Change"] = dil_df["After dilution"] - dil_df["Original"]
+                st.dataframe(dil_df, width="stretch", hide_index=True)
 
-# --- Export to Excel ---
-st.subheader("Export")
+                # Required daily volume to meet targets
+                tk = targets.get("energy_kcal", 0.0)
+                tp = targets.get("protein_g", 0.0)
+                if tk > 0 and tp > 0:
+                    ro = required_daily_volume(profile, tk, tp)
+                    rd = required_daily_volume(diluted, tk, tp)
+                    st.info(
+                        f"Required daily volume to meet {tk:.0f} kcal + {tp:.0f} g protein:  \n"
+                        f"**{ro:.0f} mL** → **{rd:.0f} mL** after dilution "
+                        f"(+{rd - ro:.0f} mL)"
+                    )
+            else:
+                st.caption("Slide the slider to see the effect of adding thinning liquid.")
 
-output = io.BytesIO()
-with pd.ExcelWriter(output, engine="openpyxl") as writer:
-    # Recipe info sheet
-    pd.DataFrame(
-        {
-            "Field": [
-                "Recipe name",
-                "Ingredients",
-                "Added water (mL)",
-                "Measured volume (mL)",
-                "Delivery method",
-                "Daily volume (mL)",
-            ],
-            "Value": [
-                recipe.name,
-                len(recipe.ingredients),
-                recipe.added_water_mL,
-                recipe.measured_final_volume_mL,
-                method_label,
-                daily_vol,
-            ],
-        }
-    ).to_excel(writer, sheet_name="Recipe", index=False)
+        # --- Commercial formula comparator ---
+        st.subheader("Commercial Formula Comparator")
 
-    # Ingredient list
-    if st.session_state.ingredients:
-        pd.DataFrame(st.session_state.ingredients)[
-            ["food_description", "grams"]
-        ].to_excel(writer, sheet_name="Ingredients", index=False)
-    else:
-        pd.DataFrame(
-            {"food_description": [], "grams": []}
-        ).to_excel(writer, sheet_name="Ingredients", index=False)
+        f1, f2 = st.columns([1, 3])
+        formula_name = f1.selectbox("Formula", list(COMMERCIAL_FORMULAS.keys()))
 
-    # Density summary
-    generate_density_summary(profile).to_excel(
-        writer, sheet_name="Density", index=False
-    )
+        if daily_vol > 0:
+            f2.dataframe(
+                generate_formula_comparison(profile, formula_name, daily_vol),
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            f2.info("Set a delivery method in the banner above to see comparison.")
 
-    # Adequacy report (tier="label" nutrients + Free water)
-    generate_adequacy_report(profile, daily_vol, targets).to_excel(
-        writer, sheet_name="Adequacy", index=False
-    )
+        # --- Export to Excel ---
+        st.subheader("Export")
 
-    # BTF micro screen (tier="clinical" nutrients — one-time ASPEN-style
-    # supplementation screen, not on any Canadian label; see the
-    # "BTF micro screen" expander in the app for the full caveat).
-    generate_clinical_screen(profile, daily_vol, targets).to_excel(
-        writer, sheet_name="Micro Screen", index=False
-    )
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            # Recipe info sheet
+            pd.DataFrame(
+                {
+                    "Field": [
+                        "Recipe name",
+                        "Ingredients",
+                        "Added water (mL)",
+                        "Measured volume (mL)",
+                        "Delivery method",
+                        "Daily volume (mL)",
+                    ],
+                    "Value": [
+                        recipe.name,
+                        len(recipe.ingredients),
+                        recipe.added_water_mL,
+                        recipe.measured_final_volume_mL,
+                        method_label,
+                        daily_vol,
+                    ],
+                }
+            ).to_excel(writer, sheet_name="Recipe", index=False)
 
-    # Formula comparison
-    generate_formula_comparison(
-        profile, formula_name, daily_vol
-    ).to_excel(writer, sheet_name="Formula Comparison", index=False)
+            # Ingredient list
+            if st.session_state.ingredients:
+                pd.DataFrame(st.session_state.ingredients)[
+                    ["food_description", "grams"]
+                ].to_excel(writer, sheet_name="Ingredients", index=False)
+            else:
+                pd.DataFrame(
+                    {"food_description": [], "grams": []}
+                ).to_excel(writer, sheet_name="Ingredients", index=False)
 
-st.download_button(
-    label="📥 Export to Excel",
-    data=output.getvalue(),
-    file_name=f"{sanitize_filename(recipe.name)}_report.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
+            # Density summary
+            generate_density_summary(profile).to_excel(
+                writer, sheet_name="Density", index=False
+            )
+
+            # Adequacy report (tier="label" nutrients + Free water)
+            generate_adequacy_report(profile, daily_vol, targets).to_excel(
+                writer, sheet_name="Adequacy", index=False
+            )
+
+            # BTF micro screen (tier="clinical" nutrients — one-time ASPEN-style
+            # supplementation screen, not on any Canadian label; see the
+            # "BTF micro screen" expander in the app for the full caveat).
+            generate_clinical_screen(profile, daily_vol, targets).to_excel(
+                writer, sheet_name="Micro Screen", index=False
+            )
+
+            # Formula comparison
+            generate_formula_comparison(
+                profile, formula_name, daily_vol
+            ).to_excel(writer, sheet_name="Formula Comparison", index=False)
+
+        st.download_button(
+            label="📥 Export to Excel",
+            data=output.getvalue(),
+            file_name=f"{sanitize_filename(recipe.name)}_report.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
 
 # --- Footer ---
 st.divider()
