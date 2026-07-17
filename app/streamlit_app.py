@@ -21,6 +21,7 @@ Design commitments (from CONTEXT.md §1):
 import io
 import re
 import sys
+from datetime import time as dtime
 from pathlib import Path
 
 import pandas as pd
@@ -190,6 +191,70 @@ _TARGET_STEP_OVERRIDES: dict[str, float] = {
 }
 
 
+def render_schedule_editor(
+    state_key: str,
+    default_rows: list[dict],
+    volume_label: str = "Volume (mL)",
+) -> tuple[pd.DataFrame, float]:
+    """Render an editable (time, volume) schedule table — used for both the
+    syringe bolus schedule and the water-flush schedule (Part 2.5 of the
+    round-2 clinical feedback plan: "same schedule-row pattern").
+
+    Uses st.data_editor with num_rows="dynamic" so the RD can add/remove
+    rows inline (no manual add/remove-button plumbing needed). The
+    DataFrame is persisted in st.session_state[state_key] (a KEY DIFFERENT
+    from the widget's own `key=` — never let a widget's key collide with
+    the session_state key you also assign into, or Streamlit raises a
+    "cannot be modified" warning) so the schedule survives reruns.
+
+    Args:
+        state_key:     session_state key to persist the schedule under.
+        default_rows:  seed rows, e.g. [{"time": dtime(8, 0), "volume_mL": 300.0}, ...],
+                        used only the first time this key is seen.
+        volume_label:  column header for the volume column (schedules used
+                        for different things — bolus feeds vs. flushes —
+                        read better with different labels).
+
+    Returns:
+        (edited DataFrame, total of the volume_mL column).
+    """
+    if state_key not in st.session_state:
+        st.session_state[state_key] = pd.DataFrame(default_rows)
+
+    edited = st.data_editor(
+        st.session_state[state_key],
+        num_rows="dynamic",
+        key=f"{state_key}_editor",
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "time": st.column_config.TimeColumn("Time", format="HH:mm", required=True),
+            "volume_mL": st.column_config.NumberColumn(
+                volume_label, min_value=0.0, step=10.0, required=True
+            ),
+        },
+    )
+    st.session_state[state_key] = edited
+    total = float(edited["volume_mL"].fillna(0.0).sum()) if len(edited) else 0.0
+    return edited, total
+
+
+def format_schedule_for_note(schedule_df: pd.DataFrame) -> str:
+    """Render a schedule DataFrame as 'HHMM vol mL, HHMM vol mL, ...' — the
+    chart-note format from the round-2 plan's example (Part 3): "0800 300
+    mL, 1200 400 mL, ...". Rows with a missing time or volume are skipped
+    (a mid-edit blank row from num_rows="dynamic" shouldn't crash the note).
+    """
+    bits = []
+    for _, row in schedule_df.iterrows():
+        t, v = row.get("time"), row.get("volume_mL")
+        if pd.isna(t) or pd.isna(v):
+            continue
+        t_str = t.strftime("%H%M") if hasattr(t, "strftime") else str(t)
+        bits.append(f"{t_str} {v:.0f} mL")
+    return ", ".join(bits)
+
+
 # ---------------------------------------------------------------------------
 # Page configuration
 # ---------------------------------------------------------------------------
@@ -265,48 +330,87 @@ with st.container(border=True):
     st.subheader("Patient, Delivery & Targets")
 
     with st.expander("Delivery & targets — set once, referenced throughout", expanded=False):
+        # --- Patient weight (optional, DISPLAY ONLY) ---
+        # Round-2 clinical feedback, Part 0 #3: no assessment features here
+        # beyond this one field. Weight drives per-kg DISPLAY rows in the
+        # Results tab (kcal/kg, protein g/kg, fluid mL/kg) — never a
+        # target, never an equation, never IBW. Assessment stays out of
+        # this app; the RD brings targets, this just divides by a number.
+        st.markdown("**Patient weight (optional)**")
+        patient_weight_kg = st.number_input(
+            "Weight (kg)",
+            min_value=0.0,
+            value=0.0,
+            step=0.5,
+            help="Optional — used only to show kcal/kg, protein g/kg, and "
+                 "fluid mL/kg in the Results tab. No target, equation, or "
+                 "IBW is computed from it; assessment stays outside this app.",
+        )
+        st.caption("Blank/0 = not provided. Display only — not a target.")
+
         # --- Delivery ---
+        # Round-2 clinical feedback, Part 0 #4 / Part 2.5: pump delivery is
+        # removed from the UI (AHS: almost never used for BTF) — the PUMP
+        # enum stays in src/models.py unused, per Part 4's "don't touch
+        # models.py". Syringe bolus becomes an editable schedule (time +
+        # volume rows) instead of a single bolus-volume x times/day pair,
+        # so the schedule itself can drive the chart note and Excel export.
+        # "Direct mL/day" is renamed "Total feed volume per day". Both
+        # paths construct Delivery(method=DIRECT, daily_volume_mL=...)
+        # under the hood — the schedule is UI/documentation data on top,
+        # not a different calculation path (Part 2.5).
         st.markdown("**Delivery**")
         method_label = st.radio(
             "Method",
-            ["Syringe bolus", "Pump", "Direct mL/day"],
+            ["Syringe bolus (schedule)", "Total feed volume per day"],
             label_visibility="collapsed",
         )
 
-        if method_label == "Syringe bolus":
-            bolus_vol = st.number_input(
-                "Bolus volume (mL)", min_value=0.0, value=300.0, step=10.0
+        if method_label == "Syringe bolus (schedule)":
+            st.caption(
+                "Enter each bolus as a time + volume row. Add/remove rows "
+                "with the table's own controls."
             )
-            times_day = st.number_input(
-                "Times per day", min_value=0.0, value=4.0, step=1.0
+            bolus_schedule, daily_vol = render_schedule_editor(
+                "bolus_schedule",
+                default_rows=[
+                    {"time": dtime(8, 0), "volume_mL": 300.0},
+                    {"time": dtime(12, 0), "volume_mL": 400.0},
+                    {"time": dtime(16, 0), "volume_mL": 400.0},
+                    {"time": dtime(20, 0), "volume_mL": 300.0},
+                ],
+                volume_label="Bolus volume (mL)",
             )
-            delivery = Delivery(
-                method=DeliveryMethod.SYRINGE_BOLUS,
-                bolus_volume_mL=bolus_vol,
-                times_per_day=times_day,
-            )
-        elif method_label == "Pump":
-            rate = st.number_input(
-                "Rate (mL/hr)", min_value=0.0, value=100.0, step=10.0
-            )
-            hours = st.number_input(
-                "Hours per day", min_value=0.0, value=12.0, step=1.0
-            )
-            delivery = Delivery(
-                method=DeliveryMethod.PUMP,
-                rate_mL_per_hr=rate,
-                hours_per_day=hours,
-            )
+            st.caption(f"Total feed volume: **{daily_vol:.0f} mL/day**")
         else:
-            direct_vol = st.number_input(
-                "Daily volume (mL)", min_value=0.0, value=1200.0, step=50.0
-            )
-            delivery = Delivery(
-                method=DeliveryMethod.DIRECT,
-                daily_volume_mL=direct_vol,
+            bolus_schedule = pd.DataFrame(columns=["time", "volume_mL"])
+            daily_vol = st.number_input(
+                "Total feed volume per day (mL)", min_value=0.0, value=1200.0, step=50.0
             )
 
+        delivery = Delivery(method=DeliveryMethod.DIRECT, daily_volume_mL=daily_vol)
+        # daily_volume_from_delivery() is a passthrough for DIRECT (kept so
+        # the calculator's public entry point is still exercised here,
+        # rather than reading delivery.daily_volume_mL directly).
         daily_vol = daily_volume_from_delivery(delivery)
+
+        # --- Water flushes (new — Part 2.5) ---
+        # Same schedule-row pattern as the bolus schedule. Total flush
+        # volume feeds the fluids ledger (Fluid provided = fluid-from-
+        # ingredients + flushes, see the Build tab) and the chart note.
+        # No default rows are seeded — flush volume/frequency is a
+        # clinical judgment call the RD makes, not a number this app
+        # should guess at.
+        st.markdown("**Water flushes**")
+        st.caption(
+            "Optional — syringe water flushes given with the feed. Counted "
+            "toward daily fluid provided, separately from the recipe itself."
+        )
+        flush_schedule, flush_total_mL = render_schedule_editor(
+            "flush_schedule", default_rows=[], volume_label="Flush volume (mL)"
+        )
+        if flush_total_mL > 0:
+            st.caption(f"Total flush volume: **{flush_total_mL:.0f} mL/day**")
 
         # --- Targets (optional) ---
         # Round-2 clinical feedback (Part 0 #2): there is no default-DRI
@@ -346,6 +450,10 @@ with st.container(border=True):
     # it's visible whether that detail is expanded or collapsed — the "1800
     # Calories" strip is set once, glanced at constantly, rarely touched.
     _summary_bits = [f"Daily volume: {daily_vol:.0f} mL/day"]
+    if flush_total_mL > 0:
+        _summary_bits.append(f"{flush_total_mL:.0f} mL flushes")
+    if patient_weight_kg > 0:
+        _summary_bits.append(f"{patient_weight_kg:.1f} kg")
     if targets.get("energy_kcal", 0.0) > 0:
         _summary_bits.append(f"{targets['energy_kcal']:.0f} kcal")
     if targets.get("protein_g", 0.0) > 0:
