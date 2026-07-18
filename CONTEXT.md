@@ -753,7 +753,10 @@ re-verify at any time, run:
 `python -c "..."` commands — use the script above. It exists precisely
 so verification is a single short, approvable command.
 
-Last updated: 2026-07-16 (nutrient-registry & data-pack refactor
+Last updated: 2026-07-17 (end of hands-on user-testing day. The next
+session's starting point is the **feed-log rework** — see the ⚠️ KNOWN
+ISSUE entry above and `FEED_LOG_REWORK.md`. History below covers the
+2026-07-16 nutrient-registry & data-pack refactor
 session, following the earlier same-day repo audit & repair session.
 Repo-audit commits: (1) P0 repo hygiene — merged CONTEXT.md so it
 matches `BUSINESS_CASE.md`'s design framing (competition framing, CNF
