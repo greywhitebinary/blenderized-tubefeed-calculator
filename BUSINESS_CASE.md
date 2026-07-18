@@ -298,6 +298,51 @@ the RD is always the final authority.
    and micro-screen tables, formula comparator, regimen summary, bolus
    and flush schedules, flow test, and the chart note text.
 
+### Where AI belongs in a clinical calculator (roadmap)
+
+The core of this tool is deliberately deterministic — every number
+traceable, no model in the arithmetic. That is the thesis, not a
+limitation. AI belongs **at the edges**, where the work is tedious and
+verification by the RD is cheap:
+
+> **The parts that must be trusted are transparent; the parts that are
+> tedious are AI-assisted; the RD verifies everything at the boundary.
+> The agent is in the workflow, not in the math.**
+
+Planned, in priority order (after the feed-log rework):
+
+1. **Label photo → custom food (flagship).** Photograph a Nutrition
+   Facts panel; a vision model extracts the values and fills the app's
+   Nutrition-Facts-lookalike entry form — which doubles as the
+   *verification UI*: the RD holds the real label beside its digital twin
+   and confirms before anything is saved. The model reads a document; it
+   never computes nutrition. (Deploying this publicly for RD pilot
+   testing is part of the same milestone — Streamlit Community Cloud,
+   with the API key in app secrets. Feasible precisely because the app
+   holds no patient data.)
+2. **Manufacturer PDF → formulas.csv, in-app.** The
+   `data/packs/canada/formula_sources/` audit-trail workflow promoted to
+   a feature: upload the HCP product PDF, the agent extracts kcal/mL,
+   protein/mL, free water; the RD approves the diff before it lands.
+3. **Plain-words recipe matching.** "A scoop of oats, half a banana,
+   splash of 2% milk" → proposed CNF matches + household measures for the
+   RD to confirm. **Clinical design constraint (author's ruling): default
+   to COOKED preparations** — blended feeds go directly into the stomach,
+   so "oats" means cooked oats and "chicken" means cooked chicken. The
+   matcher must never silently select raw meat/egg entries; raw variants
+   (e.g., sushi-grade fish) are surfaced only as an explicit, flagged
+   choice. Search assist only — never calculation.
+4. **USDA SR Legacy supplement** — the multi-source data story, already
+   specified in §8 and Appendix C.
+
+**Explicitly rejected — AI-written chart notes (ADIME).** An LLM cannot
+write an assessment note without the patient's medical picture, which
+this tool deliberately never holds (no PHI, by design — also what makes
+public deployment simple). The deterministic chart-note paragraph
+(macros + fluid in charting-friendly sentences, generated from the
+actual intake) is the right scope; the RD writes the rest of the note
+where the patient context lives.
+
 ### Out of scope
 
 - **Assessment page** (energy equations, IBW, etc.). The RD brings their

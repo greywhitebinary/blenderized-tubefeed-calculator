@@ -735,6 +735,15 @@ testing) — the feed-log rework. START HERE WHEN RESUMING.**
   (multi-day batches, persistence, prescribed-vs-received), the
   verification bar including the original bug as a test case, and three
   open questions to confirm with the author.
+- **After the rework, the next milestone (author-approved 2026-07-17):**
+  the **label-photo → custom food** feature plus **public deployment**
+  (Streamlit Community Cloud, API key in app secrets, no PHI by design)
+  so practicing RDs can pilot-test the whole tool. The AI roadmap and its
+  governing principle ("the agent is in the workflow, not in the math"),
+  the cooked-preparations design constraint for future recipe matching,
+  and the explicit rejection of AI-written ADIME notes are all recorded
+  in `BUSINESS_CASE.md` §7 ("Where AI belongs in a clinical
+  calculator").
 
 **Backend verification (2026-07-16, extended 2026-07-17): PASSED.** The full backend
 integration test lives at `scripts/verify_backend.py` and now runs 12
