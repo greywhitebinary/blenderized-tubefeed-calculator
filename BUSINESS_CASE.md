@@ -123,8 +123,9 @@ symptoms, and quality-of-life decline in head-and-neck cancer patients
 on tube feeding (Spurlock 2022), and a pilot study found BTF safe and
 effective for weight gain in adults on home enteral nutrition. The
 adult BTF population — head-and-neck cancer, ALS, home enteral — is
-the growing, underserved corner of this niche. This tool ships with
-adult DRI defaults.
+the growing, underserved corner of this niche. This tool is
+adult-focused by design (and deliberately ships **no** default targets
+at all — see Appendix A6).
 
 ### Formula companies are investing
 
@@ -143,7 +144,7 @@ clinical instruments.
 | Manual recalculation for every change | Live updates — change one ingredient, see everything update |
 | Adequacy vs targets checked by eye | Automatic gap report with status indicators |
 | No commercial-formula comparison | Side-by-side comparator |
-| Mental math for delivery schedules | Flexible delivery input (syringe/pump/direct) |
+| Mental math across feeds, batches, and flushes | A day-level feed log that records and sums what the client actually received |
 | Errors are silent | Validated inputs, consistent math, every calculation visible |
 | Hard to share or audit | Exportable recipe + methodology for chart documentation |
 | Curated food list or no database | ~6,000 CNF foods + USDA supplement + custom foods from labels |
@@ -213,29 +214,41 @@ the RD is always the final authority.
    An optional patient weight adds a display-only per-kg row (kcal/kg,
    protein g/kg, fluid mL/kg) — no target or equation is derived from it.
 
-3. **Flexible delivery input.**
-   - Syringe bolus: an editable schedule of (time, volume) rows — e.g.
-     0800/300 mL, 1200/400 mL, 1600/400 mL, 2000/300 mL — summed to a
-     daily total.
-   - Total feed volume per day: a single daily mL figure.
-   - Water flushes: the same (time, volume) schedule pattern, tracked
-     separately and folded into the fluid ledger (#4) and the
-     copy-pasteable chart note.
+3. **The day is a list of feeds — a feed log, not a schedule formula.**
+   Real BTF days don't follow "one recipe × one schedule": families
+   blend in the morning and again in the afternoon with different
+   ingredients, or keep a batch in the fridge and draw from it across
+   the day. So the design separates two things that are **not** the
+   same: the volume a recipe *produces* (its batch) and the volume the
+   client *received*. The app holds multiple named **blends** per day
+   (each with its own ingredients and measured batch volume), and a
+   **feed log** — rows of *time · source · volume given*, where a
+   source is a blend, a commercial formula, or a water flush:
+   `0800 · Morning blend · 300 mL`, `1500 · Fridge batch · 350 mL`,
+   `2000 · Peptamen 1.5 · 250 mL`, flushes interleaved. Daily totals
+   are the **sum over the log** — never an extrapolation. If the log
+   draws more from a blend than its batch produced, that's a visible
+   over-draw flag, not a silent assumption; drawing less is just
+   leftovers. (Naive designs multiply one recipe's density by a
+   prescribed daily volume, silently inventing batches that were never
+   made — this design makes that failure impossible by construction.)
 
    The AHS handbook confirms syringe bolus is the primary method for
    BTF: *"Home blended food is mostly offered by syringe as the blend
    may be thicker than formula"* and *"Pumps are not routinely provided
    because their design does not work well with home blended food."*
-   Pump delivery is accordingly not offered in the UI.
+   Pump delivery is accordingly not offered; the delivery route is
+   recorded only as wording for the chart note.
 
 4. **Adequacy report, in two tiers, plus a fluids ledger.** At the
-   entered daily volume: a main table of nine displayed nutrients
+   day's logged intake: a main table of nine displayed nutrients
    (energy, protein, fat, carbohydrate, fibre, sodium, potassium,
    calcium, iron — chosen by the author as "what's needed," not
    everything; saturated fat, trans fat, cholesterol, and sugars are
    still computed and exported, just not shown daily) plus two fluid
    rows: **Fluid provided** (full volume of ingredients flagged
-   "counts as fluid," the I&O convention, plus water flushes — this
+   "counts as fluid," the I&O convention, plus formula volumes and
+   water flushes from the feed log — this
    drives the fluid-adequacy status) and **Free water (CNF-estimated)**
    (the moisture-based figure, secondary/informational). Targets are
    always blank until the RD enters patient-specific numbers — there
@@ -252,13 +265,13 @@ the RD is always the final authority.
    ASPEN-style one-time supplementation check, not a daily-tracked
    panel). See Appendix C for why the split exists.
 
-5. **Commercial formula comparator, and an optional combined regimen.**
+5. **Commercial formula comparator — and mixed regimens for free.**
    Pick up to four benchmark formulas; a transposed table (metrics as
-   columns, the BTF as the first row) shows each at the BTF's daily
-   volume. Optionally add one formula to a combined BTF + formula
-   regimen summary (BTF / Formula / Flushes / TOTAL rows, vs. targets
-   when entered) — the author's own EN spreadsheet's "Totals from EN +
-   BP + Propofol" concept.
+   columns, the BTF as the first row) shows each at the day's volume.
+   Combined BTF + formula regimens need no separate feature: a formula
+   is simply another feed-log row (#3), so the day's totals naturally
+   sum blend + formula + flushes — the author's own EN spreadsheet's
+   "Totals from EN + BP + Propofol" concept, generalized.
 
 6. **Live recipe adjustment is the core interaction — not a mode, the
    editor itself.** There is no separate "what-if" screen for the
@@ -266,11 +279,8 @@ the RD is always the final authority.
    an ingredient, change an amount, swap water for juice or broth — and
    every number (densities, daily totals, adequacy, comparator) updates
    instantly on the same screen the RD is already editing. The RD
-   iterates: tweak → check numbers → drip test → tweak again. This was
-   a long-pinned design question (`CONTEXT.md` §9 used to carry it as
-   "dilution-slider vs. live recipe adjustment") — resolved as of the
-   round-2 clinical feedback pass: live recipe adjustment is the core
-   interaction, full stop.
+   iterates: tweak → check numbers → drip test → tweak again. Live
+   recipe adjustment is the core interaction, full stop.
 
    **Dilution What-If is a separate, secondary aid — not the core
    feature.** A small calculator, one level down from the main flow,
@@ -289,14 +299,15 @@ the RD is always the final authority.
 7. **Flow-test documentation and a copy-pasteable chart note.** A simple
    date/result/notes record of the RD's own drip test (the tool cannot
    measure flow — this is documentation, not computation) and a
-   generated chart-note sentence (schedule, macros, fluid math, and the
-   flow-test result when recorded) in a `st.code` block with a built-in
-   copy button. No patient-identifying fields.
+   generated chart-note paragraph — essentially the feed log read
+   aloud, plus totals: per-feed times/sources/volumes, macros, the
+   fluid math, and the flow-test result when recorded — in a code block
+   with a built-in copy button. No patient-identifying fields.
 
-8. **Export.** Excel export covering the recipe, ingredients (with the
-   fluids-ledger unit/counts-as-fluid columns), density panel, adequacy
-   and micro-screen tables, formula comparator, regimen summary, bolus
-   and flush schedules, flow test, and the chart note text.
+8. **Export.** Excel export covering each blend and its ingredients
+   (with the fluids-ledger unit/counts-as-fluid columns), the feed log,
+   density panel, adequacy and micro-screen tables, formula comparator,
+   flow test, and the chart note text.
 
 ### Where AI belongs in a clinical calculator (roadmap)
 
@@ -309,7 +320,7 @@ verification by the RD is cheap:
 > tedious are AI-assisted; the RD verifies everything at the boundary.
 > The agent is in the workflow, not in the math.**
 
-Planned, in priority order (after the feed-log rework):
+Planned, in priority order (sequenced after the core build, Week 3+):
 
 1. **Label photo → custom food (flagship).** Photograph a Nutrition
    Facts panel; a vision model extracts the values and fills the app's
@@ -320,10 +331,11 @@ Planned, in priority order (after the feed-log rework):
    testing is part of the same milestone — Streamlit Community Cloud,
    with the API key in app secrets. Feasible precisely because the app
    holds no patient data.)
-2. **Manufacturer PDF → formulas.csv, in-app.** The
-   `data/packs/canada/formula_sources/` audit-trail workflow promoted to
-   a feature: upload the HCP product PDF, the agent extracts kcal/mL,
-   protein/mL, free water; the RD approves the diff before it lands.
+2. **Manufacturer PDF → formulas.csv, in-app.** The formula table's
+   audit trail (each manufacturer's healthcare-professional PDF stored
+   beside the CSV as provenance) promoted to a feature: upload the HCP
+   product PDF, the agent extracts kcal/mL, protein/mL, free water; the
+   RD approves the diff before it lands.
 3. **Plain-words recipe matching.** "A scoop of oats, half a banana,
    splash of 2% milk" → proposed CNF matches + household measures for the
    RD to confirm. **Clinical design constraint (author's ruling): default
@@ -332,7 +344,7 @@ Planned, in priority order (after the feed-log rework):
    matcher must never silently select raw meat/egg entries; raw variants
    (e.g., sushi-grade fish) are surfaced only as an explicit, flagged
    choice. Search assist only — never calculation.
-4. **USDA SR Legacy supplement** — the multi-source data story, already
+4. **USDA SR Legacy supplement** — the multi-source data story,
    specified in §8 and Appendix C.
 
 **Explicitly rejected — AI-written chart notes (ADIME).** An LLM cannot
@@ -524,7 +536,10 @@ unvalidated spreadsheet.**
 | Deployment | Streamlit Community Cloud | Free, public URL, auto-deploys from GitHub |
 
 **Data:** CNF 2026 (primary) + USDA SR Legacy (supplement). Both public,
-both ship with the repo. No API keys needed.
+both ship with the repo. No API keys needed for the core — the
+deterministic calculator runs entirely on local data. The AI-assist
+edges (§7 roadmap: label photo, PDF extraction) use a vision-model API
+key held in deployment secrets, never in the repo.
 
 ---
 
@@ -532,10 +547,10 @@ both ship with the repo. No API keys needed.
 
 | Week | Deliverable | What gets built |
 |---|---|---|
-| **1 — Plan It** | This document posted publicly | Concept, market, requirements, methodology |
-| **2 — Core Feature** | Working Streamlit app: recipe builder → density panel → delivery input → adequacy report → commercial comparator | Fix data loader; build calculator, measures, targets/report, Streamlit UI |
-| **3 — Build to Last** | Tests, CI, deploy, custom food entry, USDA supplement | pytest suite, GitHub Actions, Streamlit Cloud deploy, label-entry, USDA data load |
-| **4 — Ship + Pitch** | Live app + 2–3 min demo | Polish, export, demo video |
+| **1 — Plan It** | This document posted publicly | Concept, market, requirements, methodology — including the feed-log intake model (§7.3), the per-country nutrient registry (Appendix C), and the AI roadmap (§7) |
+| **2 — Core Feature** | Working Streamlit app | Data layer (CNF load, registry); calculator (blends → densities); feed log → daily totals; two-tier adequacy + fluids ledger; comparator; NFt-lookalike custom-food entry; chart note; export |
+| **3 — Build to Last** | Tests, CI, public deploy, AI-assist edges | pytest suite, GitHub Actions, Streamlit Cloud deploy for RD pilot testing, label-photo extraction (flagship), PDF → formulas extraction, USDA supplement |
+| **4 — Ship + Pitch** | Live app + 2–3 min demo | Polish from pilot feedback, validation appendix, demo video |
 
 ---
 
@@ -592,30 +607,51 @@ Example: 200 g chicken breast at 110 kcal/100 g → 200 × (110/100) = 220 kcal
 ### A3. Densities
 
 ```
-kcal_per_mL       = recipe_total_kcal / measured_final_volume_mL
-protein_per_mL    = recipe_total_protein_g / measured_final_volume_mL
-free_water_frac   = (recipe_total_water_g + added_water_mL) / measured_final_volume_mL
+kcal_per_mL       = blend_total_kcal / measured_final_volume_mL
+protein_per_mL    = blend_total_protein_g / measured_final_volume_mL
+free_water_frac   = blend_total_water_g / measured_final_volume_mL
 ```
 
-Final blend volume is a **measured input** (user poured it into a
-container), not computed. Ingredients give nutrient totals; measured
-volume gives the denominator.
+Computed **per blend**. Final blend volume is a **measured input** (user
+reads it off the blender jug or a measuring cup), not computed.
+Ingredients give nutrient totals; measured volume gives the denominator.
+There is no separate "added water" term — water is an ordinary
+ingredient (CNF moisture ≈ 100%), so it flows into `blend_total_water_g`
+like everything else. 1 g water ≈ 1 mL (standard clinical
+approximation).
 
-### A4. Delivery
+### A4. The feed log (intake)
+
+The day's intake is a log of rows — *time · source · volume given* —
+where a source is a blend, a commercial formula, or a water flush.
+Volumes are **recorded, never inferred**:
 
 ```
-Syringe bolus:  daily_volume_mL = bolus_volume_mL × times_per_day
-Pump:           daily_volume_mL = rate_mL_per_hr × hours_per_day
-Direct:         daily_volume_mL = user-entered value
+daily_volume_mL = Σ over log rows: volume_given
+```
+
+Per-blend bookkeeping (visible, never silent):
+
+```
+Σ volume logged from blend_i  ≤  blend_i.measured_final_volume_mL
+   → otherwise an over-draw flag: more was logged than the batch produced
+   (logging less is just leftovers — no flag)
 ```
 
 ### A5. Daily totals
 
 ```
-daily_kcal       = kcal_per_mL × daily_volume_mL
-daily_protein_g  = protein_per_mL × daily_volume_mL
-daily_[nutrient] = (recipe_[nutrient] / measured_volume_mL) × daily_volume_mL
+daily_[nutrient] = Σ over log rows:
+  blend row    → blend_density_[nutrient] × volume_given
+  formula row  → formula_per_mL_[nutrient] × volume_given
+  flush row    → fluid only (no nutrients)
 ```
+
+One definition of "what the client received," used everywhere:
+adequacy, per-kg display, fluid ledger, and the chart note all read
+from this sum. A design that instead multiplies one blend's density by
+a prescribed daily volume silently invents batches that were never
+made; this model makes that error impossible.
 
 ### A6. Adequacy
 
@@ -635,20 +671,18 @@ status (target_type = UL — a ceiling, not a target to aim for):
 Every tracked nutrient carries a `target_type` (RDA / AI / UL /
 estimate, empty defaults to "estimate") in the nutrient registry itself
 — `data/packs/canada/nutrients.csv`'s `target_type` column, not a
-separate targets file (see the round-2-clinical-feedback note below).
-Sodium is the only Canada-pack nutrient marked `UL`, so it alone uses
-the second vocabulary — "Meeting target" would misleadingly imply
-90-110% of the UL is the goal, when the actual goal is simply staying
-under it.
+separate targets file. Sodium is the only Canada-pack nutrient marked
+`UL`, so it alone uses the second vocabulary — "Meeting target" would
+misleadingly imply 90-110% of the UL is the goal, when the actual goal
+is simply staying under it.
 
-**There are no default targets anywhere in this app.** Targets always
-start blank; the RD enters patient-specific numbers from their own
-assessment, or leaves them blank (blank = no adequacy %, daily totals
-still shown). `data/packs/canada/targets.csv` was deleted outright in
-the round-2 clinical feedback pass — a population default like "2000
-kcal / 75 g protein" is not defensible for tube-fed patients (protein
-practice runs 1.0-1.5 g/kg, not the 0.8 g/kg population RDA a default
-would imply).
+**There are no default targets anywhere in this design.** Targets
+always start blank; the RD enters patient-specific numbers from their
+own assessment, or leaves them blank (blank = no adequacy %, daily
+totals still shown). The design deliberately carries no targets file at
+all — a population default like "2000 kcal / 75 g protein" is not
+defensible for tube-fed patients (protein practice runs 1.0-1.5 g/kg,
+not the 0.8 g/kg population RDA a default would imply).
 
 **Two report tables, split by nutrient tier** (see Appendix C for the
 full rationale — which nutrients are worth showing is itself a
@@ -665,7 +699,8 @@ national public-health judgment, encoded per-country in
   go through this registry column, not a code change). The table also
   carries two fluid rows: **Fluid provided** (full volume of
   ingredients flagged "counts as fluid," the I&O convention, plus
-  water flushes — compared against the Fluid target) and **Free water
+  formula volumes and water flushes from the feed log — compared
+  against the Fluid target) and **Free water
   (CNF-estimated)** (the moisture-based figure, secondary/
   informational, no target of its own).
 - **BTF micro screen** (`tier=clinical`) — Magnesium, Phosphorus, Zinc,
@@ -700,10 +735,9 @@ BTF volume needed     = target_kcal / kcal_per_mL
 formula volume needed = target_kcal / formula_kcal_per_mL
 ```
 
-The comparator (round-2 clinical feedback) picks up to four formulas
-via multiselect and shows them TRANSPOSED — metrics as columns, the BTF
-as the first row, each selected formula as a row below, all at the
-BTF's daily volume.
+The comparator picks up to four formulas via multiselect and shows
+them TRANSPOSED — metrics as columns, the BTF as the first row, each
+selected formula as a row below, all at the day's volume.
 
 Formula profiles (from EN spreadsheet — `free_water_per_mL` is the same
 sheet's W column):
@@ -753,9 +787,8 @@ per_100_[basis]_value = label_value × (100 / serving_size_[basis])
 
 Example: 175 g serving has 130 kcal → per 100 g = 130 × (100/175) = 74.3 kcal
 
-The label form (round-2 clinical feedback) offers a basis unit — "per
-___ g" or "per ___ mL" — matching how a real Nutrition Facts panel is
-printed. Whichever basis the RD picks flows through, unchanged, to the
+The label form offers a basis unit — "per ___ g" or "per ___ mL" —
+matching how a real Nutrition Facts panel is printed. Whichever basis the RD picks flows through, unchanged, to the
 separate "Amount used in recipe" field: an mL-basis food's usage can
 only be entered in mL, by construction, since converting between them
 would require guessing a density the app doesn't have. The math above
@@ -824,7 +857,7 @@ Protein = wt_kg × 0.8–2.0 g/kg (factors: stress, wounds, renal, hepatic)
 
 Early drafts of this appendix framed internationalization as "swap the
 database" — a data task, mechanically true but analytically thin. The
-real finding, reached while building the nutrient tracking layer, is
+real finding, reached while designing the nutrient tracking layer, is
 sharper: **which nutrients are worth showing is itself a national
 public-health judgment, not an engineering choice.**
 
@@ -876,55 +909,46 @@ Each country ships as a **data pack** — a folder of plain CSVs, no code:
 ```
 data/packs/
   canada/
-    nutrients.csv          # the registry: what to track, and why
-    targets.csv             # DRI / tube-feed targets, with target_type
-    formulas.csv             # commercial formula profiles (kcal/mL, protein/mL)
-    thinning_liquids.csv     # thinning liquid presets (kcal, protein, water per 100 mL)
-  us/                       # NOT YET BUILT — same four files, US data
-    nutrients.csv            #   e.g. vitamin_d_ug moves to tier=label, on_label=yes
-    targets.csv
+    nutrients.csv          # the registry: what to track, why, and target_type
+    formulas.csv            # commercial formula profiles (kcal/mL, protein/mL, free water/mL)
+    formula_sources/        # manufacturer HCP PDFs — the audit trail behind formulas.csv
+    thinning_liquids.csv    # thinning liquid presets (kcal, protein, water per 100 mL)
+  us/                       # FUTURE — same files, US data
+    nutrients.csv           #   e.g. vitamin_d_ug moves to tier=label, on_label=yes
     formulas.csv
     thinning_liquids.csv
 ```
 
-Canada is the only pack implemented today. The goal — and the acceptance
-criterion this design is held to — is that adding a country is **writing
-new CSVs under `data/packs/<country>/`, with zero Python changes.**
+(No `targets.csv` anywhere — there are deliberately no default targets;
+see A6. `target_type` lives on the nutrient registry itself.)
 
-Status against that criterion, stated honestly:
-
-- **Met** for `nutrients.csv` and `targets.csv`. The registry, the
-  targets loader, and both report functions all take a `pack` argument.
-  Verified: a US pack promoting `vitamin_d_ug` to `tier=label,
-  on_label=yes` moves vitamin D into the main adequacy table and out of
-  the micro screen with no code change.
-- **Not yet met** for `formulas.csv` and `thinning_liquids.csv`. These
-  still load once from a hardcoded `canada` path
-  (`_load_commercial_formulas()` in `src/calculator.py`,
-  `_load_thinning_liquids()` in `app/streamlit_app.py`). A US pack would
-  currently get US nutrients and US targets but **Canadian formulas** —
-  which matters, since commercial formulary is among the most
-  country-specific data in the tool. Parameterizing these two loaders by
-  `pack` is the outstanding work to fully meet the criterion.
-- **Deferred by design** to a future `config.yaml` per pack: kJ vs kcal,
-  and the EU's "salt" vs sodium convention, which need a units-conversion
-  layer this project hasn't built yet.
+Canada is the launch pack. The **acceptance criterion this design is
+held to**: adding a country is **writing new CSVs under
+`data/packs/<country>/`, with zero Python changes.** The build will be
+tested against exactly that — a throwaway US pack promoting
+`vitamin_d_ug` to `tier=label, on_label=yes` must move vitamin D into
+the main adequacy table and out of the micro screen with no code
+change, and every loader (registry, formulas, thinning liquids) must
+take the pack as a parameter rather than assuming Canada. One
+documented deferral: kJ vs kcal, and the EU's "salt" vs sodium
+convention, need a per-pack units-conversion layer (`config.yaml`)
+planned beyond the 4-week window.
 
 ### `nutrients.csv` — the registry schema
 
 ```csv
 name,code,label,unit,tier,on_label,show_in_report,offer_target,target_type,decimals,notes
 energy_kcal,208,Energy,kcal,label,yes,yes,yes,,0,Canadian NFt core
-sodium_mg,307,Sodium,mg,label,yes,yes,yes,UL,0,Canadian NFt core; added 2022 regs
+sodium_mg,307,Sodium,mg,label,yes,yes,yes,UL,0,Canadian NFt core; UL not RDA
+potassium_mg,306,Potassium,mg,label,yes,yes,yes,AI,0,Canadian NFt core; added by the 2022 regs — intakes are low
 sugars_g,269,Sugars,g,label,yes,no,no,,1,Canadian NFt core; computed and exported, not shown daily
 water_g,255,Water (moisture),g,engine,no,no,no,,1,Free-water denominator; no label carries moisture
 magnesium_mg,304,Magnesium,mg,clinical,no,yes,no,,1,Author's EN spreadsheet tracks Mg; not on any NFt
 vitamin_d_ug,328,Vitamin D,µg,clinical,no,yes,no,,1,ASPEN BTF supplementation screen; on US labels but not Canadian
 ```
 
-Every nutrient the tool tracks carries **four independent axes** (round
-2 added two to the original `tier`/`on_label` pair) — the design does
-not collapse them into one:
+Every nutrient the tool tracks carries **four independent axes** — the
+design does not collapse them into one:
 
 - **`tier` — why we track it.**
   - `label`: on this country's mandatory panel — the public-health set,
@@ -956,7 +980,8 @@ not collapse them into one:
   this is how "show what's needed, not everything" (Saturated Fat,
   Trans Fat, Cholesterol, Sugars) is expressed: real Canadian label
   fields, still on the custom-food form, just not cluttering the daily
-  table. Every `tier=clinical` row is `show_in_report=yes` today (the
+  table. Every `tier=clinical` row is `show_in_report=yes` in the
+  Canada pack (the
   micro screen shows all five); `tier=engine` is always `no`.
 - **`offer_target` — does the custom-targets form offer a field for
   it?** Only the nine `show_in_report=yes` label-tier nutrients are
@@ -965,19 +990,17 @@ not collapse them into one:
   zinc/vitamin D/B12 likewise, since the micro screen is a one-time
   screen, not something the RD sets a daily number against.
 
-`target_type` (RDA/AI/UL/estimate, empty defaults to "estimate") also
-now lives on this registry rather than a separate targets file — see
-A6. This is the one deliberate backend deletion in the round-2 pass:
-`data/packs/canada/targets.csv` is gone; there are no default targets
-anywhere in the app.
+`target_type` (RDA/AI/UL/estimate, empty defaults to "estimate") lives
+on this registry rather than a separate targets file — see A6; there
+are no default targets anywhere in the design.
 
-The calculator engine (`src/calculator.py`, `src/report.py`) reads all
-four columns off the registry at runtime; it has no Canada-specific
-branch anywhere. Build Canada first, architect for swappability — and
-the swap is real: it was exercised in this project's own verification
-suite (`load_registry("no_such_pack")` must raise `FileNotFoundError`,
-proving the registry is genuinely data-driven rather than a Canadian
-default with a data-shaped facade).
+The calculator engine reads all four columns off the registry at
+runtime; it is to have no Canada-specific branch anywhere. Build Canada
+first, architect for swappability — and hold the build to it: the
+verification suite will assert that loading a nonexistent pack fails
+loudly (`FileNotFoundError`, no silent fallback to a hardcoded Canadian
+list), proving the registry is genuinely data-driven rather than a
+Canadian default with a data-shaped facade.
 
 ---
 
