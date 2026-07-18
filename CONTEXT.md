@@ -706,6 +706,36 @@ the repo/plans directory).**
   hoc AppTest verification rather than a committed `tests/` suite) and
   a live `.venv/bin/streamlit run` smoke test.
 
+**⚠️ KNOWN ISSUE + NEXT MAJOR WORK (2026-07-17, from hands-on user
+testing) — the feed-log rework. START HERE WHEN RESUMING.**
+
+- **Live bug:** daily totals are computed as `density × delivery-schedule
+  volume`, silently assuming the client received multiple batches of a
+  recipe that exists once (batch 400 mL + schedule 1200 mL/day → results
+  ×3). Nothing reconciles batch volume against delivered volume. **Until
+  the rework lands, do not trust daily totals / adequacy / per-kg /
+  fluid / chart note whenever the schedule total exceeds the batch
+  volume.**
+- **Author's design decision (final, do not relitigate):** replace the
+  single-recipe + schedule model with **"the day is a list of feeds"** —
+  multiple named blends per day (morning blend, fridge batch, ...), and a
+  **feed log** (time · source · volume) where a source is a blend, a
+  commercial formula, or a water flush. Daily totals = the sum over log
+  rows; batch-vs-logged becomes visible bookkeeping (over-draw flag), not
+  a silent assumption. This dissolves the schedule-mismatch problem and
+  supersedes the separate round-2 "combined regimen" section and the
+  standalone flush schedule (both become log rows).
+- **Full coherent rework, NO interim patch** — a cap-at-batch band-aid was
+  explicitly considered and rejected as throwaway logic.
+- **The complete design + implementation plan is in
+  [`FEED_LOG_REWORK.md`](FEED_LOG_REWORK.md)** (repo root — readable by
+  any tool). It carries the model, scope (session-state shape, Build-tab
+  blend selector, banner log editor, Results aggregation, `src/` helper +
+  verify_backend stages, doc updates), the v1 out-of-scope list
+  (multi-day batches, persistence, prescribed-vs-received), the
+  verification bar including the original bug as a test case, and three
+  open questions to confirm with the author.
+
 **Backend verification (2026-07-16, extended 2026-07-17): PASSED.** The full backend
 integration test lives at `scripts/verify_backend.py` and now runs 12
 stages against real CNF data (data load with Parquet/CSV source timing,
