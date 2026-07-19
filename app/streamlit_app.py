@@ -210,6 +210,15 @@ def _new_blend(name: str) -> int:
         "measured_volume_mL": 0.0,
     }
     st.session_state.selected_blend_id = new_id
+    # The "blend_selector" selectbox widget remembers its OWN prior value
+    # across reruns once it's been created (Streamlit ignores a widget's
+    # `index=`/`value=` argument once session_state already holds an entry
+    # for its key) -- so without this pop, selecting a freshly-created
+    # blend here would be silently overwritten back to whatever index the
+    # widget last showed, the next time the Build tab renders the
+    # selectbox. Popping the key forces it to re-seed from `index=`
+    # (computed from selected_blend_id) on the next render instead.
+    st.session_state.pop("blend_selector", None)
     return new_id
 
 
@@ -1028,6 +1037,11 @@ with build_tab:
             if not (r["source_type"] == "blend" and r["source_id"] == removed_id)
         ]
         st.session_state.selected_blend_id = next(iter(st.session_state.blends))
+        # Same widget-state gotcha as _new_blend() -- force the selectbox
+        # to re-seed from `index=` next render instead of clinging to
+        # whatever index it last showed (which may now point at a
+        # different, surviving blend than intended, or be out of range).
+        st.session_state.pop("blend_selector", None)
         if removed_rows:
             st.toast(
                 f"Removed {len(removed_rows)} Intake Record row(s) that referenced "
@@ -1189,7 +1203,15 @@ with results_tab:
             "Coverage": f"{_n_full}/{len(_b_coverage)} nutrients fully covered",
             "Note": "",
         })
-    st.dataframe(pd.DataFrame(_density_rows), width="stretch", hide_index=True)
+    _density_df = pd.DataFrame(_density_rows)
+    # kcal/mL, protein g/mL, and Free-water fraction mix floats with the
+    # "—" placeholder for a not-yet-buildable blend — cast to str before
+    # display, same convention already used for the adequacy table's
+    # Target/% Target columns, so Arrow serialization doesn't have to
+    # auto-fix a mixed-type numeric column on every render.
+    for _col in ("kcal/mL", "protein g/mL", "Free-water fraction"):
+        _density_df[_col] = _density_df[_col].astype(str)
+    st.dataframe(_density_df, width="stretch", hide_index=True)
 
     # Resolve the SELECTED blend's profile once -- reused by the density
     # detail expander, comparator, and dilution what-if below.
