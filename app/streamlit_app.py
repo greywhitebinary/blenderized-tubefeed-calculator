@@ -49,7 +49,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data_loader import load_food_name, load_nutrient_amount, load_food_group
-from src.calculator import label_to_per_100g, COMMERCIAL_FORMULAS
+from src.models import Ingredient
+from src.calculator import (
+    label_to_per_100g,
+    compute_nutrient_totals_and_coverage,
+    dilute,
+    required_daily_volume,
+    COMMERCIAL_FORMULAS,
+)
 from src.measures import load_measure_lookup, get_measures_for_food
 from src.targets import empty_targets
 from src.report import (
@@ -57,6 +64,7 @@ from src.report import (
     generate_clinical_screen,
     generate_comparator_table,
     generate_density_summary,
+    generate_source_breakdown,
 )
 from src.nutrients import defs_for_tier, registry_by_name, DEFAULT_PACK
 from src.intake import (
@@ -741,6 +749,63 @@ def _intake_row_label(row: dict) -> str:
     return f"{t_str} — {name} — {row['amount']:.0f} {row['unit']}"
 
 
+def _format_tube_feed_bits(rows: list[dict]) -> list[str]:
+    """Group tube-feed rows for the chart note (FEED_LOG_REWORK.md
+    section 3.5's own example format): consecutive rows against the same
+    blend/formula read as "0800 300 mL + 1200 100 mL Morning blend", not
+    two disconnected sentences. Flush rows are grouped as
+    "flushes N×amount mL" when every flush shares the same amount, else
+    listed individually (e.g. one 100 mL + one 150 mL flush).
+    """
+    bits = []
+    blend_formula_rows = [r for r in rows if r["source_type"] in ("blend", "formula")]
+    flush_rows = [r for r in rows if r["source_type"] == "flush"]
+
+    seen_keys: list[tuple] = []
+    groups: dict[tuple, list[dict]] = {}
+    for r in blend_formula_rows:
+        key = (r["source_type"], r["source_id"])
+        if key not in groups:
+            groups[key] = []
+            seen_keys.append(key)
+        groups[key].append(r)
+
+    for key in seen_keys:
+        group_rows = groups[key]
+        source_type, source_id = key
+        if source_type == "blend":
+            name = st.session_state.blends.get(source_id, {}).get("name", "(deleted blend)")
+        else:
+            name = source_id
+        amounts_text = " + ".join(
+            f"{(r['time'].strftime('%H%M') if r['time'] else '(no time)')} {r['amount']:.0f} mL"
+            for r in group_rows
+        )
+        bits.append(f"{amounts_text} {name}")
+
+    if flush_rows:
+        amounts = {r["amount"] for r in flush_rows}
+        if len(amounts) == 1 and len(flush_rows) > 1:
+            bits.append(f"flushes {len(flush_rows)}×{flush_rows[0]['amount']:.0f} mL")
+        else:
+            for r in flush_rows:
+                t = r["time"].strftime("%H%M") if r["time"] else "(no time)"
+                bits.append(f"{t} {r['amount']:.0f} mL flush")
+
+    return bits
+
+
+def _format_oral_bits(rows: list[dict]) -> list[str]:
+    """Chart-note phrasing for oral rows, e.g. '0830 1 small banana' or
+    '1030 125 mL apple juice' (design doc section 3.5's own example)."""
+    bits = []
+    for r in rows:
+        t = r["time"].strftime("%H%M") if r["time"] else "(no time)"
+        desc = r.get("food_description") or "(unknown food)"
+        bits.append(f"{t} {r['amount']:.0f} {r['unit']} {desc}")
+    return bits
+
+
 def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
     """FEED_LOG_REWORK.md section 3.4: the oral-entry UI. Reuses the same
     search-or-custom-food component as the Build tab (section 3.3), plus a
@@ -1084,44 +1149,412 @@ with build_tab:
 
 
 with results_tab:
+    # --- Per-blend density panel (EVERY blend, not just selected --
+    # densities are still the per-blend lens, design doc section 3.5) ---
     st.subheader("Per-blend density panel")
-    if not selected_blend["ingredients"]:
-        st.info("Add ingredients in the Build tab to see this blend's densities.")
-    else:
+    _density_rows = []
+    for _bid, _blend in st.session_state.blends.items():
+        if not _blend["ingredients"]:
+            _density_rows.append({
+                "Blend": _blend["name"], "kcal/mL": "—", "protein g/mL": "—",
+                "Free-water fraction": "—", "Measured volume (mL)": _blend["measured_volume_mL"],
+                "Coverage": "—", "Note": "No ingredients yet",
+            })
+            continue
         try:
-            profile, fluid_frac = resolve_blend_profile(
-                selected_blend, na, st.session_state.custom_foods
+            _b_profile, _b_fluid_frac = resolve_blend_profile(
+                _blend, na, st.session_state.custom_foods
             )
         except InvalidBlendError:
-            st.warning(
-                "This blend has ingredients but no measured volume yet — "
-                "enter one in the Build tab to see densities."
+            _density_rows.append({
+                "Blend": _blend["name"], "kcal/mL": "—", "protein g/mL": "—",
+                "Free-water fraction": "—", "Measured volume (mL)": 0,
+                "Coverage": "—", "Note": "Ingredients but no measured volume",
+            })
+            continue
+        _b_ingredients = [
+            Ingredient(i["food_code"], i["food_description"], i["grams"])
+            for i in _blend["ingredients"]
+        ]
+        _, _b_coverage = compute_nutrient_totals_and_coverage(
+            _b_ingredients, na, st.session_state.custom_foods
+        )
+        _n_full = sum(1 for n_sup, n_tot in _b_coverage.values() if n_tot == 0 or n_sup == n_tot)
+        _density_rows.append({
+            "Blend": _blend["name"],
+            "kcal/mL": round(_b_profile.kcal_per_mL, 3),
+            "protein g/mL": round(_b_profile.protein_per_mL, 3),
+            "Free-water fraction": round(_b_profile.free_water_fraction, 3),
+            "Measured volume (mL)": _b_profile.measured_final_volume_mL,
+            "Coverage": f"{_n_full}/{len(_b_coverage)} nutrients fully covered",
+            "Note": "",
+        })
+    st.dataframe(pd.DataFrame(_density_rows), width="stretch", hide_index=True)
+
+    # Resolve the SELECTED blend's profile once -- reused by the density
+    # detail expander, comparator, and dilution what-if below.
+    selected_profile = None
+    selected_fluid_frac = 0.0
+    _selected_invalid = False
+    if selected_blend["ingredients"]:
+        try:
+            selected_profile, selected_fluid_frac = resolve_blend_profile(
+                selected_blend, na, st.session_state.custom_foods
             )
-        else:
             if selected_blend["measured_volume_mL"] <= 0:
-                st.info("Enter a measured final volume in the Build tab to see densities.")
-            else:
-                d1, d2, d3 = st.columns(3)
-                d1.metric("Energy density", f"{profile.kcal_per_mL:.3f}", "kcal/mL")
-                d2.metric("Protein density", f"{profile.protein_per_mL:.3f}", "g/mL")
-                d3.metric("Measured volume", f"{profile.measured_final_volume_mL:.0f} mL")
-                st.caption(
-                    f"Free-water fraction: {profile.free_water_fraction:.3f} "
-                    "(food moisture / volume)"
-                )
-                with st.expander("Full density summary"):
-                    st.dataframe(
-                        generate_density_summary(profile),
-                        width="stretch",
-                        hide_index=True,
-                    )
+                selected_profile = None
+        except InvalidBlendError:
+            _selected_invalid = True
+
+    with st.expander(f'Full density summary — "{selected_blend["name"]}"'):
+        if _selected_invalid:
+            st.warning("This blend has ingredients but no measured volume yet.")
+        elif selected_profile is None:
+            st.caption("Select a blend with ingredients and a measured volume in the Build tab.")
+        else:
+            st.dataframe(
+                generate_density_summary(selected_profile), width="stretch", hide_index=True
+            )
 
     st.divider()
-    st.info(
-        "Daily totals, adequacy, the per-source (Tube Feed vs Food & Drink) "
-        "breakdown, and the chart note — computed from the Intake Record in "
-        "the banner above via src.intake.aggregate_intake() — land in the "
-        "next phase of this rework's Results-tab wiring."
+
+    # --- Daily totals, adequacy, micro screen, per-kg, per-source
+    # breakdown -- all computed from the Intake Record via
+    # src.intake.aggregate_intake() (design doc section 3.5). ---
+    st.subheader("Daily Totals & Adequacy")
+    st.caption(
+        "A direct sum over the Intake Record above — never extrapolated "
+        "from a batch volume against a schedule."
+    )
+
+    intake_totals = aggregate_intake(
+        st.session_state.intake_log, st.session_state.blends, na,
+        custom_foods=st.session_state.custom_foods,
+    )
+
+    if not st.session_state.intake_log:
+        st.info("Add rows to the Intake Record in the banner above to see daily totals.")
+    else:
+        adequacy_df, hidden_main_names = generate_adequacy_report(
+            intake_totals.nutrient_totals, targets,
+            fluid_provided_mL=intake_totals.fluid_provided_mL,
+            nutrient_coverage=intake_totals.nutrient_coverage,
+        )
+        adequacy_display = adequacy_df.copy()
+        adequacy_display["Target"] = adequacy_display["Target"].astype(str)
+        adequacy_display["% Target"] = adequacy_display["% Target"].astype(str)
+        st.dataframe(
+            adequacy_display.style.map(color_status, subset=["Status"]),
+            width="stretch",
+            hide_index=True,
+        )
+        if hidden_main_names:
+            st.caption(
+                "Not shown — no data from any ingredient: " + ", ".join(hidden_main_names)
+            )
+
+        with st.expander("BTF micro screen — vitamins & minerals not on labels"):
+            st.caption(
+                "A one-time supplementation screen (ASPEN-style: \"does this "
+                "day's intake need a multivitamin?\"), not a daily-tracked panel "
+                "like the table above."
+            )
+            clinical_df, hidden_clinical_names = generate_clinical_screen(
+                intake_totals.nutrient_totals, targets,
+                nutrient_coverage=intake_totals.nutrient_coverage,
+            )
+            if len(clinical_df) > 0:
+                clinical_display = clinical_df.copy()
+                clinical_display["Target"] = clinical_display["Target"].astype(str)
+                clinical_display["% Target"] = clinical_display["% Target"].astype(str)
+                st.dataframe(
+                    clinical_display.style.map(color_status, subset=["Status"]),
+                    width="stretch",
+                    hide_index=True,
+                )
+            if hidden_clinical_names:
+                st.caption(
+                    "Not shown — no data from any ingredient: " + ", ".join(hidden_clinical_names)
+                )
+
+        if patient_weight_kg > 0:
+            st.markdown(f"**Per-kg (at {patient_weight_kg:.1f} kg)**")
+            pk1, pk2, pk3 = st.columns(3)
+            pk1.metric(
+                "Energy",
+                f"{intake_totals.nutrient_totals.get('energy_kcal', 0.0) / patient_weight_kg:.1f}",
+                "kcal/kg/day",
+            )
+            pk2.metric(
+                "Protein",
+                f"{intake_totals.nutrient_totals.get('protein_g', 0.0) / patient_weight_kg:.2f}",
+                "g/kg/day",
+            )
+            pk3.metric(
+                "Fluid provided",
+                f"{intake_totals.fluid_provided_mL / patient_weight_kg:.1f}",
+                "mL/kg/day",
+            )
+            st.caption("Display only — no target, equation, or IBW is computed from weight.")
+
+        # --- Per-source subtotal breakdown (new, design doc section 3.5) ---
+        st.subheader("Per-Source Breakdown")
+        st.caption(
+            f'"{TUBE_FEED_LABEL}" vs "{FOOD_DRINK_LABEL}" vs "{TOTAL_LABEL}" — combined '
+            "numbers, with the split still visible."
+        )
+        st.dataframe(
+            generate_source_breakdown(intake_totals), width="stretch", hide_index=True
+        )
+
+    # --- Dilution what-if (operates on the selected blend) ---
+    st.subheader("Dilution What-If")
+    st.caption("If the blend needs thinning, see the density impact before you commit.")
+
+    if selected_profile is None:
+        st.info(
+            "Select a blend with ingredients and a measured volume in the "
+            "Build tab to use the dilution what-if."
+        )
+    else:
+        w1, w2 = st.columns([1, 2])
+
+        with w1:
+            liquid_type = st.selectbox("Thinning liquid", list(THINNING_LIQUIDS.keys()))
+            added_mL = st.slider("Add liquid (mL)", 0, 500, 0, step=10)
+
+            preset = THINNING_LIQUIDS[liquid_type]
+            if liquid_type == "Custom" and added_mL > 0:
+                cc1, cc2, cc3 = st.columns(3)
+                liq_kcal = cc1.number_input("kcal", min_value=0.0, value=0.0, step=1.0)
+                liq_protein = cc2.number_input(
+                    "Protein (g)", min_value=0.0, value=0.0, step=0.1
+                )
+                liq_water = cc3.number_input(
+                    "Water (g)", min_value=0.0, value=float(added_mL), step=1.0
+                )
+            else:
+                scale = added_mL / 100.0
+                liq_kcal = preset["kcal"] * scale
+                liq_protein = preset["protein_g"] * scale
+                liq_water = preset["water_g"] * scale
+                if added_mL > 0:
+                    st.caption(
+                        f"Adding {liq_kcal:.0f} kcal, "
+                        f"{liq_protein:.1f} g protein, "
+                        f"{liq_water:.0f} g water"
+                    )
+
+        with w2:
+            if added_mL > 0:
+                diluted = dilute(selected_profile, added_mL, liq_kcal, liq_protein, liq_water)
+
+                dil_df = pd.DataFrame(
+                    [
+                        {
+                            "Metric": "Volume (mL)",
+                            "Original": selected_profile.measured_final_volume_mL,
+                            "After dilution": diluted.measured_final_volume_mL,
+                        },
+                        {
+                            "Metric": "kcal/mL",
+                            "Original": round(selected_profile.kcal_per_mL, 3),
+                            "After dilution": round(diluted.kcal_per_mL, 3),
+                        },
+                        {
+                            "Metric": "protein g/mL",
+                            "Original": round(selected_profile.protein_per_mL, 3),
+                            "After dilution": round(diluted.protein_per_mL, 3),
+                        },
+                        {
+                            "Metric": "free water fraction",
+                            "Original": round(selected_profile.free_water_fraction, 3),
+                            "After dilution": round(diluted.free_water_fraction, 3),
+                        },
+                    ]
+                )
+                dil_df["Change"] = dil_df["After dilution"] - dil_df["Original"]
+                st.dataframe(dil_df, width="stretch", hide_index=True)
+
+                tk = targets.get("energy_kcal", 0.0)
+                tp = targets.get("protein_g", 0.0)
+                if tk > 0 and tp > 0:
+                    ro = required_daily_volume(selected_profile, tk, tp)
+                    rd = required_daily_volume(diluted, tk, tp)
+                    st.info(
+                        f"Required daily volume of just this blend to meet "
+                        f"{tk:.0f} kcal + {tp:.0f} g protein:  \n"
+                        f"**{ro:.0f} mL** → **{rd:.0f} mL** after dilution "
+                        f"(+{rd - ro:.0f} mL)"
+                    )
+            else:
+                st.caption("Slide the slider to see the effect of adding thinning liquid.")
+
+    # --- Commercial formula comparator (operates on the selected blend,
+    # at a manually-chosen comparison volume -- independent of the actual
+    # Intake Record, an explicit what-if: "if I gave X mL/day of just this
+    # blend, how does it compare to formula Y") ---
+    st.subheader("Commercial Formula Comparator")
+    if selected_profile is None:
+        st.info(
+            "Select a blend with ingredients and a measured volume in the "
+            "Build tab to use the comparator."
+        )
+    else:
+        compare_volume_mL = st.number_input(
+            "Compare at daily volume (mL)",
+            min_value=0.0,
+            value=max(selected_profile.measured_final_volume_mL, 1200.0),
+            step=50.0,
+            help="An independent what-if volume for this comparison only -- "
+                 "it doesn't need to match the Intake Record above.",
+        )
+        selected_formulas = st.multiselect(
+            "Compare against (up to 4)",
+            list(COMMERCIAL_FORMULAS.keys()),
+            max_selections=4,
+        )
+        comparator_df = generate_comparator_table(
+            selected_profile, compare_volume_mL, selected_formulas
+        )
+        st.dataframe(comparator_df, width="stretch", hide_index=True)
+
+    # --- Flow test documentation ---
+    st.subheader("Flow Test")
+    st.caption(
+        "The tool can't measure viscosity or tube flow — this is "
+        "documentation only, for the chart note and export."
+    )
+    ft1, ft2 = st.columns(2)
+    flow_test_date = ft1.date_input("Date", value=None)
+    flow_test_result = ft2.selectbox("Result", ["Not done", "Passed", "Needs thinning"])
+    flow_test_notes = st.text_area(
+        "Notes", "", placeholder="e.g., flowed through a 60 mL syringe without resistance"
+    )
+
+    # --- Chart note: the Intake Record read aloud chronologically (tube
+    # and oral interleaved by time) + totals (design doc section 3.5). ---
+    st.subheader("Chart Note")
+    st.caption("Copy-paste into your own chart. No patient-identifying fields.")
+
+    if not st.session_state.intake_log:
+        st.caption("Add Intake Record rows above to generate a chart note.")
+    else:
+        _ordered_note_rows = sorted_intake_log(st.session_state.intake_log)
+        _tube_note_rows = [r for r in _ordered_note_rows if r["source_type"] in ("blend", "formula", "flush")]
+        _oral_note_rows = [r for r in _ordered_note_rows if r["source_type"] == "oral"]
+
+        _note_lines = []
+        if _tube_note_rows:
+            _note_lines.append(
+                f"BTF via {delivery_method}: " + "; ".join(_format_tube_feed_bits(_tube_note_rows)) + "."
+            )
+        if _oral_note_rows:
+            _note_lines.append("Oral: " + "; ".join(_format_oral_bits(_oral_note_rows)) + ".")
+
+        _daily_kcal = intake_totals.nutrient_totals.get("energy_kcal", 0.0)
+        _daily_cho = intake_totals.nutrient_totals.get("carbohydrate_g", 0.0)
+        _daily_protein = intake_totals.nutrient_totals.get("protein_g", 0.0)
+        _daily_fat = intake_totals.nutrient_totals.get("fat_g", 0.0)
+        _weight_bit = f" ({_daily_protein / patient_weight_kg:.1f} g/kg)" if patient_weight_kg > 0 else ""
+        _note_lines.append(
+            f"Provides ~{_daily_kcal:.0f} kcal, {_daily_cho:.0f} g CHO, "
+            f"{_daily_protein:.0f} g protein{_weight_bit}, {_daily_fat:.0f} g fat."
+        )
+        _note_lines.append(f"Fluid provided: {intake_totals.fluid_provided_mL:.0f} mL/day.")
+        _note_lines.append(f"Free water (estimated): ~{intake_totals.free_water_mL:.0f} mL/day.")
+
+        if flow_test_result in ("Passed", "Needs thinning"):
+            _result_word = "passed" if flow_test_result == "Passed" else "needs thinning"
+            _date_bit = f" {flow_test_date.isoformat()}" if flow_test_date else ""
+            _notes_bit = f" — {flow_test_notes}" if flow_test_notes else ""
+            _note_lines.append(f"Flow test:{_date_bit} {_result_word}{_notes_bit}.")
+
+        _note = " ".join(_note_lines)
+        st.code(_note, language=None)
+
+    # --- Export to Excel ---
+    st.subheader("Export")
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {
+                "Field": ["Patient / day label", "Delivery method", "Patient weight (kg)"],
+                "Value": [recipe_name, delivery_method, patient_weight_kg],
+            }
+        ).to_excel(writer, sheet_name="Day", index=False)
+
+        # Intake Record sheet: every row, chronological (design doc
+        # section 3.5's export requirement).
+        if st.session_state.intake_log:
+            _export_rows = []
+            for row in sorted_intake_log(st.session_state.intake_log):
+                _export_rows.append({
+                    "Time": row["time"].strftime("%H:%M") if row["time"] else "",
+                    "Section": TUBE_FEED_LABEL if row["source_type"] in ("blend", "formula", "flush") else FOOD_DRINK_LABEL,
+                    "Source type": row["source_type"],
+                    "Source": _intake_row_label(row).split(" — ")[1],
+                    "Amount": row["amount"],
+                    "Unit": row["unit"],
+                    "Counts as fluid": row["counts_as_fluid"],
+                })
+            pd.DataFrame(_export_rows).to_excel(writer, sheet_name="Intake Record", index=False)
+        else:
+            pd.DataFrame(
+                {"Time": [], "Section": [], "Source type": [], "Source": [], "Amount": [], "Unit": [], "Counts as fluid": []}
+            ).to_excel(writer, sheet_name="Intake Record", index=False)
+
+        # One sheet per blend: ingredient list + measured volume.
+        for _bid, _blend in st.session_state.blends.items():
+            _sheet_name = sanitize_filename(_blend["name"], fallback=f"Blend {_bid}")[:31]
+            if _blend["ingredients"]:
+                _ing_df = pd.DataFrame(_blend["ingredients"])[
+                    ["food_description", "grams", "unit", "counts_as_fluid"]
+                ]
+            else:
+                _ing_df = pd.DataFrame(
+                    {"food_description": [], "grams": [], "unit": [], "counts_as_fluid": []}
+                )
+            _ing_df.to_excel(writer, sheet_name=_sheet_name, index=False, startrow=1)
+            _sheet = writer.sheets[_sheet_name]
+            _sheet["A1"] = f"Measured final volume (mL): {_blend['measured_volume_mL']:.0f}"
+
+        # Daily totals sheets, if the Intake Record has anything logged.
+        if st.session_state.intake_log:
+            generate_adequacy_report(
+                intake_totals.nutrient_totals, targets,
+                fluid_provided_mL=intake_totals.fluid_provided_mL,
+                nutrient_coverage=intake_totals.nutrient_coverage,
+            )[0].to_excel(writer, sheet_name="Adequacy", index=False)
+            generate_clinical_screen(
+                intake_totals.nutrient_totals, targets,
+                nutrient_coverage=intake_totals.nutrient_coverage,
+            )[0].to_excel(writer, sheet_name="Micro Screen", index=False)
+            generate_source_breakdown(intake_totals).to_excel(
+                writer, sheet_name="Per-Source Breakdown", index=False
+            )
+
+        # Flow test documentation
+        pd.DataFrame(
+            {
+                "Date": [flow_test_date.isoformat() if flow_test_date else ""],
+                "Result": [flow_test_result],
+                "Notes": [flow_test_notes],
+            }
+        ).to_excel(writer, sheet_name="Flow Test", index=False)
+
+        # Chart note text
+        if st.session_state.intake_log:
+            pd.DataFrame({"Chart note": [_note]}).to_excel(
+                writer, sheet_name="Chart Note", index=False
+            )
+
+    st.download_button(
+        label="📥 Export to Excel",
+        data=output.getvalue(),
+        file_name=f"{sanitize_filename(recipe_name)}_report.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 

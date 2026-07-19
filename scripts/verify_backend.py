@@ -153,9 +153,10 @@ def main() -> int:
     targets["protein_g"] = 70.0
     targets["fluid_mL"] = 1400.0
     targets["sodium_mg"] = 2300.0  # target_type=UL — exercises "Above/Below UL" wording below
-    fluid_provided_test_mL = 950.0  # stand-in for the app's fluids-ledger figure
+    fluid_provided_test_mL = 950.0  # stand-in for the Intake Record's fluid ledger figure
     adequacy, hidden_main = generate_adequacy_report(
-        profile, daily_vol, targets, fluid_provided_mL=fluid_provided_test_mL
+        daily, targets, fluid_provided_mL=fluid_provided_test_mL,
+        nutrient_coverage=profile.nutrient_coverage,
     )
     print(adequacy.to_string(index=False))
     assert len(adequacy) > 0, "adequacy report is empty"
@@ -169,10 +170,10 @@ def main() -> int:
         "Fluid provided row should carry the fluid_provided_mL value passed in, "
         f"got {fluid_row['Daily Total']} expected {fluid_provided_test_mL}"
     )
-    assert "Free water (CNF-estimated)" in adequacy["Nutrient"].values, (
+    assert "Free water (estimated)" in adequacy["Nutrient"].values, (
         "adequacy report missing the secondary Free water row"
     )
-    free_water_row = adequacy[adequacy["Nutrient"] == "Free water (CNF-estimated)"].iloc[0]
+    free_water_row = adequacy[adequacy["Nutrient"] == "Free water (estimated)"].iloc[0]
     assert free_water_row["Unit"] == "mL", "Free water row should be in mL"
     assert free_water_row["Target"] == "—", (
         "Free water is secondary/informational now — it should carry no target "
@@ -282,7 +283,7 @@ def main() -> int:
             f"either tier=clinical or show_in_report=no, and must not "
             f"appear in the main daily-tracked table"
         )
-    assert "Fluid provided" in main_names and "Free water (CNF-estimated)" in main_names
+    assert "Fluid provided" in main_names and "Free water (estimated)" in main_names
     assert len(adequacy) == 11, (  # 9 displayed label rows + 2 fluid rows
         f"expected 11 rows (9 displayed label-tier + Fluid provided + Free water), "
         f"got {len(adequacy)}"
@@ -291,7 +292,9 @@ def main() -> int:
           f"cholesterol/sugars/vitamin D/B12/zinc — OK")
 
     # tier="clinical" screen: the one-time ASPEN-style micro screen.
-    clinical, hidden_clinical = generate_clinical_screen(profile, daily_vol, targets)
+    clinical, hidden_clinical = generate_clinical_screen(
+        daily, targets, nutrient_coverage=profile.nutrient_coverage
+    )
     print(clinical.to_string(index=False))
     assert hidden_clinical == [], f"expected nothing hidden for a full-coverage recipe, got {hidden_clinical}"
     assert len(clinical) == 5, f"expected 5 clinical-screen rows, got {len(clinical)}"
@@ -360,8 +363,9 @@ def main() -> int:
     # here on Vitamin D within the clinical screen, since Vitamin D *is*
     # displayed there (tier=clinical, show_in_report=yes) and is the other
     # nutrient this fixture recipe deliberately leaves partially covered.
+    coverage_daily = calculate_daily_totals(coverage_profile, daily_vol)
     coverage_adequacy, coverage_hidden_main = generate_adequacy_report(
-        coverage_profile, daily_vol, targets
+        coverage_daily, targets, nutrient_coverage=coverage_profile.nutrient_coverage
     )
     energy_row = coverage_adequacy[coverage_adequacy["Nutrient"] == "Energy"].iloc[0]
     assert energy_row["Coverage"] == "—", (
@@ -369,7 +373,7 @@ def main() -> int:
     )
 
     coverage_clinical, coverage_hidden_clinical = generate_clinical_screen(
-        coverage_profile, daily_vol, targets
+        coverage_daily, targets, nutrient_coverage=coverage_profile.nutrient_coverage
     )
     vit_d_row = coverage_clinical[coverage_clinical["Nutrient"] == "Vitamin D"].iloc[0]
     assert vit_d_row["Coverage"] == "1/2 ingredients", vit_d_row["Coverage"]
@@ -404,19 +408,21 @@ def main() -> int:
     )
     custom_only_foods = {-1: {"energy_kcal": 50.0, "protein_g": 5.0}}
     custom_only_profile = calculate_profile(custom_only_recipe, na, custom_foods=custom_only_foods)
+    custom_only_daily = calculate_daily_totals(custom_only_profile, 1000.0)
     hidden_adequacy, hidden_main_names = generate_adequacy_report(
-        custom_only_profile, 1000.0, targets, fluid_provided_mL=0.0
+        custom_only_daily, targets, fluid_provided_mL=0.0,
+        nutrient_coverage=custom_only_profile.nutrient_coverage,
     )
     print(f"    Hidden from main table: {hidden_main_names}")
     # The custom food supplies only energy_kcal + protein_g — no water_g
     # either (no label carries moisture), so the secondary Free water row
     # is zero-coverage too and gets hidden right along with the 7 label
     # nutrients. Fluid provided is NOT hidden — it's not a CNF-coverage
-    # concept (it's computed from the app-level counts-as-fluid ledger,
-    # passed in directly), so it's always shown.
+    # concept (it's computed from the Intake Record's counts-as-fluid
+    # ledger, passed in directly), so it's always shown.
     assert set(hidden_main_names) == {
         "Fat", "Carbohydrate", "Fibre", "Sodium", "Potassium", "Calcium", "Iron",
-        "Free water (CNF-estimated)",
+        "Free water (estimated)",
     }, f"expected 7 zero-coverage label nutrients + Free water hidden, got {hidden_main_names}"
     visible_names = set(hidden_adequacy["Nutrient"].values)
     assert visible_names == {"Energy", "Protein", "Fluid provided"}, (
@@ -426,7 +432,7 @@ def main() -> int:
         assert name not in visible_names, f"{name!r} should be hidden but is still visible"
 
     hidden_clinical_df, hidden_clinical_names = generate_clinical_screen(
-        custom_only_profile, 1000.0, targets
+        custom_only_daily, targets, nutrient_coverage=custom_only_profile.nutrient_coverage
     )
     print(f"    Hidden from clinical screen: {hidden_clinical_names}")
     assert set(hidden_clinical_names) == {

@@ -2,11 +2,24 @@
 report.py — Adequacy report: daily totals vs targets + formula comparison.
 
 Phase 5 of the BTF Calculator; reworked in the round-2 clinical feedback
-pass (see .claude/plans/btf-clinical-feedback-round1.md Part 2.2-2.3).
+pass, then again per FEED_LOG_REWORK.md (the Intake Record rework).
 
-This module takes a NutrientProfile, a daily volume, and optional targets,
-and produces a structured adequacy report. It also generates the
-commercial formula comparison.
+generate_adequacy_report() and generate_clinical_screen() take a
+daily_totals dict (nutrient_name -> amount, already "daily") rather than a
+single NutrientProfile + daily_volume_mL — the Intake Record can span
+several blends, commercial formulas, flushes, and oral foods in one day
+(src.intake.aggregate_intake() is what produces that dict), so there is no
+longer one profile these functions can compute daily totals from
+internally. Per-blend functions (generate_density_summary(),
+generate_comparator_table(), generate_formula_comparison()) still take a
+NutrientProfile — densities are still a per-blend lens (design doc
+section 3.5). generate_source_breakdown() is new: the Tube-Feed vs
+Food-&-Drink vs Total subtotal table, built directly from an IntakeTotals'
+per-source subtotals. generate_regimen_summary() (the old combined
+BTF + commercial-formula summary) is REMOVED — a formula is now just
+another Intake Record row, so aggregate_intake() already produces the
+combined totals, and generate_source_breakdown() gives the "combined, but
+still split" view the regimen summary existed for.
 
 Adequacy logic (Appendix A6), for target_type in {RDA, AI, estimate}:
     pct_target = (daily_total / target) × 100
@@ -51,21 +64,23 @@ Streamlit UI (st.dataframe, st.table) and export to Excel.
 import pandas as pd
 
 try:
-    from src.calculator import (
-        calculate_daily_totals,
-        compare_with_formula,
-        COMMERCIAL_FORMULAS,
-    )
+    from src.calculator import compare_with_formula, COMMERCIAL_FORMULAS
     from src.models import NutrientProfile
     from src.nutrients import NutrientDef, defs_for_tier, registry_by_name, DEFAULT_PACK
-except ImportError:
-    from calculator import (
-        calculate_daily_totals,
-        compare_with_formula,
-        COMMERCIAL_FORMULAS,
+    from src.intake import (
+        TUBE_FEED_LABEL as _TUBE_FEED_LABEL,
+        FOOD_DRINK_LABEL as _FOOD_DRINK_LABEL,
+        TOTAL_LABEL as _TOTAL_LABEL,
     )
+except ImportError:
+    from calculator import compare_with_formula, COMMERCIAL_FORMULAS
     from models import NutrientProfile
     from nutrients import NutrientDef, defs_for_tier, registry_by_name, DEFAULT_PACK
+    from intake import (
+        TUBE_FEED_LABEL as _TUBE_FEED_LABEL,
+        FOOD_DRINK_LABEL as _FOOD_DRINK_LABEL,
+        TOTAL_LABEL as _TOTAL_LABEL,
+    )
 
 
 # Adequacy status thresholds (Appendix A6)
@@ -190,11 +205,11 @@ def _finalize(rows: list[dict]) -> tuple[pd.DataFrame, list[str]]:
 
 
 def generate_adequacy_report(
-    profile: NutrientProfile,
-    daily_volume_mL: float,
+    daily_totals: dict[str, float],
     targets: dict[str, float] | None = None,
     pack: str = DEFAULT_PACK,
     fluid_provided_mL: float | None = None,
+    nutrient_coverage: dict[str, tuple[int, int]] | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Generate the MAIN adequacy report as a DataFrame.
 
@@ -204,86 +219,87 @@ def generate_adequacy_report(
     are tier="label" too but show_in_report="no", so they're computed and
     exported but not shown here), plus two derived fluid rows:
     "Fluid provided" (primary — see fluid_provided_mL below) and "Free
-    water (CNF-estimated)" (secondary, informational only — no target
+    water (estimated)" (secondary, informational only — no target
     comparison). tier="clinical" nutrients are NOT here — see
     generate_clinical_screen(). tier="engine" nutrients (water_g) never
-    get a row anywhere. Rows with zero per-recipe coverage (no ingredient
-    supplied a value) are dropped — see the second return value.
+    get a row anywhere. Rows with zero coverage (no ingredient supplied a
+    value) are dropped — see the second return value.
 
     Columns: Nutrient, Daily Total, Unit, Target, % Target, Status, Source,
     Coverage
 
     Args:
-        profile:           The recipe's NutrientProfile.
-        daily_volume_mL:   Total daily delivery volume.
+        daily_totals:      nutrient_name -> daily total amount (already
+                            "daily" -- this is the Intake Record
+                            aggregation's output, src.intake.aggregate_
+                            intake().nutrient_totals, not a per-recipe
+                            total needing further scaling). "water_g" here
+                            is the estimated free-water total -- CNF food
+                            moisture blended with any formula-declared
+                            free_water_per_mL (see src/intake.py's module
+                            docstring for why that blending is deliberate).
         targets:           nutrient_name → target_value. Defaults to {}
                             (renders "No target" for everything). target_type
                             (RDA/AI/UL/estimate) is read straight off the
                             registry now (NutrientDef.target_type) — no
-                            separate targets.csv exists (Part 0 #2 of the
-                            round-2 clinical feedback plan: there are no
+                            separate targets.csv exists (there are no
                             default targets anywhere in this app).
         pack:               Which data pack's nutrient registry to report
                             against. Defaults to DEFAULT_PACK ("canada").
-        fluid_provided_mL: The fluids-ledger "Fluid provided" figure (full
-                            volume of counts-as-fluid ingredients, scaled
-                            to daily intake, plus flushes) — an app-level
-                            computation (session-state ingredient toggles
-                            + delivery/flush schedule), passed in here
-                            because report.py has no access to per-
-                            ingredient fluid flags. Defaults to None, in
-                            which case the row falls back to the CNF free-
-                            water figure (keeps this function usable
-                            standalone, e.g. from verify_backend.py,
-                            without requiring the app's fluids ledger).
+        fluid_provided_mL: The Intake Record's full-volume I&O-convention
+                            fluid total (src.intake.aggregate_intake()
+                            .fluid_provided_mL). Defaults to None, in
+                            which case the row falls back to daily_totals'
+                            water_g figure (keeps this function usable
+                            standalone, e.g. from verify_backend.py).
+        nutrient_coverage: nutrient_name -> (n_supplying, n_total), from
+                            the same aggregation. Defaults to {} (nothing
+                            hidden).
 
     Returns:
         (DataFrame of visible rows, list of nutrient names hidden for
-        zero coverage — e.g. a custom-food-only recipe missing sat-fat
+        zero coverage — e.g. a custom-food-only day missing sat-fat
         data). Empty list when nothing was hidden.
     """
     if targets is None:
         targets = {}
-
-    daily_totals = calculate_daily_totals(profile, daily_volume_mL)
-    coverage = profile.nutrient_coverage
+    coverage = nutrient_coverage or {}
 
     label_defs = [d for d in defs_for_tier("label", pack=pack) if d.show_in_report]
     rows = _tier_rows(label_defs, daily_totals, targets, coverage)
 
-    # Free water (Appendix A6): a first-class computed output, not a CNF
-    # nutrient lookup — derived from free_water_fraction (food moisture +
-    # added water). Demoted to secondary/informational per the round-2
-    # fluids-ledger rework (Part 0 #8, Part 2.4): it is NOT compared
-    # against the fluid target (that's "Fluid provided"'s job below) — it
-    # carries its own completeness/coverage flag and no Target/% Target/
-    # Status of its own, so it never renders a misleading adequacy verdict
-    # for a number that structurally under-counts custom/label foods (no
-    # label carries moisture).
+    # Free water: a first-class computed output, not a single CNF nutrient
+    # lookup -- see daily_totals' docstring note above for what it blends.
+    # Demoted to secondary/informational (not compared against the fluid
+    # target -- that's "Fluid provided"'s job below): it carries its own
+    # completeness/coverage flag and no Target/% Target/Status of its own,
+    # so it never renders a misleading adequacy verdict for a number that
+    # structurally under-counts custom/label foods (no label carries
+    # moisture) and formula rows without a free_water_per_mL value.
     water_def = registry_by_name(pack).get("water_g")
     water_decimals = water_def.decimals if water_def else 1
-    free_water_mL = profile.free_water_fraction * daily_volume_mL
+    free_water_mL = daily_totals.get("water_g", 0.0)
     rows.append(
         {
-            "Nutrient": "Free water (CNF-estimated)",
+            "Nutrient": "Free water (estimated)",
             "Daily Total": round(free_water_mL, water_decimals),
             "Unit": "mL",
             "Target": "—",
             "% Target": "—",
             "Status": "Informational — see Fluid provided",
-            "Source": "Derived (food moisture) — no label carries moisture; secondary to Fluid provided",
+            "Source": "CNF food moisture (blend/oral rows) + formula-declared free water — no label carries moisture; secondary to Fluid provided",
             "Coverage": _coverage_text("water_g", coverage),
             "_zero_coverage": _zero_coverage("water_g", coverage),
         }
     )
 
-    # Fluid provided (Part 2.4): the PRIMARY fluid-adequacy row. Full
-    # volume of counts-as-fluid ingredients (I&O convention) scaled to
-    # daily intake, plus water flushes — computed at the app level (it
-    # needs per-ingredient counts_as_fluid toggles this module has no
-    # access to) and passed in. Falls back to the free-water figure when
-    # not supplied, so this function stays usable without the app's
-    # fluids ledger (e.g. scripts/verify_backend.py).
+    # Fluid provided: the PRIMARY fluid-adequacy row -- the Intake
+    # Record's full-volume I&O-convention total across every row (blend
+    # rows via their own fluid fraction, formula/flush rows at full
+    # volume, oral rows via their own counts_as_fluid toggle -- see
+    # src.intake.aggregate_intake()). Falls back to the free-water figure
+    # when not supplied, so this function stays usable without a full
+    # Intake Record (e.g. scripts/verify_backend.py).
     fluid_val = fluid_provided_mL if fluid_provided_mL is not None else free_water_mL
     fluid_target = targets.get("fluid_mL", 0.0)
     fluid_pct = (fluid_val / fluid_target * 100) if fluid_target > 0 else 0.0
@@ -305,10 +321,10 @@ def generate_adequacy_report(
 
 
 def generate_clinical_screen(
-    profile: NutrientProfile,
-    daily_volume_mL: float,
+    daily_totals: dict[str, float],
     targets: dict[str, float] | None = None,
     pack: str = DEFAULT_PACK,
+    nutrient_coverage: dict[str, tuple[int, int]] | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Generate the BTF micro screen — tier="clinical" nutrients only.
 
@@ -325,19 +341,26 @@ def generate_clinical_screen(
     low number may reflect missing CNF data, not missing nutrition — see
     scripts/trace_calculation.py's missing-data audit).
 
+    Args:
+        daily_totals:      nutrient_name -> daily total (see
+                            generate_adequacy_report()'s docstring — same
+                            Intake Record aggregation output).
+        targets:            nutrient_name -> target_value.
+        pack:               Data pack to report against.
+        nutrient_coverage: nutrient_name -> (n_supplying, n_total), from
+                            the same aggregation.
+
     Same columns as generate_adequacy_report(): Nutrient, Daily Total,
     Unit, Target, % Target, Status, Source, Coverage. None of these
     nutrients is offer_target="yes" (see src/nutrients.py — magnesium and
     phosphorus deliberately so; see src/targets.py's module docstring)
     so they always render "No target" here — that's correct, not a bug.
-    Rows with zero per-recipe coverage are dropped — see the second
-    return value.
+    Rows with zero coverage are dropped — see the second return value.
     """
     if targets is None:
         targets = {}
+    coverage = nutrient_coverage or {}
 
-    daily_totals = calculate_daily_totals(profile, daily_volume_mL)
-    coverage = profile.nutrient_coverage
     clinical_defs = [d for d in defs_for_tier("clinical", pack=pack) if d.show_in_report]
     rows = _tier_rows(clinical_defs, daily_totals, targets, coverage)
     return _finalize(rows)
@@ -485,112 +508,43 @@ def generate_comparator_table(
     return pd.DataFrame(rows)
 
 
-def generate_regimen_summary(
-    profile: NutrientProfile,
-    daily_volume_mL: float,
-    btf_fluid_mL: float,
-    flush_mL: float = 0.0,
-    formula_name: str | None = None,
-    formula_daily_volume_mL: float = 0.0,
+def generate_source_breakdown(
+    intake_totals,
+    pack: str = DEFAULT_PACK,
 ) -> pd.DataFrame:
-    """Generate the combined BTF + commercial-formula regimen summary
-    (round-2 clinical feedback, Part 2.7 — the author's spreadsheet's
-    "Totals from EN + BP + Propofol" concept reborn).
+    """Per-source subtotal breakdown (FEED_LOG_REWORK.md section 3.5):
+    rows = {Tube Feed, Food & Drink, Total}, columns = the displayed
+    macro/fluid nutrients. Directly answers the author's "I want combined
+    numbers, but I still want to see the split" request.
 
-    Rows: BTF (daily kcal/CHO/protein/fat + its own fluid contribution +
-    free water), optionally Formula (from its per-mL values × volume;
-    fluid = full volume at the I&O convention, same as the fluids
-    ledger; free water = free_water_per_mL × volume, "—" if the formula's
-    CSV row omits that column), optionally Flushes (fluid only), then
-    TOTAL. Carbohydrate and fat are BTF-only columns — formulas.csv
-    doesn't carry per-mL CHO/fat data, so those cells read "—" rather
-    than a fabricated number; TOTAL reflects only the components that
-    have a real value for that column.
+    Supersedes the old combined BTF + commercial-formula "regimen
+    summary" (generate_regimen_summary, removed by this rework) — a
+    formula is now just an Intake Record row like any other, so there is
+    nothing left to separately "combine"; the Intake Record aggregation
+    (src.intake.aggregate_intake()) already produces exactly this
+    Tube-Feed/Food-&-Drink/Total split as a byproduct of one pass over
+    the rows (FEED_LOG_REWORK.md section 2: "What this dissolves").
 
     Args:
-        profile:                  The BTF recipe's NutrientProfile.
-        daily_volume_mL:          BTF daily delivery volume.
-        btf_fluid_mL:             Fluid contributed by the BTF recipe
-                                   ITSELF (fluids-ledger figure scaled to
-                                   daily volume) — flushes are a separate
-                                   row below, not folded in here (unlike
-                                   the adequacy table's single combined
-                                   "Fluid provided" row).
-        flush_mL:                 Daily water-flush volume. 0 omits the
-                                   Flushes row.
-        formula_name:             Optional COMMERCIAL_FORMULAS key to add
-                                   to the regimen. None omits the Formula
-                                   row.
-        formula_daily_volume_mL:  mL/day of the added formula.
+        intake_totals: an src.intake.IntakeTotals (or any object exposing
+                        the same `.subtotals` dict shape — duck-typed here
+                        to avoid a hard import-cycle dependency on
+                        src/intake.py, matching this module's existing
+                        style of taking plain dicts/DataFrames).
+        pack:           Which data pack's nutrient registry to report
+                        against (for column labels/decimals/order).
     """
-    daily_totals = calculate_daily_totals(profile, daily_volume_mL)
-    free_water_mL = profile.free_water_fraction * daily_volume_mL
-
-    total_kcal = daily_totals.get("energy_kcal", 0.0)
-    total_cho = daily_totals.get("carbohydrate_g", 0.0)
-    total_protein = daily_totals.get("protein_g", 0.0)
-    total_fat = daily_totals.get("fat_g", 0.0)
-    total_fluid = btf_fluid_mL
-    total_free_water = free_water_mL
-
-    rows = [
-        {
-            "Component": "BTF",
-            "Energy (kcal)": round(total_kcal, 0),
-            "Carbohydrate (g)": round(total_cho, 1),
-            "Protein (g)": round(total_protein, 1),
-            "Fat (g)": round(total_fat, 1),
-            "Fluid provided (mL)": round(btf_fluid_mL, 0),
-            "Free water (mL)": round(free_water_mL, 0),
-        }
-    ]
-
-    if formula_name and formula_daily_volume_mL > 0:
-        formula = COMMERCIAL_FORMULAS[formula_name]
-        f_kcal = formula["kcal_per_mL"] * formula_daily_volume_mL
-        f_protein = formula["protein_per_mL"] * formula_daily_volume_mL
-        fw_per_mL = formula.get("free_water_per_mL")
-        f_free_water = fw_per_mL * formula_daily_volume_mL if fw_per_mL is not None else None
-        rows.append(
-            {
-                "Component": formula_name,
-                "Energy (kcal)": round(f_kcal, 0),
-                "Carbohydrate (g)": "—",
-                "Protein (g)": round(f_protein, 1),
-                "Fat (g)": "—",
-                "Fluid provided (mL)": round(formula_daily_volume_mL, 0),
-                "Free water (mL)": round(f_free_water, 0) if f_free_water is not None else "—",
-            }
+    label_defs = [d for d in defs_for_tier("label", pack=pack) if d.show_in_report]
+    rows = []
+    for source_label in (_TUBE_FEED_LABEL, _FOOD_DRINK_LABEL, _TOTAL_LABEL):
+        sub = intake_totals.subtotals.get(
+            source_label, {"nutrient_totals": {}, "fluid_provided_mL": 0.0}
         )
-        total_kcal += f_kcal
-        total_protein += f_protein
-        total_fluid += formula_daily_volume_mL
-        if f_free_water is not None:
-            total_free_water += f_free_water
-
-    if flush_mL > 0:
-        rows.append(
-            {
-                "Component": "Flushes",
-                "Energy (kcal)": "—",
-                "Carbohydrate (g)": "—",
-                "Protein (g)": "—",
-                "Fat (g)": "—",
-                "Fluid provided (mL)": round(flush_mL, 0),
-                "Free water (mL)": "—",
-            }
-        )
-        total_fluid += flush_mL
-
-    rows.append(
-        {
-            "Component": "TOTAL",
-            "Energy (kcal)": round(total_kcal, 0),
-            "Carbohydrate (g)": round(total_cho, 1),
-            "Protein (g)": round(total_protein, 1),
-            "Fat (g)": round(total_fat, 1),
-            "Fluid provided (mL)": round(total_fluid, 0),
-            "Free water (mL)": round(total_free_water, 0),
-        }
-    )
+        row: dict = {"Source": source_label}
+        for d in label_defs:
+            row[f"{d.label} ({d.unit})"] = round(
+                sub["nutrient_totals"].get(d.name, 0.0), d.decimals
+            )
+        row["Fluid provided (mL)"] = round(sub["fluid_provided_mL"], 0)
+        rows.append(row)
     return pd.DataFrame(rows)
