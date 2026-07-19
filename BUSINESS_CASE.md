@@ -144,7 +144,7 @@ clinical instruments.
 | Manual recalculation for every change | Live updates — change one ingredient, see everything update |
 | Adequacy vs targets checked by eye | Automatic gap report with status indicators |
 | No commercial-formula comparison | Side-by-side comparator |
-| Mental math across feeds, batches, and flushes | A day-level feed log that records and sums what the client actually received |
+| Mental math across feeds, batches, flushes, and oral intake | A day-level Intake Record that records and sums exactly what the client actually received |
 | Errors are silent | Validated inputs, consistent math, every calculation visible |
 | Hard to share or audit | Exportable recipe + methodology for chart documentation |
 | Curated food list or no database | ~6,000 CNF foods + USDA supplement + custom foods from labels |
@@ -214,24 +214,41 @@ the RD is always the final authority.
    An optional patient weight adds a display-only per-kg row (kcal/kg,
    protein g/kg, fluid mL/kg) — no target or equation is derived from it.
 
-3. **The day is a list of feeds — a feed log, not a schedule formula.**
-   Real BTF days don't follow "one recipe × one schedule": families
-   blend in the morning and again in the afternoon with different
-   ingredients, or keep a batch in the fridge and draw from it across
-   the day. So the design separates two things that are **not** the
-   same: the volume a recipe *produces* (its batch) and the volume the
-   client *received*. The app holds multiple named **blends** per day
-   (each with its own ingredients and measured batch volume), and a
-   **feed log** — rows of *time · source · volume given*, where a
-   source is a blend, a commercial formula, or a water flush:
-   `0800 · Morning blend · 300 mL`, `1500 · Fridge batch · 350 mL`,
-   `2000 · Peptamen 1.5 · 250 mL`, flushes interleaved. Daily totals
-   are the **sum over the log** — never an extrapolation. If the log
-   draws more from a blend than its batch produced, that's a visible
-   over-draw flag, not a silent assumption; drawing less is just
-   leftovers. (Naive designs multiply one recipe's density by a
-   prescribed daily volume, silently inventing batches that were never
-   made — this design makes that failure impossible by construction.)
+3. **The day is a list of intake events — an Intake Record, not a
+   schedule formula.** Real BTF days don't follow "one recipe × one
+   schedule": families blend in the morning and again in the afternoon
+   with different ingredients, keep a batch in the fridge and draw from
+   it across the day, or the client eats and drinks by mouth alongside
+   the tube feed (BTF isn't necessarily NPO-except-tube). So the design
+   separates two things that are **not** the same: the volume a recipe
+   *produces* (its batch) and the volume the client *received*. The app
+   holds multiple named **blends** per day (each with its own
+   ingredients and measured batch volume — a blend is a *formulation*,
+   scale-free, not a batch), and one **Intake Record** — a single
+   chronological list of rows, each with an optional time and a
+   `source_type` of blend, commercial formula, water flush, or oral
+   food/drink: `0800 · Morning blend · 300 mL`,
+   `0830 · 1 small banana (oral)`, `1500 · Fridge batch · 350 mL`,
+   `2000 · Peptamen 1.5 · 250 mL`, flushes interleaved. Displayed
+   grouped under "Tube Feed" and "Food & Drink" headers for
+   scannability, but it's one list and one aggregation — never two
+   separately-maintained logs merged into a third view. Daily totals
+   are the **direct sum over this record** — never an extrapolation,
+   and there is deliberately **no over-draw flag**: a blend's density is
+   scale-free (1.2 kcal/mL whether made once or three times today), so
+   logging 600 mL against a "400 mL blend" just means it was made more
+   than once — the ordinary case, not an anomaly. The only guard that
+   remains is a real invalidity: a blend with ingredients but no
+   measured volume can't produce a density and says so clearly. (Naive
+   designs multiply one recipe's density by a prescribed daily volume,
+   silently inventing batches that were never made — this design makes
+   that failure impossible by construction.) An oral row is architecturally
+   simpler than a blend row — a single food needs no batch/density
+   concept, just the same grams × per-100g scaling a blend ingredient
+   already uses — so oral entry reuses the exact same CNF search (with
+   food-group filter and household-measure or grams entry) and
+   custom-food-from-label form already built for blends, not a second
+   food-search UI.
 
    The AHS handbook confirms syringe bolus is the primary method for
    BTF: *"Home blended food is mostly offered by syringe as the blend
@@ -240,17 +257,21 @@ the RD is always the final authority.
    Pump delivery is accordingly not offered; the delivery route is
    recorded only as wording for the chart note.
 
-4. **Adequacy report, in two tiers, plus a fluids ledger.** At the
-   day's logged intake: a main table of nine displayed nutrients
-   (energy, protein, fat, carbohydrate, fibre, sodium, potassium,
-   calcium, iron — chosen by the author as "what's needed," not
-   everything; saturated fat, trans fat, cholesterol, and sugars are
-   still computed and exported, just not shown daily) plus two fluid
-   rows: **Fluid provided** (full volume of ingredients flagged
-   "counts as fluid," the I&O convention, plus formula volumes and
-   water flushes from the feed log — this
-   drives the fluid-adequacy status) and **Free water (CNF-estimated)**
-   (the moisture-based figure, secondary/informational). Targets are
+4. **Adequacy report, in two tiers, a fluids ledger, and a per-source
+   split.** At the day's logged intake (tube feed and oral together): a
+   main table of nine displayed nutrients (energy, protein, fat,
+   carbohydrate, fibre, sodium, potassium, calcium, iron — chosen by the
+   author as "what's needed," not everything; saturated fat, trans fat,
+   cholesterol, and sugars are still computed and exported, just not
+   shown daily) plus two fluid rows: **Fluid provided** (full volume of
+   every counts-as-fluid contribution — blend ingredients, formula and
+   flush volumes, oral drinks — the I&O convention; this drives the
+   fluid-adequacy status) and **Free water (estimated)** (CNF food
+   moisture from blend and oral rows, blended with any commercial
+   formula's declared free-water content; secondary/informational, no
+   target of its own). A **per-source breakdown** table — Tube Feed vs.
+   Food & Drink vs. Total, across the same nutrients — answers "I want
+   the combined numbers, but I still want to see the split." Targets are
    always blank until the RD enters patient-specific numbers — there
    are no population defaults (protein practice runs 1.0-1.5 g/kg, not
    the 0.8 g/kg population RDA a default would imply). Status
@@ -267,11 +288,14 @@ the RD is always the final authority.
 
 5. **Commercial formula comparator — and mixed regimens for free.**
    Pick up to four benchmark formulas; a transposed table (metrics as
-   columns, the BTF as the first row) shows each at the day's volume.
-   Combined BTF + formula regimens need no separate feature: a formula
-   is simply another feed-log row (#3), so the day's totals naturally
-   sum blend + formula + flushes — the author's own EN spreadsheet's
-   "Totals from EN + BP + Propofol" concept, generalized.
+   columns, the BTF as the first row) shows each at an independent
+   "compare at this volume" what-if — a density comparison, deliberately
+   separate from the day's actual logged intake. Combined BTF + formula
+   regimens need no separate feature at all: a formula is simply another
+   Intake Record row (#3), so the day's totals naturally sum blend +
+   formula + flushes + oral — the author's own EN spreadsheet's "Totals
+   from EN + BP + Propofol" concept, generalized and now reported with
+   the per-source breakdown from #4.
 
 6. **Live recipe adjustment is the core interaction — not a mode, the
    editor itself.** There is no separate "what-if" screen for the
@@ -299,15 +323,18 @@ the RD is always the final authority.
 7. **Flow-test documentation and a copy-pasteable chart note.** A simple
    date/result/notes record of the RD's own drip test (the tool cannot
    measure flow — this is documentation, not computation) and a
-   generated chart-note paragraph — essentially the feed log read
-   aloud, plus totals: per-feed times/sources/volumes, macros, the
-   fluid math, and the flow-test result when recorded — in a code block
-   with a built-in copy button. No patient-identifying fields.
+   generated chart-note paragraph — essentially the Intake Record read
+   aloud, tube feed and oral interleaved by time, plus totals:
+   times/sources/volumes (same-source tube-feed rows grouped, e.g.
+   "0800 300 mL + 1200 100 mL Morning blend"), macros, the fluid math,
+   and the flow-test result when recorded — in a code block with a
+   built-in copy button. No patient-identifying fields.
 
 8. **Export.** Excel export covering each blend and its ingredients
-   (with the fluids-ledger unit/counts-as-fluid columns), the feed log,
-   density panel, adequacy and micro-screen tables, formula comparator,
-   flow test, and the chart note text.
+   (with the fluids-ledger unit/counts-as-fluid columns) on its own
+   sheet, the full Intake Record (chronological), density panel,
+   adequacy and micro-screen tables, the per-source breakdown, formula
+   comparator, flow test, and the chart note text.
 
 ### Where AI belongs in a clinical calculator (roadmap)
 
@@ -547,8 +574,8 @@ key held in deployment secrets, never in the repo.
 
 | Week | Deliverable | What gets built |
 |---|---|---|
-| **1 — Plan It** | This document posted publicly | Concept, market, requirements, methodology — including the feed-log intake model (§7.3), the per-country nutrient registry (Appendix C), and the AI roadmap (§7) |
-| **2 — Core Feature** | Working Streamlit app | Data layer (CNF load, registry); calculator (blends → densities); feed log → daily totals; two-tier adequacy + fluids ledger; comparator; NFt-lookalike custom-food entry; chart note; export |
+| **1 — Plan It** | This document posted publicly | Concept, market, requirements, methodology — including the Intake Record model (§7.3), the per-country nutrient registry (Appendix C), and the AI roadmap (§7) |
+| **2 — Core Feature** | Working Streamlit app | Data layer (CNF load, registry); calculator (blends → densities); Intake Record → daily totals; two-tier adequacy + fluids ledger; comparator; NFt-lookalike custom-food entry; chart note; export |
 | **3 — Build to Last** | Tests, CI, public deploy, AI-assist edges | pytest suite, GitHub Actions, Streamlit Cloud deploy for RD pilot testing, label-photo extraction (flagship), PDF → formulas extraction, USDA supplement |
 | **4 — Ship + Pitch** | Live app + 2–3 min demo | Polish from pilot feedback, validation appendix, demo video |
 
@@ -620,38 +647,50 @@ ingredient (CNF moisture ≈ 100%), so it flows into `blend_total_water_g`
 like everything else. 1 g water ≈ 1 mL (standard clinical
 approximation).
 
-### A4. The feed log (intake)
+### A4. The Intake Record
 
-The day's intake is a log of rows — *time · source · volume given* —
-where a source is a blend, a commercial formula, or a water flush.
-Volumes are **recorded, never inferred**:
-
-```
-daily_volume_mL = Σ over log rows: volume_given
-```
-
-Per-blend bookkeeping (visible, never silent):
+The day's intake is one chronological list of rows — *time (optional) ·
+source_type · source · amount* — where `source_type` is `blend`,
+`formula`, `flush`, or `oral`. Amounts are **recorded, never inferred**:
 
 ```
-Σ volume logged from blend_i  ≤  blend_i.measured_final_volume_mL
-   → otherwise an over-draw flag: more was logged than the batch produced
-   (logging less is just leftovers — no flag)
+fluid_provided_mL = Σ over rows: each row's own fluid contribution
+  blend row    → blend_fluid_fraction × amount   (its counts-as-fluid ingredients)
+  formula row  → amount                          (I&O convention: entirely fluid)
+  flush row    → amount                          (100% fluid, no nutrients)
+  oral row     → amount if counts_as_fluid else 0
 ```
+
+There is deliberately **no over-draw bookkeeping and no over-draw flag**
+— not "warn instead of block," removed as a concept. A blend's
+composition is scale-free: 1.2 kcal/mL is 1.2 kcal/mL whether the blend
+was made once today or three times. Logging 600 mL against a "400 mL
+blend" just means it was made more than once — the ordinary case a
+flag would otherwise fire hardest on. The one guard that survives is a
+real invalidity, not a judgment call: a blend with ingredients but no
+measured volume can't produce a density (division by zero) and must
+say so clearly.
 
 ### A5. Daily totals
 
 ```
-daily_[nutrient] = Σ over log rows:
-  blend row    → blend_density_[nutrient] × volume_given
-  formula row  → formula_per_mL_[nutrient] × volume_given
-  flush row    → fluid only (no nutrients)
+daily_[nutrient] = Σ over Intake Record rows:
+  blend row    → blend_density_[nutrient] × amount   (calculate_daily_totals)
+  formula row  → formula_per_mL_[nutrient] × amount  (energy, protein only;
+                   free water via formula_free_water_per_mL × amount, folded
+                   into the "water_g" total alongside CNF food moisture)
+  flush row    → fluid only (no nutrient contribution)
+  oral row     → compute_nutrient_totals([food], amount)  (no volume/density
+                   concept — a single food scales the same way a blend
+                   ingredient does)
 ```
 
 One definition of "what the client received," used everywhere:
-adequacy, per-kg display, fluid ledger, and the chart note all read
-from this sum. A design that instead multiplies one blend's density by
-a prescribed daily volume silently invents batches that were never
-made; this model makes that error impossible.
+adequacy, the Tube-Feed/Food-&-Drink/Total breakdown, per-kg display,
+the fluid ledger, and the chart note all read from this same sum. A
+design that instead multiplies one blend's density by a prescribed
+daily volume silently invents batches that were never made; this model
+makes that error impossible by construction.
 
 ### A6. Adequacy
 
@@ -697,12 +736,13 @@ national public-health judgment, encoded per-country in
   them, and they're computed and exported) but `show_in_report=no` —
   "show what's needed," not everything (future practice-area additions
   go through this registry column, not a code change). The table also
-  carries two fluid rows: **Fluid provided** (full volume of
-  ingredients flagged "counts as fluid," the I&O convention, plus
-  formula volumes and water flushes from the feed log — compared
-  against the Fluid target) and **Free water
-  (CNF-estimated)** (the moisture-based figure, secondary/
-  informational, no target of its own).
+  carries two fluid rows: **Fluid provided** (full volume of every
+  counts-as-fluid contribution across the Intake Record — blend
+  ingredients, formula and flush volumes, oral drinks — the I&O
+  convention, compared against the Fluid target) and **Free water
+  (estimated)** (CNF food moisture from blend/oral rows blended with
+  any formula's declared free-water content, secondary/informational,
+  no target of its own).
 - **BTF micro screen** (`tier=clinical`) — Magnesium, Phosphorus, Zinc,
   Vitamin D, Vitamin B12: tracked for BTF-clinical reasons, not because
   they're on a Canadian label. A one-time ASPEN-style supplementation

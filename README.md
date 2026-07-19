@@ -104,21 +104,37 @@ If any of these are missing, see `CONTEXT.md` §3 for the tech stack and
 
 ### Step 6: Use the app
 
-- Click **"Load example recipe"** in the top row to quickly see all the
-  results panels with a preloaded chicken/rice/water/oil recipe.
-- In the **"Patient, Delivery & Targets"** banner, expand "Delivery &
-  targets" to see the syringe bolus schedule, water-flush schedule, and
-  blank target fields (there are no default targets — enter your own or
-  leave them blank).
-- In the **🔨 Build** tab, try searching for a food (e.g., type "banana"
+- Click **"Load example day"** in the top row to quickly see all the
+  results panels with a preloaded blend (chicken/rice/water/oil) plus a
+  small example Intake Record (two feeds of that blend, a water flush,
+  and a banana eaten by mouth).
+- In the **"Patient, Targets & Intake Record"** banner: expand "Targets"
+  for the blank target fields (there are no default targets — enter
+  your own or leave them blank); the **Intake Record** below it is the
+  single source of truth for everything the client actually received —
+  use "➕ Add tube feed" (time + a blend/commercial-formula/water-flush
+  source + volume) and "➕ Add food/drink" (search CNF or enter a custom
+  food from a label, same as the Build tab) to log rows. Rows display
+  chronologically, grouped under "Tube Feed" and "Food & Drink" headers,
+  and are individually removable. The always-visible summary line
+  (`~kcal | g protein | mL fluid provided`) updates as you add rows.
+- In the **🔨 Build** tab, use the blend selector at the top to create,
+  rename, or delete blends (a blend is a *recipe formulation* — its
+  densities don't depend on how many times it's made or how much of it
+  gets logged in the Intake Record, by design; see `FEED_LOG_REWORK.md`
+  if you're curious why). Try searching for a food (e.g., type "banana"
   in the search box), or switch to "Enter information on the food
   label" to see the Nutrition-Facts-lookalike custom-food form.
-- In the **📊 Results** tab, try the **Dilution What-If** slider — it's
-  a secondary aid ("what would thinning cost?"), not the main way to
-  change the recipe (that's editing ingredients directly in the Build
-  tab, which updates every number live). Also try the formula
-  comparator multiselect and the copy-pasteable chart note at the
-  bottom.
+- In the **📊 Results** tab, daily totals/adequacy/the BTF micro screen
+  come from the Intake Record above — add a few rows in the banner
+  first if the tables look empty. Try the **Per-Source Breakdown**
+  table (Tube Feed vs. Food & Drink vs. Total), the **Dilution
+  What-If** slider — a secondary aid ("what would thinning cost?"), not
+  the main way to change the recipe (that's editing ingredients
+  directly in the Build tab, which updates every number live) — the
+  formula comparator multiselect, and the copy-pasteable chart note at
+  the bottom (the Intake Record read aloud chronologically, tube and
+  oral interleaved).
 
 ### Step 7: Stop the app
 
@@ -182,7 +198,7 @@ column. Same numbers = the app is loading the database faithfully
 
 ### Hop 3 — the density division
 
-In the running app, load the example recipe, then on a calculator:
+In the running app, load the example day, then on a calculator:
 
 > total kcal ÷ measured volume = the kcal/mL shown on screen?
 
@@ -193,8 +209,9 @@ In the running app, load the example recipe, then on a calculator:
 Your EN spreadsheet computes Peptamen 1.5 at any volume, and the app's
 formula profiles came from that spreadsheet. So:
 
-1. In the app, set delivery to **Total feed volume per day, 1200 mL/day**
-   and add **Peptamen 1.5** to the comparator's multiselect.
+1. In the app's Results tab, set the comparator's **"Compare at daily
+   volume (mL)"** field to **1200** and add **Peptamen 1.5** to the
+   comparator's multiselect.
 2. In your spreadsheet, run Peptamen 1.5 at 1200 mL.
 3. The kcal and protein must match (1800 kcal, 81.6 g protein).
 

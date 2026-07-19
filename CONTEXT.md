@@ -17,26 +17,41 @@ to it. The full business case, market analysis, and methodology are in
 
 **App flow — "start with the blender":**
 
-1. **Recipe builder** — search CNF or USDA supplement or add a custom
-   food from a nutrition facts label (g or mL basis); enter grams (or
-   mL) per ingredient and measured final volume. No separate "added
-   water" field — water is an ordinary ingredient, flagged "counts as
-   fluid" like any other liquid.
-2. **Delivery input** — how is the feed given? Syringe bolus as an
-   editable (time, volume) schedule, or a single total feed volume per
-   day. Water flushes use the same schedule pattern. (Pump delivery is
-   not offered in the UI — AHS: almost never used for BTF.)
+1. **Build tab — blends** — a blend selector (new/rename/delete) over
+   an open-ended list of recipe formulations; search CNF or USDA
+   supplement or add a custom food from a nutrition facts label (g or
+   mL basis); enter grams (or mL) per ingredient and measured final
+   volume for the selected blend. No separate "added water" field —
+   water is an ordinary ingredient, flagged "counts as fluid" like any
+   other liquid. A blend is scale-free (a *formulation*) — it doesn't
+   know or care how many times it gets made; see the Intake Record
+   below for that.
+2. **Intake Record (banner)** — replaces the old delivery-schedule
+   input. One chronological list of rows — tube feed (blend / commercial
+   formula / water flush) and oral food/drink — each with an optional
+   time and an amount; displayed grouped under "Tube Feed" and
+   "Food & Drink" headers but backed by one list. Daily totals are a
+   **direct sum over these rows** — never an extrapolation of a batch
+   volume against a schedule (see the ⚠️ KNOWN ISSUE entry in §9, now
+   resolved, for the bug this replaced), and there is **no over-draw
+   flag** of any kind — a blend's density is scale-free, so logging a
+   blend multiple times a day is normal usage, not an anomaly. (Pump
+   delivery is not offered in the UI — AHS: almost never used for BTF;
+   the delivery method is recorded only as free-text chart-note
+   wording.) See `FEED_LOG_REWORK.md` for the full design rationale.
 3. **Targets (optional)** — RD enters kcal/day, protein g/day, fluid
    mL/day they already know. Always blank until entered — no
    population defaults. No assessment page, no energy equations in the
    app (those are documented in `BUSINESS_CASE.md` Appendix B as
    reference); an optional patient weight adds a DISPLAY-only per-kg
    row, never a target.
-4. **Results (live)** — densities (+ optional per-kg row), daily
-   totals, adequacy vs targets (with a fluids ledger driving the fluid
-   row), commercial formula comparator, combined BTF+formula regimen,
-   flow-test documentation, copy-pasteable chart note, live recipe
-   adjustment.
+4. **Results (live)** — per-blend densities (+ coverage), daily totals
+   from the Intake Record, adequacy vs targets (with a fluids ledger
+   driving the fluid row), a per-source (Tube Feed vs. Food & Drink vs.
+   Total) breakdown, commercial formula comparator (at an independent
+   what-if volume), dilution what-if, flow-test documentation,
+   copy-pasteable chart note (the Intake Record read aloud
+   chronologically, tube and oral interleaved), live recipe adjustment.
 
 **Design commitments:**
 
@@ -706,53 +721,154 @@ the repo/plans directory).**
   hoc AppTest verification rather than a committed `tests/` suite) and
   a live `.venv/bin/streamlit run` smoke test.
 
-**⚠️ KNOWN ISSUE + NEXT MAJOR WORK (2026-07-17, from hands-on user
-testing) — the feed-log rework. START HERE WHEN RESUMING.**
+**✅ RESOLVED (2026-07-18/19) — the Intake Record rework.** The live bug
+below (daily totals computed as `density × delivery-schedule volume`) is
+fixed; the app now trusts daily totals / adequacy / per-kg / fluid /
+chart note unconditionally — see the "Intake Record rework" entry further
+down for what shipped. The paragraphs immediately below are kept
+verbatim as the historical record of the bug and the design decision
+that fixed it; do not re-litigate either.
 
-- **Live bug:** daily totals are computed as `density × delivery-schedule
-  volume`, silently assuming the client received multiple batches of a
-  recipe that exists once (batch 400 mL + schedule 1200 mL/day → results
-  ×3). Nothing reconciles batch volume against delivered volume. **Until
-  the rework lands, do not trust daily totals / adequacy / per-kg /
-  fluid / chart note whenever the schedule total exceeds the batch
-  volume.**
-- **Author's design decision (final, do not relitigate):** replace the
-  single-recipe + schedule model with **"the day is a list of feeds"** —
-  multiple named blends per day (morning blend, fridge batch, ...), and a
-  **feed log** (time · source · volume) where a source is a blend, a
-  commercial formula, or a water flush. Daily totals = the sum over log
-  rows; batch-vs-logged becomes visible bookkeeping (over-draw flag), not
-  a silent assumption. This dissolves the schedule-mismatch problem and
-  supersedes the separate round-2 "combined regimen" section and the
-  standalone flush schedule (both become log rows).
-- **Full coherent rework, NO interim patch** — a cap-at-batch band-aid was
-  explicitly considered and rejected as throwaway logic.
-- **The complete design + implementation plan is in
-  [`FEED_LOG_REWORK.md`](FEED_LOG_REWORK.md)** (repo root — readable by
-  any tool). It carries the model, scope (session-state shape, Build-tab
-  blend selector, banner log editor, Results aggregation, `src/` helper +
-  verify_backend stages, doc updates), the v1 out-of-scope list
-  (multi-day batches, persistence, prescribed-vs-received), the
-  verification bar including the original bug as a test case, and three
-  open questions to confirm with the author.
-- **After the rework, the next milestone (author-approved 2026-07-17):**
-  the **label-photo → custom food** feature plus **public deployment**
-  (Streamlit Community Cloud, API key in app secrets, no PHI by design)
-  so practicing RDs can pilot-test the whole tool. The AI roadmap and its
-  governing principle ("the agent is in the workflow, not in the math"),
-  the cooked-preparations design constraint for future recipe matching,
-  and the explicit rejection of AI-written ADIME notes are all recorded
-  in `BUSINESS_CASE.md` §7 ("Where AI belongs in a clinical
-  calculator").
+- **The bug (now fixed):** daily totals were computed as `density ×
+  delivery-schedule volume`, silently assuming the client received
+  multiple batches of a recipe that exists once (batch 400 mL + schedule
+  1200 mL/day → results ×3). Nothing reconciled batch volume against
+  delivered volume.
+- **Author's design decision (implemented, do not relitigate):** replace
+  the single-recipe + schedule model with **"the day is a list of intake
+  events"** — multiple named blends per day (morning blend, fridge
+  batch, ...), and an **Intake Record** (time · source_type · source ·
+  amount) where a source is a blend, a commercial formula, a water
+  flush, or an oral food/drink. Daily totals = the direct sum over
+  Intake Record rows; there is **no over-draw flag of any kind** — not
+  "warn instead of block," genuinely removed as a concept (a blend's
+  density is scale-free, so logging it multiple times a day is normal
+  usage, not an anomaly). This dissolved the schedule-mismatch problem
+  and superseded the separate round-2 "combined regimen" section and the
+  standalone flush schedule (both became Intake Record rows).
+- **Full coherent rework, no interim patch** — a cap-at-batch band-aid
+  was explicitly considered and rejected as throwaway logic.
+- **The complete design doc is [`FEED_LOG_REWORK.md`](FEED_LOG_REWORK.md)**
+  (repo root) — still the authoritative record of the model and every
+  resolved design question (section 6), kept for reference; it is a
+  completed plan now, not an in-progress one.
+- **Next milestone (author-approved 2026-07-17, unchanged by this
+  rework):** the **label-photo → custom food** feature plus **public
+  deployment** (Streamlit Community Cloud, API key in app secrets, no
+  PHI by design) so practicing RDs can pilot-test the whole tool. The AI
+  roadmap and its governing principle ("the agent is in the workflow,
+  not in the math"), the cooked-preparations design constraint for
+  future recipe matching, and the explicit rejection of AI-written ADIME
+  notes are all recorded in `BUSINESS_CASE.md` §7 ("Where AI belongs in
+  a clinical calculator").
 
-**Backend verification (2026-07-16, extended 2026-07-17): PASSED.** The full backend
-integration test lives at `scripts/verify_backend.py` and now runs 12
+**Intake Record rework (2026-07-18/19, this session) — implements
+`FEED_LOG_REWORK.md` in full, including the scope-expansion to oral
+intake the doc's section 6.4 settled. Five commits (plus one bugfix
+commit found during verification):**
+
+- `eacc39e` — backend: extracted `calculate_profile()`'s ingredient-
+  scaling core (steps 1-6) into `src/calculator.py::_scale_ingredients()`,
+  exposed standalone as `compute_nutrient_totals()` /
+  `compute_nutrient_totals_and_coverage()` for callers with no
+  volume/density concept (an oral row is a single food — no batch to
+  divide by). New `src/intake.py::aggregate_intake()` sums Intake Record
+  rows into daily totals, fluid provided, and Tube-Feed/Food-&-Drink/
+  Total subtotals; `resolve_blend_profile()` raises `InvalidBlendError`
+  for a blend with ingredients but no measured volume — the one guard
+  that survives the rework. `verify_backend.py` stage 13 covers the
+  design doc's full verification bar at the backend level.
+- `d9b6f77` — `app/streamlit_app.py` session state reworked to
+  `st.session_state.blends` (dict id -> {name, ingredients,
+  measured_volume_mL} — an open-ended list of formulations) and
+  `st.session_state.intake_log`. The Build tab gained a blend selector
+  (new/rename/delete, per-blend density mini-summary). The CNF-search +
+  custom-food-from-label UI was refactored into
+  `render_add_food_ui()` — one reusable component parameterized by a
+  `key_prefix`, with no opinion about its destination (append to a
+  blend vs. become an Intake Record oral row).
+- `b596bb0` — the banner's old Delivery/bolus-schedule/flush-schedule
+  section is replaced by the Intake Record: "Add tube feed" (time +
+  blend/formula/flush source + volume) and "Add food/drink" (reuses
+  `render_add_food_ui()`), rows grouped by "Tube Feed"/"Food & Drink"
+  section header but backed by one list, each removable, an
+  always-visible nutrient-total summary line
+  (`~kcal | g protein | mL fluid provided`).
+  **Deviation from the doc, with reasoning:** the doc's first choice for
+  "Add food/drink" was `st.dialog`, with an inline expander sanctioned
+  as a fallback "if st.dialog proves awkward in practice." `st.dialog`
+  works correctly for real interactive use but is incompatible with this
+  project's AppTest-driven verification discipline: any widget rendered
+  inside an open `st.dialog` becomes an orphaned node in AppTest's
+  tracked element tree once the dialog closes, and the very next
+  `.run()` call — regardless of what triggers it — raises a `KeyError`
+  reserializing that orphaned widget's state (confirmed with a minimal
+  two-widget dialog unrelated to this app's code; `streamlit/testing/v1`
+  has zero references to "dialog" anywhere in its source). Since a
+  dialog that poisons every subsequent AppTest run can't be verified the
+  way this project requires, the sanctioned inline-expander fallback was
+  used instead — see `_render_add_oral_ui()`'s docstring in
+  `app/streamlit_app.py`.
+- `2fb9a0c` — Results tab wired to the Intake Record.
+  `src/report.py::generate_adequacy_report()` and
+  `generate_clinical_screen()` now take a `daily_totals` dict (+ optional
+  `nutrient_coverage`) instead of a single `NutrientProfile` +
+  `daily_volume_mL`, since a day's totals can now come from several
+  blends/formulas/flushes/oral foods at once. New
+  `generate_source_breakdown()` produces the Tube-Feed/Food-&-Drink/
+  Total subtotal table; `generate_regimen_summary()` (the old combined
+  BTF+formula summary) is **removed** — a formula is just another Intake
+  Record row now, so `aggregate_intake()` already produces the combined
+  total. The per-blend density panel now shows **every** blend (not just
+  the selected one), each with a coverage summary. The chart note is
+  rebuilt from Intake Record rows: chronological, tube and oral
+  interleaved, same-source tube-feed rows grouped
+  (`"0800 300 mL + 1200 100 mL Morning blend"`), matching the design
+  doc's own worked example format. Excel export gained an Intake Record
+  sheet (all rows, chronological) and one sheet per blend. The
+  commercial formula comparator now operates at an explicit "compare at
+  this volume" what-if input, independent of the actual Intake Record
+  (there is no longer one schedule-derived daily volume to default to).
+- `b458431` — bugfix found via AppTest while verifying item 4 of the
+  doc's verification bar: the `blend_selector` selectbox widget
+  remembers its own prior value across reruns once created (the same
+  class of gotcha the round-2 pass hit with the measured-volume input),
+  so creating or deleting a blend set `selected_blend_id` correctly but
+  the selectbox silently overwrote it back on the next render. Fixed by
+  popping the `blend_selector` session_state key wherever
+  `selected_blend_id` is changed programmatically.
+- **Verification:** all three regression scripts green after every
+  commit (`verify_backend.py` extended with stage 13 covering the
+  design doc's verification-bar items 1/2/3/5/7 at the backend level;
+  `trace_calculation.py` and `check_app_imports.py` unchanged in shape).
+  A Streamlit `AppTest` harness drove real UI interactions (not direct
+  `session_state` pokes) covering all 8 verification-bar items,
+  including item 1 (the original bug case — one blend, 400 mL batch,
+  logged 3×400 mL — now computes cleanly with **no** flag or error,
+  re-verified through the live UI) and item 6 (the "1 small" banana
+  household measure resolves to 101 g, matching the design doc's
+  CNF-verified figure exactly, plus the "enter grams directly"
+  override). A live `.venv/bin/streamlit run` boot check confirmed HTTP 200.
+- **Out of scope for this rework, noted as roadmap per
+  `FEED_LOG_REWORK.md` section 4:** batches spanning multiple days
+  (a batch drawn across days works fine for charting a single day; how
+  much is left tomorrow is a future feature); saving/loading blends or
+  days (JSON persistence, Phase 7); a prescribed-vs-received comparison
+  field; a "recent/frequent foods" quick-add for oral entries.
+
+**Backend verification (2026-07-16, extended 2026-07-17, extended again
+2026-07-18/19 for the Intake Record rework): PASSED.** The full backend
+integration test lives at `scripts/verify_backend.py` and now runs 13
 stages against real CNF data (data load with Parquet/CSV source timing,
 household measures, profile calculation, delivery, daily totals,
 adequacy report including the fluid rows, formula comparison,
 density summary, custom-food folding, nutrient-registry + tier-based
-reporting, per-recipe coverage provenance, and zero-coverage hiding). To
-re-verify at any time, run:
+reporting, per-recipe coverage provenance, zero-coverage hiding, and
+Intake Record aggregation — the extraction/calculate_profile()
+equivalence, the original over-draw bug re-verified with no flag, a
+single-batch exact-scaling case, the two-blend+formula+flush+oral
+combined-totals case, the `InvalidBlendError` guard, and chronological
+sorting). To re-verify at any time, run:
 
 ```
 .venv/bin/python scripts/verify_backend.py
@@ -762,10 +878,15 @@ re-verify at any time, run:
 `python -c "..."` commands — use the script above. It exists precisely
 so verification is a single short, approvable command.
 
-Last updated: 2026-07-17 (end of hands-on user-testing day. The next
-session's starting point is the **feed-log rework** — see the ⚠️ KNOWN
-ISSUE entry above and `FEED_LOG_REWORK.md`. History below covers the
-2026-07-16 nutrient-registry & data-pack refactor
+Last updated: 2026-07-19 (Intake Record rework complete — see the
+"✅ RESOLVED" and "Intake Record rework" entries above for the full
+detail: five feature commits plus one bugfix commit, all three
+regression scripts green, an AppTest harness covering all 8 items of
+`FEED_LOG_REWORK.md`'s verification bar, and a live boot check. Next
+session's starting point is the milestone noted above: label-photo →
+custom food, plus public deployment. History below covers the
+2026-07-17 hands-on user-testing day and the 2026-07-16 nutrient-registry
+& data-pack refactor
 session, following the earlier same-day repo audit & repair session.
 Repo-audit commits: (1) P0 repo hygiene — merged CONTEXT.md so it
 matches `BUSINESS_CASE.md`'s design framing (competition framing, CNF
@@ -895,6 +1016,23 @@ this is deliberate, see §11 and `src/nutrients.py`.
   measured" — see the CNF user guide PDF for nuances.
 - Streamlit re-runs the whole script on every widget interaction; state
   must be preserved via `st.session_state` (a Phase 6 lesson).
+- **A widget's `index=`/`value=` argument only takes effect the FIRST
+  time its `key=` is created — every rerun after that, Streamlit uses
+  whatever the widget's own `session_state[key]` already holds, and
+  silently ignores `index=`/`value=` even if your code just changed the
+  underlying data it was computed from.** Hit twice: the measured-volume
+  `number_input` after "Load example" (worked around by popping its key
+  before the value should change), and the Intake Record rework's
+  `blend_selector` selectbox after creating/deleting a blend (the code
+  set `st.session_state.selected_blend_id` correctly, but the selectbox
+  silently overwrote it back to its last-shown index on the very next
+  render — see `_new_blend()` and the delete-blend handler in
+  `app/streamlit_app.py`, both of which now `st.session_state.pop(
+  "blend_selector", None)` after changing selection programmatically).
+  If a widget's displayed value needs to change because of a
+  programmatic state change rather than the user's own interaction with
+  that widget, pop its session_state key so it re-seeds from `index=`/
+  `value=` on the next render.
 - The AI agent's configured working directory may be wider than the VS
   Code workspace; agent self-imposes project-folder-only access.
 - `reference/` files use the same path resolution as `src/` (both at
