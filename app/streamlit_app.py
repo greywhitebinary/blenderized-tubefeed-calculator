@@ -295,6 +295,7 @@ def render_add_food_ui(
     fg_df: pd.DataFrame,
     key_prefix: str,
     add_button_label: str = "Add",
+    show_counts_as_fluid_toggle: bool = False,
 ) -> dict | None:
     """Render the CNF-search / custom-food-from-label add-a-food UI.
 
@@ -303,6 +304,16 @@ def render_add_food_ui(
     entry is valid, else None. `key_prefix` must be unique per call site
     (e.g. "blend_3" vs "oral_dialog") so two simultaneous instances of this
     component never collide on widget keys.
+
+    show_counts_as_fluid_toggle: when True, renders an editable
+    counts_as_fluid checkbox (seeded with the same auto-default used
+    elsewhere -- CNF Beverages group or mL-basis custom food) right before
+    the Add button, and the RD's choice (default or overridden) is what
+    ends up in the returned dict. The Build tab leaves this False -- a
+    blend's ingredient table already lets the RD toggle counts_as_fluid
+    after adding; the "Add food/drink" UI passes True, since
+    FEED_LOG_REWORK.md section 3.4 calls for the toggle to live right there
+    (there's no ingredient table for a single oral row).
     """
     add_mode = st.radio(
         "Source",
@@ -405,13 +416,19 @@ def render_add_food_ui(
 
         if food_code is not None and calculated_grams > 0:
             default_fluid = default_counts_as_fluid(food_desc, sel_group_code)
+            if show_counts_as_fluid_toggle:
+                final_fluid = st.checkbox(
+                    "Counts as fluid", value=default_fluid, key=f"{key_prefix}_fluid_toggle"
+                )
+            else:
+                final_fluid = default_fluid
             if st.button(f"➕ {add_button_label}", key=f"{key_prefix}_add_cnf_btn"):
                 result = {
                     "food_code": food_code,
                     "food_description": food_desc,
                     "grams": float(calculated_grams),
                     "unit": "g",
-                    "counts_as_fluid": default_fluid,
+                    "counts_as_fluid": final_fluid,
                 }
 
     else:  # Custom food from label — a Canadian Nutrition Facts lookalike
@@ -529,6 +546,19 @@ def render_add_food_ui(
                      f"design (no cross-conversion between g and mL).",
             )
 
+            # mL-basis custom foods default to counts-as-fluid=True — a
+            # liquid entered from a label has no CNF moisture data, so the
+            # I&O full-volume convention is the only fluid signal available
+            # for it. Still overridable when show_counts_as_fluid_toggle.
+            _custom_default_fluid = basis == "mL"
+            if show_counts_as_fluid_toggle:
+                _custom_final_fluid = st.checkbox(
+                    "Counts as fluid", value=_custom_default_fluid,
+                    key=f"{key_prefix}_custom_fluid_toggle",
+                )
+            else:
+                _custom_final_fluid = _custom_default_fluid
+
             if st.button(f"➕ {add_button_label} custom food", key=f"{key_prefix}_add_custom_btn"):
                 if not cname:
                     st.warning("Please enter a food name.")
@@ -550,11 +580,7 @@ def render_add_food_ui(
                         "food_description": f"{cname} (custom)",
                         "grams": float(cgrams),
                         "unit": basis,
-                        # mL-basis custom foods default to counts-as-fluid=True
-                        # — a liquid entered from a label has no CNF moisture
-                        # data, so the I&O full-volume convention is the only
-                        # fluid signal available for it. Still overridable.
-                        "counts_as_fluid": basis == "mL",
+                        "counts_as_fluid": _custom_final_fluid,
                     }
 
     return result
@@ -670,11 +696,106 @@ st.caption("For RD use — estimates only")
 
 
 # ===========================================================================
-# Persistent banner — patient weight, targets, and the Intake Record
-# summary. Sits above the tabs so it's visible regardless of which tab is
-# active. The full Intake Record editor (add tube feed / add food & drink)
-# lives here too — see the next commit for the row editor; this commit
-# lands the state model and Build tab it depends on.
+# Reusable Intake Record helpers — used by the banner editor below and
+# (once resolved) by the Results tab's chart note.
+# ===========================================================================
+
+_FLUSH_LABEL = "Water flush"
+
+
+def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
+    """Build the "Add tube feed" source dropdown: every blend + every
+    commercial formula + "Water flush" (FEED_LOG_REWORK.md section 3.4).
+    Returns (display_options, {display_option: (source_type, source_id)}).
+    """
+    options: list[str] = []
+    lookup_map: dict[str, tuple[str, object]] = {}
+    for bid, blend in st.session_state.blends.items():
+        label = f"Blend: {blend['name']}"
+        options.append(label)
+        lookup_map[label] = ("blend", bid)
+    for fname in COMMERCIAL_FORMULAS:
+        label = f"Formula: {fname}"
+        options.append(label)
+        lookup_map[label] = ("formula", fname)
+    options.append(_FLUSH_LABEL)
+    lookup_map[_FLUSH_LABEL] = ("flush", None)
+    return options, lookup_map
+
+
+def _intake_row_label(row: dict) -> str:
+    """Human-readable one-line summary of an Intake Record row, for the
+    row list and (later) the chart note."""
+    t = row.get("time")
+    t_str = t.strftime("%H:%M") if t else "(no time)"
+    source_type = row["source_type"]
+    if source_type == "blend":
+        blend = st.session_state.blends.get(row["source_id"])
+        name = blend["name"] if blend else "(deleted blend)"
+    elif source_type == "formula":
+        name = row["source_id"]
+    elif source_type == "flush":
+        name = _FLUSH_LABEL
+    else:
+        name = row.get("food_description") or "(unknown food)"
+    return f"{t_str} — {name} — {row['amount']:.0f} {row['unit']}"
+
+
+def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
+    """FEED_LOG_REWORK.md section 3.4: the oral-entry UI. Reuses the same
+    search-or-custom-food component as the Build tab (section 3.3), plus a
+    counts_as_fluid toggle and an optional time. Submitting appends one
+    oral row to the Intake Record.
+
+    Implementation note (deviation from the doc's first-choice UI): the
+    doc's first choice was an st.dialog for this ("keeps the already-busy
+    banner from growing another full search UI inline"), with an inline
+    expander explicitly sanctioned as a fallback "if st.dialog proves
+    awkward in practice". st.dialog WAS tried first and works correctly
+    for real interactive use, but it is incompatible with this project's
+    AppTest-driven verification discipline: Streamlit's AppTest harness
+    (streamlit/testing/v1) has no dialog-aware handling at all (confirmed
+    by inspecting its source — no "dialog" references anywhere), and in
+    practice ANY widget rendered inside an open st.dialog becomes an
+    orphaned node in AppTest's tracked element tree once the dialog
+    closes — real Streamlit's session_state garbage-collects the widget's
+    key (expected, since it's no longer being rendered), but AppTest's
+    tree still holds a reference to it, and the very next `.run()` call
+    (regardless of what triggers it) raises a KeyError trying to
+    reserialize that orphaned widget's state. This reproduces with a
+    minimal two-widget dialog and is unrelated to this app's own code —
+    verified directly (see the handoff report) before making this call.
+    Since this repo's established practice is to verify UI behavior with
+    AppTest rather than prose claims, and a dialog that poisons every
+    subsequent AppTest run is untestable in exactly the way this project
+    requires, this uses the sanctioned inline-expander fallback instead.
+    """
+    st.caption("Log a single food or drink the client had by mouth.")
+    oral_time = st.time_input("Time (optional)", value=None, key="oral_time_input")
+    new_food = render_add_food_ui(
+        fn_df, na_df, lookup_df, fg_df,
+        key_prefix="oral_add",
+        add_button_label="Add",
+        show_counts_as_fluid_toggle=True,
+    )
+    if new_food is not None:
+        st.session_state.next_intake_id += 1
+        st.session_state.intake_log.append({
+            "id": st.session_state.next_intake_id,
+            "time": oral_time,
+            "source_type": "oral",
+            "source_id": new_food["food_code"],
+            "food_description": new_food["food_description"],
+            "amount": new_food["grams"],
+            "unit": new_food["unit"],
+            "counts_as_fluid": new_food["counts_as_fluid"],
+        })
+        st.rerun()
+
+
+# ===========================================================================
+# Persistent banner — patient weight, targets, and the Intake Record.
+# Sits above the tabs so it's visible regardless of which tab is active.
 # ===========================================================================
 
 with st.container(border=True):
@@ -714,11 +835,90 @@ with st.container(border=True):
             )
 
     st.markdown("**Intake Record**")
-    st.caption(
-        f"{len(st.session_state.intake_log)} row(s) logged. The row editor "
-        "(add tube feed / add food & drink) is being wired up in the next "
-        "phase of this rework."
+
+    # Delivery method: a single free-choice field for chart-note wording
+    # only (FEED_LOG_REWORK.md section 3.4) — it no longer drives any math.
+    delivery_method = st.text_input(
+        "Delivery method (chart-note wording only)", "Syringe bolus",
+        help="Free text — syringe, gravity, etc. Doesn't affect any "
+             "calculation; every row's own amount is what's summed.",
     )
+
+    # Always-visible summary line — aggregated NUTRIENT totals, never a
+    # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a
+    # meaningful single number). See FEED_LOG_REWORK.md section 3.4.
+    _banner_totals = aggregate_intake(
+        st.session_state.intake_log, st.session_state.blends, na,
+        custom_foods=st.session_state.custom_foods,
+    )
+    _b_kcal = _banner_totals.nutrient_totals.get("energy_kcal", 0.0)
+    _b_protein = _banner_totals.nutrient_totals.get("protein_g", 0.0)
+    _b_fluid = _banner_totals.fluid_provided_mL
+    st.markdown(
+        f"**Today: ~{_b_kcal:.0f} kcal | {_b_protein:.0f} g protein | "
+        f"{_b_fluid:.0f} mL fluid provided**"
+    )
+
+    # --- Add tube feed ---
+    with st.expander("➕ Add tube feed"):
+        tf1, tf2, tf3 = st.columns([1, 2, 1])
+        tf_time = tf1.time_input("Time (optional)", value=None, key="tf_time_input")
+        _source_options, _source_map = _intake_source_options()
+        tf_source_label = tf2.selectbox("Source", _source_options, key="tf_source_select")
+        tf_amount = tf3.number_input(
+            "Volume (mL)", min_value=0.0, value=0.0, step=10.0, key="tf_amount_input"
+        )
+        if st.button("Add tube feed row", key="tf_add_btn"):
+            if tf_amount > 0:
+                tf_source_type, tf_source_id = _source_map[tf_source_label]
+                st.session_state.next_intake_id += 1
+                st.session_state.intake_log.append({
+                    "id": st.session_state.next_intake_id,
+                    "time": tf_time,
+                    "source_type": tf_source_type,
+                    "source_id": tf_source_id,
+                    "food_description": None,
+                    "amount": float(tf_amount),
+                    "unit": "mL",
+                    "counts_as_fluid": tf_source_type == "flush",
+                })
+                st.rerun()
+            else:
+                st.warning("Enter a volume greater than 0 mL.")
+
+    # --- Add food/drink (inline expander -- see _render_add_oral_ui()'s
+    # docstring for why this is an expander rather than st.dialog) ---
+    with st.expander("➕ Add food/drink"):
+        _render_add_oral_ui(fn, na, lookup, fg)
+
+    # --- Row list: grouped by section header, one underlying list
+    # (section 6.3 — "Tube Feed" and "Food & Drink" are a DISPLAY
+    # grouping, not two separately-maintained logs). Chronological, rows
+    # with no time sort last (section 6.1); each row removable.
+    if not st.session_state.intake_log:
+        st.caption("No intake logged yet.")
+    else:
+        _ordered_rows = sorted_intake_log(st.session_state.intake_log)
+        _tube_rows = [r for r in _ordered_rows if r["source_type"] in ("blend", "formula", "flush")]
+        _oral_rows = [r for r in _ordered_rows if r["source_type"] == "oral"]
+
+        def _render_intake_row(row: dict) -> None:
+            rc1, rc2 = st.columns([6, 1])
+            rc1.write(_intake_row_label(row))
+            if rc2.button("❌", key=f"del_intake_{row['id']}"):
+                st.session_state.intake_log = [
+                    r for r in st.session_state.intake_log if r["id"] != row["id"]
+                ]
+                st.rerun()
+
+        if _tube_rows:
+            st.markdown(f"*{TUBE_FEED_LABEL}*")
+            for _row in _tube_rows:
+                _render_intake_row(_row)
+        if _oral_rows:
+            st.markdown(f"*{FOOD_DRINK_LABEL}*")
+            for _row in _oral_rows:
+                _render_intake_row(_row)
 
 
 # ===========================================================================
@@ -919,9 +1119,9 @@ with results_tab:
     st.divider()
     st.info(
         "Daily totals, adequacy, the per-source (Tube Feed vs Food & Drink) "
-        "breakdown, and the chart note are computed from the Intake Record "
-        "above — full wiring lands in the next phase of this rework, once "
-        "the Intake Record row editor is built."
+        "breakdown, and the chart note — computed from the Intake Record in "
+        "the banner above via src.intake.aggregate_intake() — land in the "
+        "next phase of this rework's Results-tab wiring."
     )
 
 
