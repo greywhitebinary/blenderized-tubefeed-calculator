@@ -1,12 +1,14 @@
-# Intake record rework — design & implementation plan (v2)
+# Intake record rework — design doc (v2, IMPLEMENTED)
 
-> **Status: fully designed, NOT yet implemented.** v1 of this doc (2026-07-17,
-> tube-feed-only) was superseded the same day after further design
-> conversation with the author (Hui Jun Chew, RD) settled every open
+> **Status: fully designed AND implemented, 2026-07-19.** This is now the
+> live architecture — read it as ground truth for how `src/intake.py` and
+> the Intake Record UI work, not as a future plan. v1 of this doc
+> (2026-07-17, tube-feed-only) was superseded the same day after further
+> design conversation with the author (Hui Jun Chew, RD) settled every open
 > question, including expanding scope to a **combined tube-feed + oral
-> intake record**. This is the next major piece of work. It is a repo file
-> (not a chat artifact) so any tool — Claude Code, Cline, anything — can
-> pick it up cold.
+> intake record**; that expanded v2 design is what was built. It is a repo
+> file (not a chat artifact) so any tool — Claude Code, Cline, anything —
+> can pick it up cold.
 >
 > Read `CONTEXT.md` (§9 status, §11 gotchas) and `.clinerules` before
 > starting. The nutrient registry / data-pack architecture

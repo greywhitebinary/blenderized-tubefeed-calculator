@@ -3,14 +3,24 @@
 1. Read CONTEXT.md §9 (Current status) FIRST. Trust its checkboxes —
    do not re-do or re-verify completed phases.
 
-2. The backend (Phases 2–5: data_loader, models, nutrients, calculator,
-   measures, targets, report) is COMPLETE and VERIFIED as of 2026-07-16
-   (nutrient-registry & data-pack refactor — see CONTEXT.md §9).
-   Do not rewrite, re-scaffold, or re-test these modules unless the
-   user explicitly asks or a change breaks them. Reference data
-   (nutrient registry, targets, formulas, thinning liquids) now lives
-   under data/packs/canada/, not data/targets/ or data/formulas/ —
-   those directories no longer exist.
+2. The backend (data_loader, models, nutrients, calculator, intake,
+   measures, targets, report) is COMPLETE and VERIFIED as of 2026-07-19
+   (Intake Record rework — see CONTEXT.md §9). Do not rewrite,
+   re-scaffold, or re-test these modules unless the user explicitly
+   asks or a change breaks them. Reference data (nutrient registry,
+   targets, formulas, thinning liquids) lives under data/packs/canada/,
+   not data/targets/ or data/formulas/ — those directories no longer
+   exist.
+
+   **The single most important invariant to protect: there is
+   deliberately NO "over-draw" / batch-mismatch flag anywhere in this
+   app.** Daily totals are a direct sum over Intake Record rows
+   (`src/intake.py::aggregate_intake()`) — never a schedule volume
+   extrapolated against a blend's measured batch volume. That
+   extrapolation was a real bug, fixed 2026-07-19; re-adding any
+   "logged more than the batch made" check reintroduces it. Read
+   `FEED_LOG_REWORK.md` §6.2 before touching `src/intake.py` or the
+   Intake Record UI in `app/streamlit_app.py`.
 
 3. To verify the backend, run:
 
@@ -18,13 +28,17 @@
 
    It exits 0 and prints "=== ALL BACKEND MODULES VERIFIED ===" on
    success. If you add backend features, extend that script instead of
-   writing a new one-off verification command.
+   writing a new one-off verification command. For UI changes, build
+   a Streamlit AppTest script (see recent commits for the pattern) —
+   "imports OK" alone does not prove a UI change works.
 
-4. Current work: Phase 6 (app/streamlit_app.py) is scaffolded and
-   backend-verified — remaining work is Week 3 scope (pytest suite, CI,
+4. Current work: the app is feature-complete for its core loop (build
+   blends → log an Intake Record spanning tube feed and oral intake →
+   see live results). Remaining work is Week 3 scope (pytest suite, CI,
    Streamlit Cloud deploy, USDA SR Legacy supplement) plus the pinned
-   issues in CONTEXT.md §9. See CONTEXT.md §1 for the app flow and §6
-   for the build plan.
+   issues in CONTEXT.md §9. See CONTEXT.md §1 for the app flow,
+   FEED_LOG_REWORK.md for the Intake Record design rationale, and
+   HANDOFF.md for a paste-ready prompt covering both.
 
 5. Never modify anything under cnf_fcen_all-files-data_2026/ (raw data).
 
