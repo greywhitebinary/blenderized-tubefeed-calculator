@@ -63,53 +63,39 @@ _CODE_TO_NAME: dict[int, str] = {v: k for k, v in NUTRIENT_CODES.items()}
 # ---------------------------------------------------------------------------
 
 
-def calculate_profile(
-    recipe: Recipe,
+def _scale_ingredients(
+    ingredients: list[Ingredient],
     nutrient_amount_df: pd.DataFrame,
     custom_foods: dict[int, dict[str, float]] | None = None,
-) -> NutrientProfile:
-    """Calculate the nutrient profile for a recipe.
-
-    Takes a Recipe (ingredients with grams + measured volume) and the
-    CNF Nutrient_Amount DataFrame, returns a NutrientProfile with
-    per-recipe totals and derived densities.
+) -> tuple[dict[str, float], pd.DataFrame]:
+    """The ingredient-scaling core (steps 1-6) shared by every caller that
+    needs "grams of these foods -> nutrient totals", with NO volume/density
+    concept at all. Extracted per FEED_LOG_REWORK.md section 3.1 so the Intake
+    Record's oral rows (a single food, no batch/volume to divide by) can
+    call this directly instead of duplicating it or faking a placeholder
+    volume just to satisfy calculate_profile()'s density wrapper.
 
     How it works (vectorized, no .iterrows()):
-      1. Build a small DataFrame of the recipe's ingredients (food_code, grams).
+      1. Build a small DataFrame of the ingredients (food_code, grams).
       2. Filter Nutrient_Amount to only the nutrient codes we track.
       3. Merge ingredients with nutrient amounts on Food_Code.
-      4. Scale: each row's amount × (grams / 100) → nutrient from that ingredient.
-      5. Group by nutrient code, sum → recipe totals.
-      6. Map codes to internal names and build the nutrient totals dict.
-      7. Fold in any custom-food contributions (Appendix A9).
+      4. Scale: each row's amount x (grams / 100) -> nutrient from that ingredient.
+      5. Group by nutrient code, sum -> totals.
+      6. Map codes to internal names, build the totals dict, and fold in
+         any custom-food contributions (Appendix A9).
 
-    Args:
-        recipe:              A Recipe with ingredients and measured_final_volume_mL.
-        nutrient_amount_df:  The CNF Nutrient_Amount DataFrame (from data_loader).
-        custom_foods:        Optional dict of food_code -> per-100g nutrient dict,
-                              for foods entered from a nutrition facts label
-                              (Appendix A9). Custom foods use negative food_codes
-                              so they never collide with real CNF Food_Codes and
-                              simply drop out of the CNF merge in step 3; their
-                              nutrient contribution is added here instead. Keys
-                              in each per-100g dict are internal nutrient names
-                              (see NUTRIENT_CODES), e.g. "energy_kcal".
-
-    Returns:
-        NutrientProfile with totals and densities.
+    Returns (nutrient_totals, merged) -- `merged` is the intermediate
+    ingredient x nutrient-amount join, returned so calculate_profile() can
+    build its per-recipe coverage provenance (see _coverage_from_merged())
+    without re-deriving the join. Callers that only want totals should use
+    compute_nutrient_totals() instead, which discards `merged`.
     """
-    if not recipe.ingredients or recipe.measured_final_volume_mL <= 0:
-        return NutrientProfile(
-            measured_final_volume_mL=recipe.measured_final_volume_mL,
-            added_water_mL=recipe.added_water_mL,
-        )
+    if not ingredients:
+        return {}, pd.DataFrame(columns=["Food_Code", "Nutrient_Code"])
 
     # Step 1: Build ingredient table
     ingr_df = pd.DataFrame(
-        [
-            {"Food_Code": ing.food_code, "grams": ing.grams}
-            for ing in recipe.ingredients
-        ]
+        [{"Food_Code": ing.food_code, "grams": ing.grams} for ing in ingredients]
     )
 
     # Step 2: Filter Nutrient_Amount to only the codes we track
@@ -121,28 +107,28 @@ def calculate_profile(
     # Step 3: Merge ingredients with nutrient amounts
     #   inner join: only rows where the food_code exists in both tables.
     #   Custom foods (negative food_code) have no match in CNF data, so
-    #   they simply drop out here — their contribution is folded in below.
+    #   they simply drop out here -- their contribution is folded in below.
     merged = ingr_df.merge(na_filtered, on="Food_Code", how="inner")
 
     # Step 4: Scale per-100g amounts to actual grams used
-    #   nutrient_from_ingredient = grams × (Nutrient_Amount / 100)
+    #   nutrient_from_ingredient = grams x (Nutrient_Amount / 100)
     merged["scaled_amount"] = merged["grams"] * (merged["Nutrient_Amount"] / 100.0)
 
     # Step 5: Group by nutrient code, sum across all ingredients
     totals_by_code = merged.groupby("Nutrient_Code")["scaled_amount"].sum()
 
-    # Step 6: Map codes to internal names, build the nutrient totals dict
+    # Step 6: Map codes to internal names, build the nutrient totals dict,
+    # then fold in custom-food contributions (Appendix A9). Negative
+    # food_codes identify custom foods entered from a nutrition facts label;
+    # their per-100g values are scaled by grams used, same as CNF foods.
     nutrient_totals: dict[str, float] = {}
     for code, total in totals_by_code.items():
         name = _CODE_TO_NAME.get(int(code))
         if name:
             nutrient_totals[name] = float(total)
 
-    # Step 7: Fold in custom-food contributions (Appendix A9). Negative
-    # food_codes identify custom foods entered from a nutrition facts label;
-    # their per-100g values are scaled by grams used, same as CNF foods.
     if custom_foods:
-        for ing in recipe.ingredients:
+        for ing in ingredients:
             if ing.food_code < 0:
                 custom_data = custom_foods.get(ing.food_code, {})
                 for nutrient_name, per_100g_value in custom_data.items():
@@ -151,34 +137,150 @@ def calculate_profile(
                         nutrient_totals.get(nutrient_name, 0.0) + scaled
                     )
 
-    # Step 8: Per-recipe coverage provenance (strictly additive — does not
-    # change any total computed above). A missing CNF row and a true zero
-    # are otherwise indistinguishable: both simply don't appear in `merged`
-    # (Step 3's inner join drops them) and so contribute nothing in Step 5.
-    # This counts, per tracked nutrient, how many of THIS recipe's
-    # ingredients actually supplied a value — a CNF row was present, or (for
-    # a custom food) the RD entered that field — out of the ingredient
-    # count. Complements the registry's static on_label flag (P1), which
-    # flags nutrients a LABEL can never supply regardless of the recipe;
-    # this flags nutrients THIS recipe happens to be missing data for.
-    n_total_ingredients = len(recipe.ingredients)
+    return nutrient_totals, merged
+
+
+def _coverage_from_merged(
+    ingredients: list[Ingredient],
+    merged: pd.DataFrame,
+    custom_foods: dict[int, dict[str, float]] | None = None,
+) -> dict[str, tuple[int, int]]:
+    """Per-ingredient-list coverage provenance (calculate_profile()'s old
+    step 8), factored out so both calculate_profile() and the Intake Record
+    aggregation (src/intake.py) can attach coverage to an arbitrary
+    ingredient list -- a recipe's ingredients, or a single oral food -- not
+    only a full Recipe wrapped in a NutrientProfile.
+
+    A missing CNF row and a true zero are otherwise indistinguishable: both
+    simply don't appear in `merged` (the inner join drops them) and so
+    contribute nothing to the totals. This counts, per tracked nutrient,
+    how many of the given ingredients actually supplied a value for that
+    nutrient (a CNF row was present, or -- for a custom food -- the RD
+    entered that field), out of the ingredient count.
+    """
+    n_total = len(ingredients)
     # merged is already one row per (ingredient instance, nutrient code)
-    # supplied by CNF — counting rows per Nutrient_Code counts ingredients,
+    # supplied by CNF -- counting rows per Nutrient_Code counts ingredients,
     # even when two ingredients share the same Food_Code, because the
-    # Step-3 merge preserves ingr_df's row-per-ingredient granularity.
+    # merge preserves the ingredient table's row-per-ingredient granularity.
     cnf_supplying_counts = merged.groupby("Nutrient_Code")["Food_Code"].count()
-    nutrient_coverage: dict[str, tuple[int, int]] = {
-        name: (int(cnf_supplying_counts.get(code, 0)), n_total_ingredients)
+    coverage: dict[str, tuple[int, int]] = {
+        name: (int(cnf_supplying_counts.get(code, 0)), n_total)
         for name, code in NUTRIENT_CODES.items()
     }
     if custom_foods:
-        for ing in recipe.ingredients:
+        for ing in ingredients:
             if ing.food_code < 0:
                 custom_data = custom_foods.get(ing.food_code, {})
                 for nutrient_name in custom_data:
-                    if nutrient_name in nutrient_coverage:
-                        n_supplying, n_tot = nutrient_coverage[nutrient_name]
-                        nutrient_coverage[nutrient_name] = (n_supplying + 1, n_tot)
+                    if nutrient_name in coverage:
+                        n_supplying, n_tot = coverage[nutrient_name]
+                        coverage[nutrient_name] = (n_supplying + 1, n_tot)
+    return coverage
+
+
+def compute_nutrient_totals(
+    ingredients: list[Ingredient],
+    nutrient_amount_df: pd.DataFrame,
+    custom_foods: dict[int, dict[str, float]] | None = None,
+) -> dict[str, float]:
+    """Standalone entry point for the ingredient-scaling core (steps 1-6),
+    with NO volume/density wrapper at all (FEED_LOG_REWORK.md section 3.1).
+
+    This is what an Intake Record oral row calls: a single food (or small
+    list of foods) has no batch/density concept -- there's no "volume" to
+    measure for one banana -- so it goes straight through the same
+    grams x per-100g merge-and-scale math a blend ingredient uses, without
+    calculate_profile()'s measured_volume_mL > 0 guard (which exists only
+    to make density *properties* meaningful, not because steps 1-6 need a
+    volume). calculate_profile() calls the same shared core internally
+    (via _scale_ingredients) -- this function and calculate_profile() can
+    never diverge, by construction.
+
+    Args:
+        ingredients:         List of Ingredient (food_code, description, grams).
+        nutrient_amount_df:  The CNF Nutrient_Amount DataFrame (from data_loader).
+        custom_foods:        Optional dict of food_code -> per-100g nutrient dict
+                              (Appendix A9), same convention as calculate_profile().
+
+    Returns:
+        Dict of nutrient_name -> total amount (e.g. "energy_kcal": 74.3).
+    """
+    nutrient_totals, _merged = _scale_ingredients(
+        ingredients, nutrient_amount_df, custom_foods
+    )
+    return nutrient_totals
+
+
+def compute_nutrient_totals_and_coverage(
+    ingredients: list[Ingredient],
+    nutrient_amount_df: pd.DataFrame,
+    custom_foods: dict[int, dict[str, float]] | None = None,
+) -> tuple[dict[str, float], dict[str, tuple[int, int]]]:
+    """Same core as compute_nutrient_totals(), but also returns per-nutrient
+    coverage provenance (n_supplying, n_total — see _coverage_from_merged()'s
+    docstring). Used by the Intake Record aggregation (src/intake.py) so
+    coverage-provenance / zero-coverage hiding stays available for blend
+    and oral rows outside a full Recipe/NutrientProfile, without
+    duplicating the merge-and-scale logic a second time.
+    """
+    nutrient_totals, merged = _scale_ingredients(
+        ingredients, nutrient_amount_df, custom_foods
+    )
+    coverage = _coverage_from_merged(ingredients, merged, custom_foods)
+    return nutrient_totals, coverage
+
+
+def calculate_profile(
+    recipe: Recipe,
+    nutrient_amount_df: pd.DataFrame,
+    custom_foods: dict[int, dict[str, float]] | None = None,
+) -> NutrientProfile:
+    """Calculate the nutrient profile for a recipe.
+
+    Takes a Recipe (ingredients with grams + measured volume) and the
+    CNF Nutrient_Amount DataFrame, returns a NutrientProfile with
+    per-recipe totals and derived densities.
+
+    The ingredient-scaling core (steps 1-6 -- build ingredient table, filter
+    Nutrient_Amount to tracked codes, merge, scale, groupby+sum, fold in
+    custom foods) lives in _scale_ingredients() and is also available
+    standalone via compute_nutrient_totals() (FEED_LOG_REWORK.md section 3.1)
+    for callers with no volume/density concept (Intake Record oral rows).
+    This function wraps that core with the density-bearing NutrientProfile
+    and the measured-volume guard below; the guard is about making
+    densities meaningful, not about the scaling math, which is why
+    compute_nutrient_totals() doesn't need it.
+
+    Args:
+        recipe:              A Recipe with ingredients and measured_final_volume_mL.
+        nutrient_amount_df:  The CNF Nutrient_Amount DataFrame (from data_loader).
+        custom_foods:        Optional dict of food_code -> per-100g nutrient dict,
+                              for foods entered from a nutrition facts label
+                              (Appendix A9). Custom foods use negative food_codes
+                              so they never collide with real CNF Food_Codes and
+                              simply drop out of the CNF merge; their nutrient
+                              contribution is added in via _scale_ingredients().
+
+    Returns:
+        NutrientProfile with totals and densities.
+    """
+    if not recipe.ingredients or recipe.measured_final_volume_mL <= 0:
+        return NutrientProfile(
+            measured_final_volume_mL=recipe.measured_final_volume_mL,
+            added_water_mL=recipe.added_water_mL,
+        )
+
+    nutrient_totals, merged = _scale_ingredients(
+        recipe.ingredients, nutrient_amount_df, custom_foods
+    )
+
+    # Per-recipe coverage provenance (strictly additive -- does not change
+    # any total computed above). Complements the registry's static
+    # on_label flag (P1), which flags nutrients a LABEL can never supply
+    # regardless of the recipe; this flags nutrients THIS recipe happens to
+    # be missing data for. See _coverage_from_merged()'s docstring.
+    nutrient_coverage = _coverage_from_merged(recipe.ingredients, merged, custom_foods)
 
     return NutrientProfile(
         nutrient_totals=nutrient_totals,

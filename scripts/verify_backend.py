@@ -11,6 +11,7 @@ Exits 0 on success, non-zero on any failure.
 
 import sys
 import time
+from datetime import time as dtime
 from pathlib import Path
 
 # Ensure project root is on sys.path regardless of where this is run from
@@ -22,9 +23,10 @@ from src.models import Ingredient, Recipe, Delivery, DeliveryMethod
 from src.calculator import (
     calculate_profile,
     calculate_daily_totals,
+    compute_nutrient_totals,
     daily_volume_from_delivery,
 )
-from src.measures import load_measure_lookup, measure_to_grams
+from src.measures import load_measure_lookup, measure_to_grams, get_measures_for_food
 from src.targets import empty_targets
 from src.report import (
     generate_adequacy_report,
@@ -33,6 +35,13 @@ from src.report import (
     generate_density_summary,
 )
 from src.nutrients import load_registry, defs_for_tier, DEFAULT_PACK
+from src.intake import (
+    aggregate_intake,
+    resolve_blend_profile,
+    blend_fluid_fraction,
+    InvalidBlendError,
+    sorted_intake_log,
+)
 
 
 def find_food(fn, desc):
@@ -425,6 +434,243 @@ def main() -> int:
     }, f"expected all 5 clinical nutrients hidden (custom food supplies none), got {hidden_clinical_names}"
     assert len(hidden_clinical_df) == 0, "clinical screen should be fully empty for this fixture"
     print("    Zero-coverage rows hidden from both tables, with names reported — OK")
+
+    # 13. Intake Record aggregation (FEED_LOG_REWORK.md) — replaces the old
+    # density x schedule-volume extrapolation with a direct sum over
+    # intake-record rows. See src/intake.py's module docstring for the
+    # full model. This stage covers doc section 5's verification bar items
+    # 1, 2, 3, 5, 7 (items 4/6/8 are UI-driven — blend add/rename/delete,
+    # household-measure entry, example-recipe load — and are covered by
+    # the Streamlit AppTest suite instead, not this backend script).
+    print("\n[13] Intake Record aggregation...")
+
+    # 13a. compute_nutrient_totals() must exactly match calculate_profile()'s
+    # nutrient_totals for an equivalent case — proves the section-3.1
+    # extraction didn't diverge (doc section 5 item 5).
+    single_ing = Ingredient(chicken_code, "Chicken breast", 200)
+    equiv_recipe = Recipe(
+        name="Equivalence check", ingredients=[single_ing], measured_final_volume_mL=500
+    )
+    equiv_profile = calculate_profile(equiv_recipe, na)
+    equiv_totals = compute_nutrient_totals([single_ing], na)
+    assert equiv_totals == equiv_profile.nutrient_totals, (
+        "compute_nutrient_totals() diverged from calculate_profile().nutrient_totals "
+        "for an equivalent single-ingredient case"
+    )
+    print("    compute_nutrient_totals() == calculate_profile().nutrient_totals — OK")
+
+    # 13b. The original bug case, re-verified with the flag removed (item 1):
+    # one blend, batch 400 mL, logged 3x400 mL of it -> totals = density x
+    # 1200 mL, computed cleanly, no error, no flag (this is now normal
+    # usage, not an anomaly).
+    bug_blend = {
+        "name": "Bug-case blend",
+        "ingredients": [
+            {"id": 1, "food_code": chicken_code, "food_description": "Chicken breast",
+             "grams": 200.0, "unit": "g", "counts_as_fluid": False},
+            {"id": 2, "food_code": rice_code, "food_description": "Rice, cooked",
+             "grams": rice_grams, "unit": "g", "counts_as_fluid": False},
+            {"id": 3, "food_code": oil_code, "food_description": "Canola oil",
+             "grams": 15.0, "unit": "g", "counts_as_fluid": False},
+        ],
+        "measured_volume_mL": 400.0,
+    }
+    bug_blends = {0: bug_blend}
+    bug_profile, _bug_fluid_frac = resolve_blend_profile(bug_blend, na)
+    bug_log_3x400 = [
+        {"id": i, "time": None, "source_type": "blend", "source_id": 0,
+         "food_description": None, "amount": 400.0, "unit": "mL", "counts_as_fluid": False}
+        for i in range(3)
+    ]
+    bug_totals_3x400 = aggregate_intake(bug_log_3x400, bug_blends, na)
+    expected_1200 = calculate_daily_totals(bug_profile, 1200.0)
+    for name, expected_val in expected_1200.items():
+        got = bug_totals_3x400.nutrient_totals.get(name, 0.0)
+        assert abs(got - expected_val) < 1e-6, (
+            f"bug-case 3x400mL: {name} = {got}, expected density x 1200 = {expected_val}"
+        )
+    print(f"    3 rows x 400 mL of a 400 mL batch -> {bug_totals_3x400.nutrient_totals['energy_kcal']:.1f} kcal "
+          f"== density x 1200 mL, no error, no flag — OK")
+
+    # 13c. One blend, batch 400, logged 400 -> totals = density x 400 exactly (item 2).
+    bug_log_1x400 = bug_log_3x400[:1]
+    bug_totals_1x400 = aggregate_intake(bug_log_1x400, bug_blends, na)
+    expected_400 = calculate_daily_totals(bug_profile, 400.0)
+    for name, expected_val in expected_400.items():
+        got = bug_totals_1x400.nutrient_totals.get(name, 0.0)
+        assert abs(got - expected_val) < 1e-6, (
+            f"1x400mL: {name} = {got}, expected density x 400 = {expected_val}"
+        )
+    print("    1 row x 400 mL of a 400 mL batch -> totals = density x 400 exactly — OK")
+
+    # 13d. A blend with ingredients but measured_volume_mL == 0 must raise a
+    # clear error (item 7) — the one guard that survives the rework.
+    zero_vol_blend = {"name": "No volume", "ingredients": bug_blend["ingredients"], "measured_volume_mL": 0.0}
+    try:
+        resolve_blend_profile(zero_vol_blend, na)
+        raise AssertionError("expected InvalidBlendError for a blend with ingredients but no volume")
+    except InvalidBlendError:
+        pass
+    print("    Blend with ingredients but measured_volume_mL == 0 raises InvalidBlendError — OK")
+    # A blend with NO ingredients and no volume is not an error (an empty,
+    # not-yet-built blend) -- only "has ingredients but can't divide" is.
+    empty_blend_profile, empty_fluid_frac = resolve_blend_profile(
+        {"name": "Empty", "ingredients": [], "measured_volume_mL": 0.0}, na
+    )
+    assert empty_blend_profile.measured_final_volume_mL == 0.0 and empty_fluid_frac == 0.0
+
+    # 13e. Two blends with different densities + a formula row + flush rows
+    # + two oral rows (one CNF food by grams, one custom food by mL) ->
+    # totals match hand arithmetic (item 3). Mirrors FEED_LOG_REWORK.md
+    # section 3.5's own chart-note example (times/volumes), so the fixture
+    # doubles as documentation.
+    water_code = find_food(fn, "Water, municipal")
+    banana_code = find_food(fn, "Banana, raw")
+    banana_measures = get_measures_for_food(banana_code, lookup)
+    small_banana = banana_measures[
+        banana_measures["Measure_Description_and_Unit_EN"].str.contains(
+            "small", case=False, na=False
+        )
+    ]
+    assert len(small_banana) > 0, "expected a size-qualified 'small' banana measure in CNF"
+    banana_grams = float(small_banana.iloc[0]["grams"])
+    print(f"    '1 small' banana household measure: {banana_grams:.1f} g (from CNF, not hardcoded)")
+
+    blend_a = {
+        "name": "Morning blend",
+        "ingredients": [
+            {"id": 1, "food_code": chicken_code, "food_description": "Chicken breast",
+             "grams": 200.0, "unit": "g", "counts_as_fluid": False},
+            {"id": 2, "food_code": rice_code, "food_description": "Rice, cooked",
+             "grams": rice_grams, "unit": "g", "counts_as_fluid": False},
+            {"id": 3, "food_code": oil_code, "food_description": "Canola oil",
+             "grams": 15.0, "unit": "g", "counts_as_fluid": False},
+            {"id": 4, "food_code": water_code, "food_description": "Water, municipal",
+             "grams": 200.0, "unit": "g", "counts_as_fluid": True},
+        ],
+        "measured_volume_mL": 550.0,
+    }
+    # Blend B is custom-food-only with clean round numbers so its
+    # contribution is hand-checkable without depending on CNF data:
+    # 120 kcal + 6 g protein per 100 g, 200 g used in a 100 mL batch ->
+    # 240 kcal, 12 g protein in the batch (kcal/mL=2.4, protein/mL=0.12).
+    blend_b_custom_foods = {-301: {"energy_kcal": 120.0, "protein_g": 6.0}}
+    blend_b = {
+        "name": "Fridge batch",
+        "ingredients": [
+            {"id": 1, "food_code": -301, "food_description": "Fortified puree (custom)",
+             "grams": 200.0, "unit": "g", "counts_as_fluid": False},
+        ],
+        "measured_volume_mL": 100.0,
+    }
+    e2e_blends = {10: blend_a, 20: blend_b}
+    # Custom apple juice (oral, by mL) — same energy/water figures as the
+    # app's own Apple juice thinning-liquid preset, per 100 mL: 46 kcal,
+    # 0.1 g protein. Deliberately carries no water_g (no label reports
+    # moisture) -- same convention as every other custom food in this app.
+    e2e_custom_foods = {**blend_b_custom_foods, -401: {"energy_kcal": 46.0, "protein_g": 0.1}}
+
+    e2e_log = [
+        {"id": 1, "time": dtime(8, 0), "source_type": "blend", "source_id": 10,
+         "food_description": None, "amount": 300.0, "unit": "mL", "counts_as_fluid": False},
+        {"id": 2, "time": dtime(8, 30), "source_type": "oral", "source_id": banana_code,
+         "food_description": "Banana, raw — 1 small", "amount": banana_grams, "unit": "g",
+         "counts_as_fluid": False},
+        {"id": 3, "time": dtime(10, 30), "source_type": "oral", "source_id": -401,
+         "food_description": "Apple juice (custom)", "amount": 125.0, "unit": "mL",
+         "counts_as_fluid": True},
+        {"id": 4, "time": dtime(12, 0), "source_type": "blend", "source_id": 10,
+         "food_description": None, "amount": 100.0, "unit": "mL", "counts_as_fluid": False},
+        {"id": 5, "time": dtime(10, 0), "source_type": "flush", "source_id": None,
+         "food_description": None, "amount": 100.0, "unit": "mL", "counts_as_fluid": True},
+        {"id": 6, "time": dtime(20, 0), "source_type": "flush", "source_id": None,
+         "food_description": None, "amount": 100.0, "unit": "mL", "counts_as_fluid": True},
+        {"id": 7, "time": dtime(15, 0), "source_type": "blend", "source_id": 20,
+         "food_description": None, "amount": 350.0, "unit": "mL", "counts_as_fluid": False},
+        {"id": 8, "time": dtime(20, 0), "source_type": "formula", "source_id": "Peptamen 1.5",
+         "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
+    ]
+    e2e_totals = aggregate_intake(e2e_log, e2e_blends, na, custom_foods=e2e_custom_foods)
+
+    profile_a, fluid_frac_a = resolve_blend_profile(blend_a, na, e2e_custom_foods)
+    daily_a_400 = calculate_daily_totals(profile_a, 400.0)  # 300 + 100 mL, two rows same blend
+    banana_totals = compute_nutrient_totals(
+        [Ingredient(banana_code, "Banana, raw", banana_grams)], na
+    )
+    apple_juice_totals = compute_nutrient_totals(
+        [Ingredient(-401, "Apple juice (custom)", 125.0)], na, custom_foods=e2e_custom_foods
+    )
+    blend_b_kcal = 2.4 * 350.0  # hand arithmetic: kcal/mL x amount
+    blend_b_protein = 0.12 * 350.0
+    formula_kcal = 1.5 * 250.0  # Peptamen 1.5 kcal/mL x amount
+    formula_protein = 0.068 * 250.0
+    formula_free_water = 0.770 * 250.0
+
+    expected_energy = (
+        daily_a_400["energy_kcal"] + blend_b_kcal + formula_kcal
+        + banana_totals.get("energy_kcal", 0.0) + apple_juice_totals["energy_kcal"]
+    )
+    expected_protein = (
+        daily_a_400["protein_g"] + blend_b_protein + formula_protein
+        + banana_totals.get("protein_g", 0.0) + apple_juice_totals["protein_g"]
+    )
+    expected_fluid = (
+        fluid_frac_a * 400.0  # Blend A's own fluid fraction (water ingredient)
+        + 0.0                  # Blend B has no counts_as_fluid ingredient
+        + 250.0                # formula: full I&O volume
+        + 100.0 + 100.0        # two flushes: full volume each
+        + 0.0                  # banana: not counts_as_fluid
+        + 125.0                # apple juice: counts_as_fluid
+    )
+    expected_free_water = (
+        daily_a_400.get("water_g", 0.0) + formula_free_water
+        + banana_totals.get("water_g", 0.0)
+        # blend B's custom food and the custom apple juice carry no water_g
+        # (no label reports moisture) -- flush rows are deliberately
+        # excluded from free water (they contribute fluid only, section 2).
+    )
+
+    print(f"    Energy: {e2e_totals.nutrient_totals['energy_kcal']:.1f} kcal "
+          f"(expected {expected_energy:.1f})")
+    print(f"    Protein: {e2e_totals.nutrient_totals['protein_g']:.1f} g "
+          f"(expected {expected_protein:.1f})")
+    print(f"    Fluid provided: {e2e_totals.fluid_provided_mL:.1f} mL "
+          f"(expected {expected_fluid:.1f})")
+    print(f"    Free water (est.): {e2e_totals.free_water_mL:.1f} mL "
+          f"(expected {expected_free_water:.1f})")
+    assert abs(e2e_totals.nutrient_totals["energy_kcal"] - expected_energy) < 1e-6
+    assert abs(e2e_totals.nutrient_totals["protein_g"] - expected_protein) < 1e-6
+    assert abs(e2e_totals.fluid_provided_mL - expected_fluid) < 1e-6
+    assert abs(e2e_totals.free_water_mL - expected_free_water) < 1e-6
+
+    # Per-source subtotal breakdown (design doc section 3.5): Tube Feed +
+    # Food & Drink must sum exactly to Total.
+    tube_feed = e2e_totals.subtotals["Tube Feed"]
+    food_drink = e2e_totals.subtotals["Food & Drink"]
+    total_sub = e2e_totals.subtotals["Total"]
+    for name in ("energy_kcal", "protein_g"):
+        combined = tube_feed["nutrient_totals"].get(name, 0.0) + food_drink["nutrient_totals"].get(name, 0.0)
+        assert abs(combined - total_sub["nutrient_totals"].get(name, 0.0)) < 1e-6, (
+            f"Tube Feed + Food & Drink != Total for {name}"
+        )
+    assert abs(
+        tube_feed["fluid_provided_mL"] + food_drink["fluid_provided_mL"] - e2e_totals.fluid_provided_mL
+    ) < 1e-6
+    print(f"    Subtotals: Tube Feed {tube_feed['nutrient_totals']['energy_kcal']:.1f} kcal + "
+          f"Food & Drink {food_drink['nutrient_totals']['energy_kcal']:.1f} kcal "
+          f"== Total {total_sub['nutrient_totals']['energy_kcal']:.1f} kcal — OK")
+
+    # Chronological sort (section 6.1): unset-time rows sort last.
+    unsorted_log = e2e_log + [
+        {"id": 9, "time": None, "source_type": "flush", "source_id": None,
+         "food_description": None, "amount": 50.0, "unit": "mL", "counts_as_fluid": True}
+    ]
+    ordered = sorted_intake_log(unsorted_log)
+    assert ordered[0]["time"] == dtime(8, 0), "expected the earliest-timed row first"
+    assert ordered[-1]["time"] is None, "expected the unset-time row to sort last"
+    times = [r["time"] for r in ordered if r["time"] is not None]
+    assert times == sorted(times), "rows should be in chronological order"
+    print("    Chronological sort: unset-time rows sort last — OK")
 
     print("\n=== ALL BACKEND MODULES VERIFIED ===")
     return 0
