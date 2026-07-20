@@ -16,15 +16,20 @@ doc's section 1 for the bug) with:
     over-draw flag -- see FEED_LOG_REWORK.md section 6.2 for why that
     concept is removed entirely, not softened.
 
-App flow ("start with the blender"), three tabs plus a collapsed
-Patient & Targets settings panel above them:
-  1. Build tab -- create/select a blend, search CNF or add a custom food
-     from a label, enter grams and measured final volume.
-  2. Intake tab -- the Intake Record: what was actually given, tube feed
-     (blends, formulas, flushes) and oral food/drink together.
-  3. Results tab (live) -- per-blend densities, daily totals from the
-     Intake Record, adequacy, per-source (Tube Feed vs Food & Drink)
-     breakdown, formula comparator, dilution what-if, chart note.
+App flow — three tabs in encounter order:
+  1. Nutrition Targets tab -- the patient-side numbers the RD brings
+     from their own assessment (kcal/protein/fluid targets, optional
+     display-only weight). The app never computes targets.
+  2. Feed Recipes tab -- the blend pages: create/select a blend, search
+     CNF or add a custom food from a label, enter grams and measured
+     final volume; per-blend densities and full nutrient results update
+     live with every edit; the dilution what-if, commercial formula
+     comparator, and flow-test documentation live here with the blend.
+  3. Daily Intake Record tab -- the 24-hour record/plan: one
+     chronological list of what was (or will be) given, tube feed
+     (blends, formulas, flushes) and oral food/drink together; the
+     day-level results (daily totals, adequacy, per-source breakdown,
+     chart note, export) sit directly beneath the record they summarize.
 
 Design commitments (from CONTEXT.md section 1):
   - Per-mL is the primary lens, not per-recipe.
@@ -874,12 +879,18 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
 
 
 # ===========================================================================
-# Patient & Targets — settings referenced throughout. Sits above the tabs
-# (collapsed by default) so it's reachable regardless of which tab is
-# active, without occupying permanent screen space.
+# Three tabs, in encounter order: Nutrition Targets (the patient-side
+# numbers the RD brings from their own assessment) → Feed Recipes (the
+# blend pages: ingredients, per-blend results, comparator, flow test) →
+# Daily Intake Record (the 24-hour record/plan, with the day-level
+# results directly beneath the record they summarize).
 # ===========================================================================
 
-with st.expander("Patient & Targets", expanded=False):
+targets_tab, recipes_tab, record_tab = st.tabs(
+    ["Nutrition Targets", "Feed Recipes", "Daily Intake Record"]
+)
+
+with targets_tab:
     st.markdown("**Patient weight (optional)**")
     patient_weight_kg = st.number_input(
         "Weight (kg)",
@@ -887,7 +898,7 @@ with st.expander("Patient & Targets", expanded=False):
         value=0.0,
         step=0.5,
         help="Optional — used only to show kcal/kg, protein g/kg, and "
-             "fluid mL/kg in the Results tab. No target, equation, or "
+             "fluid mL/kg in the Daily Intake Record tab. No target, equation, or "
              "IBW is computed from it; assessment stays outside this app.",
     )
     st.caption("Blank/0 = not provided. Display only — not a target.")
@@ -913,13 +924,7 @@ with st.expander("Patient & Targets", expanded=False):
         )
 
 
-# ===========================================================================
-# Build / Intake / Results tabs
-# ===========================================================================
-
-build_tab, intake_tab, results_tab = st.tabs(["Build", "Intake", "Results"])
-
-with build_tab:
+with recipes_tab:
     # --- Blend selector ---
     st.subheader("Blend")
     blend_ids = list(st.session_state.blends.keys())
@@ -1027,8 +1032,8 @@ with build_tab:
         st.info("Add ingredients above to get started.")
     else:
         st.caption(
-            "\"Counts as fluid\" drives the Results tab's Fluid provided "
-            "row (full-volume I&O convention) — auto-checked for CNF "
+            "\"Counts as fluid\" drives the Daily Intake Record tab's "
+            "Fluid provided row (full-volume I&O convention) — auto-checked for CNF "
             "Beverages and mL-basis custom foods, always your call "
             "otherwise (e.g. soup has no validated rule of thumb)."
         )
@@ -1080,7 +1085,7 @@ with build_tab:
             st.rerun()
 
 
-with intake_tab:
+with record_tab:
     st.subheader("Intake Record")
     st.caption(
         "What was actually given — tube feed (blends, formulas, flushes) "
@@ -1172,7 +1177,9 @@ with intake_tab:
                 _render_intake_row(_row)
 
 
-with results_tab:
+with recipes_tab:
+    st.divider()
+
     # --- Per-blend density panel (EVERY blend, not just selected --
     # densities are still the per-blend lens, design doc section 3.5) ---
     st.subheader("Per-blend density panel")
@@ -1242,12 +1249,13 @@ with results_tab:
         if _selected_invalid:
             st.warning("This blend has ingredients but no measured volume yet.")
         elif selected_profile is None:
-            st.caption("Select a blend with ingredients and a measured volume in the Build tab.")
+            st.caption("Add ingredients and a measured volume to the blend above.")
         else:
             st.dataframe(
                 generate_density_summary(selected_profile), width="stretch", hide_index=True
             )
 
+with record_tab:
     st.divider()
 
     # --- Daily totals, adequacy, micro screen, per-kg, per-source
@@ -1255,7 +1263,7 @@ with results_tab:
     # src.intake.aggregate_intake() (design doc section 3.5). ---
     st.subheader("Daily Totals & Adequacy")
     st.caption(
-        "A direct sum over the Intake Record (Intake tab) — never "
+        "A direct sum over the Intake Record (above) — never "
         "extrapolated from a batch volume against a schedule."
     )
 
@@ -1265,7 +1273,7 @@ with results_tab:
     )
 
     if not st.session_state.intake_log:
-        st.info("Add rows to the Intake Record in the Intake tab to see daily totals.")
+        st.info("Add rows to the Intake Record above to see daily totals.")
     else:
         adequacy_df, hidden_main_names = generate_adequacy_report(
             intake_totals.nutrient_totals, targets,
@@ -1339,14 +1347,17 @@ with results_tab:
             generate_source_breakdown(intake_totals), width="stretch", hide_index=True
         )
 
+with recipes_tab:
+    st.divider()
+
     # --- Dilution what-if (operates on the selected blend) ---
     st.subheader("Dilution What-If")
     st.caption("If the blend needs thinning, see the density impact before you commit.")
 
     if selected_profile is None:
         st.info(
-            "Select a blend with ingredients and a measured volume in the "
-            "Build tab to use the dilution what-if."
+            "Add ingredients and a measured volume to the blend above "
+            "to use the dilution what-if."
         )
     else:
         w1, w2 = st.columns([1, 2])
@@ -1429,8 +1440,8 @@ with results_tab:
     st.subheader("Commercial Formula Comparator")
     if selected_profile is None:
         st.info(
-            "Select a blend with ingredients and a measured volume in the "
-            "Build tab to use the comparator."
+            "Add ingredients and a measured volume to the blend above "
+            "to use the comparator."
         )
     else:
         compare_volume_mL = st.number_input(
@@ -1439,7 +1450,7 @@ with results_tab:
             value=max(selected_profile.measured_final_volume_mL, 1200.0),
             step=50.0,
             help="An independent what-if volume for this comparison only -- "
-                 "it doesn't need to match the Intake Record (Intake tab).",
+                 "it doesn't need to match the Intake Record (Daily Intake Record tab).",
         )
         _comparator_brands = sorted(
             {f.get("brand") or "Other" for f in COMMERCIAL_FORMULAS.values()}
@@ -1481,13 +1492,16 @@ with results_tab:
         "Notes", "", placeholder="e.g., flowed through a 60 mL syringe without resistance"
     )
 
+with record_tab:
+    st.divider()
+
     # --- Chart note: the Intake Record read aloud chronologically (tube
     # and oral interleaved by time) + totals (design doc section 3.5). ---
     st.subheader("Chart Note")
     st.caption("Copy-paste into your own chart. No patient-identifying fields.")
 
     if not st.session_state.intake_log:
-        st.caption("Add Intake Record rows in the Intake tab to generate a chart note.")
+        st.caption("Add Intake Record rows above to generate a chart note.")
     else:
         _ordered_note_rows = sorted_intake_log(st.session_state.intake_log)
         _tube_note_rows = [r for r in _ordered_note_rows if r["source_type"] in ("blend", "formula", "flush")]
