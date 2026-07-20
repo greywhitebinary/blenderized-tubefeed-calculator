@@ -1228,17 +1228,16 @@ with record_tab:
             else:
                 st.warning("Enter a volume greater than 0 mL.")
 
-    # --- Add food/drink (inline expander -- see _render_add_oral_ui()'s
-    # docstring for why this is an expander rather than st.dialog) ---
-    with st.expander("➕ 🍌 Add food/drink"):
-        _render_add_oral_ui(fn, na, lookup, fg)
-
     # --- Add water flush: three precisions, one list (author feedback
     # 2026-07-20). A single flush for the precise; a with-feeds
     # calculation for the common "60 mL before and after each feed"
     # pattern; a rough daily figure for med flushes (no meds list --
     # deliberately). All produce ordinary flush rows in the one
     # intake_log, summed the same way as everything else.
+    # Sits right after "Add tube feed": flushes are part of the
+    # tube-feeding routine (before/after feeds, med flushes down the
+    # tube), so they group with the tube-side entry; oral intake is the
+    # other route entirely and goes last (author feedback 2026-07-20).
     with st.expander("➕ 💧 Add water flushes"):
         _flush_mode = st.radio(
             "How do you want to count flushes?",
@@ -1300,6 +1299,13 @@ with record_tab:
                 st.rerun()
             else:
                 st.warning("The flush total is 0 mL — nothing to add.")
+
+    # --- Add oral intake (inline expander -- see _render_add_oral_ui()'s
+    # docstring for why this is an expander rather than st.dialog).
+    # Last of the three adders: the oral route, its own category
+    # (author feedback 2026-07-20). ---
+    with st.expander("➕ 🍌 Add oral intake (food/drink)"):
+        _render_add_oral_ui(fn, na, lookup, fg)
 
     # --- Row list: grouped by section header, one underlying list
     # (section 6.3 — "Tube Feed" and "Food & Drink" are a DISPLAY
