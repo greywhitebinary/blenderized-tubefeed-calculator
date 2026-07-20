@@ -859,6 +859,21 @@ commit found during verification):**
   much is left tomorrow is a future feature); saving/loading blends or
   days (JSON persistence, Phase 7); a prescribed-vs-received comparison
   field; a "recent/frequent foods" quick-add for oral entries.
+- **Roadmap ideas raised 2026-07-20 (author, not started):**
+  following a patient over time — holding/storing day records so intake
+  can be tracked across encounters (needs a design pass against the
+  no-PHI-by-design commitment before anything is built; JSON
+  save/load from Phase 7 is the likely substrate); a mobile-friendly
+  interface — the author can see phone-sized entry being genuinely
+  useful for Feed Recipes and the Daily Intake Record, with the
+  laptop view unchanged. Streamlit notes for when this is picked up:
+  it is a responsive web app, so it *runs* in a phone browser already
+  (once deployed, e.g. Streamlit Cloud on the Week 3 roadmap), but the
+  current layout assumes a wide screen (`layout="wide"`, multi-column
+  `st.columns` blocks, wide dataframes) — a mobile pass would mean
+  auditing every columns/dataframe site for narrow-screen stacking,
+  not a rewrite. Verify on a real phone over local network first
+  (Streamlit prints a Network URL when run).
 
 **Backend verification (2026-07-16, extended 2026-07-17, extended again
 2026-07-18/19 for the Intake Record rework): PASSED.** The full backend
