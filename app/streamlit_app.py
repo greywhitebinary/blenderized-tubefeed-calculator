@@ -678,10 +678,11 @@ st.markdown(
        small end of typical websites (~16-19px). Nearly everything in
        Streamlit is sized in rem, so scaling the root scales the whole
        app proportionally -- tab labels, tables, inputs, captions.
-       112.5% = 18px body text (author feedback 2026-07-20). Tune this
-       one number to resize the whole app. */
+       112.5% (18px) still read small to the author; 125% = 20px
+       (author feedback 2026-07-20). Tune this one number to resize the
+       whole app. */
     html {
-        font-size: 112.5%;
+        font-size: 125%;
     }
     button[data-testid="stTab"] [data-testid="stMarkdownContainer"] p,
     button[data-testid="stTab"] p {
