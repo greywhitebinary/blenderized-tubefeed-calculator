@@ -697,6 +697,13 @@ st.markdown(
     button[data-testid="stTab"][aria-selected="true"] p {
         color: #A4243A;
     }
+    /* Heading scale: Streamlit's default h2/h3 land at/above the 1.6rem
+       tab labels, which reads as an inverted hierarchy (author feedback
+       2026-07-20 -- tabs should be the biggest labels on the page).
+       h1 = page title, h2 = st.header, h3 = st.subheader. */
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.5rem; }
+    h3 { font-size: 1.25rem; }
     </style>
     """,
     unsafe_allow_html=True,
