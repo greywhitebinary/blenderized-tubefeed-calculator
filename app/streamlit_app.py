@@ -676,12 +676,8 @@ st.markdown(
         padding-bottom: 0.4rem;
         margin-right: 1.25rem;
     }
-    button[data-testid="stTab"][aria-selected="true"] {
-        background-color: #A4243A;
-        border-radius: 0.4rem 0.4rem 0 0;
-    }
     button[data-testid="stTab"][aria-selected="true"] p {
-        color: #000000;
+        color: #A4243A;
     }
     </style>
     """,
