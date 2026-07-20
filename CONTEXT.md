@@ -17,7 +17,7 @@ to it. The full business case, market analysis, and methodology are in
 
 **App flow — "start with the blender":**
 
-1. **Build tab — blends** — a blend selector (new/rename/delete) over
+1. **Feed Recipes tab — blends** — a blend selector (new/rename/delete) over
    an open-ended list of recipe formulations; search CNF or USDA
    supplement or add a custom food from a nutrition facts label (g or
    mL basis); enter grams (or mL) per ingredient and measured final
@@ -26,8 +26,8 @@ to it. The full business case, market analysis, and methodology are in
    other liquid. A blend is scale-free (a *formulation*) — it doesn't
    know or care how many times it gets made; see the Intake Record
    below for that.
-2. **Intake Record (Intake tab, formerly a persistent banner — see the
-   2026-07-19 layout-restructure entry in §9)** — replaces the old
+2. **Daily Intake Record tab — the Intake Record (formerly the Intake
+   tab; see the 2026-07-20 three-tab restructure entry in §9)** — replaces the old
    delivery-schedule input. One chronological list of rows — tube feed
    (blend / commercial formula / water flush) and oral food/drink — each
    with an optional
@@ -41,7 +41,7 @@ to it. The full business case, market analysis, and methodology are in
    delivery is not offered in the UI — AHS: almost never used for BTF;
    the delivery method is recorded only as free-text chart-note
    wording.) See `FEED_LOG_REWORK.md` for the full design rationale.
-3. **Targets (optional)** — RD enters kcal/day, protein g/day, fluid
+3. **Nutrition Targets tab — targets (optional)** — RD enters kcal/day, protein g/day, fluid
    mL/day they already know. Always blank until entered — no
    population defaults. No assessment page, no energy equations in the
    app (those are documented in `BUSINESS_CASE.md` Appendix B as
@@ -897,7 +897,12 @@ sorting). To re-verify at any time, run:
 `python -c "..."` commands — use the script above. It exists precisely
 so verification is a single short, approvable command.
 
-Last updated: 2026-07-19 (Intake Record rework complete — see the
+Last updated: 2026-07-20 (three-tab restructure to Nutrition Targets /
+Feed Recipes / Daily Intake Record + author UI feedback rounds 1–6 +
+maroon theming — see the newest entry just above §10. Queued next:
+HANDOFF.md steps 3 (volume-needed planning aid), 5 (two-section chart
+note), 6 (Excel export review), then Week 3 scope.)
+Previous update: 2026-07-19 (Intake Record rework complete — see the
 "✅ RESOLVED" and "Intake Record rework" entries above for the full
 detail: five feature commits plus one bugfix commit, all three
 regression scripts green, an AppTest harness covering all 8 items of
@@ -1056,6 +1061,73 @@ this entry:**
   i.e. rethink the comparator around the same label-tier lens as BTF
   recipes, not just widen the existing kcal/protein/water table. Ask
   her before redesigning it; she said she hasn't gotten to it yet.
+
+**Three-tab restructure + author UI feedback rounds 1–6 (2026-07-20,
+this session) — display-only throughout; `intake_log`,
+`aggregate_intake()`, and all clinical logic untouched:**
+
+- **Layout (322620d):** the 2026-07-19 Build/Intake/Results tabs +
+  collapsed "Patient & Targets" expander are replaced by three
+  encounter-order tabs — **Nutrition Targets** (patient weight +
+  targets, promoted out of the collapsed expander), **Feed Recipes**
+  (blend pages: selector, ingredients, per-blend density panel,
+  dilution what-if, comparator, flow test), **Daily Intake Record**
+  (the record editor with daily totals/adequacy/per-source breakdown/
+  chart note/export directly beneath the record they summarize). Top
+  bar keeps only the patient/day label and "Load example day"; the
+  sidebar is gone.
+- **Round 2 (3c42a3c):** patient weight gained a kg/lbs toggle; a
+  dedicated "Add water flushes" expander with three precisions (single
+  flush / with-feeds calculated from the feed count / med-flush rough
+  daily figure) — all produce ordinary flush rows in the one
+  `intake_log`, per the one-list invariant.
+- **Round 3 (1d9978c):** `%g` number formatting on NFt fields,
+  ingredient amounts, and measured volume (no forced trailing
+  decimals); the Daily Total column is now formatted per-cell through
+  the Styler — the status-coloring Styler was re-rendering values at
+  pandas' 6-decimal default, overriding the registry rounding that was
+  already in place. Add-expanders gained emojis (➕ 💉 tube feed /
+  🍌 food-drink / 💧 water flushes); the comparator Company radio
+  filter was restored as a scroll-list filter defaulting to All.
+- **Round 4 (aec3197):** the food-source radio option was renamed
+  "Enter a Nutrition Facts label (custom food)" — the NFt form was
+  always available in the oral entry (shared `render_add_food_ui()`)
+  but not discoverable behind the old label; comparator picks now
+  persist across Company switches (multiselect options = narrowed pool
+  ∪ current selections, because Streamlit silently drops selected
+  values absent from `options`).
+- **Round 5 (d687de2, 716bd61, fb22736):** Dietitians-of-Canada-style
+  maroon theming — NEW `.streamlit/config.toml` with
+  `primaryColor #A4243A` (selected-tab indicator, radios, checkboxes,
+  sliders; the theme is read at server startup, so theme edits need an
+  app restart); tab labels bold 1.6rem with 1.25rem spacing, selected
+  tab maroon text (a maroon-background + black-text variant was tried
+  live and reverted at the author's request); a new `_note()` helper
+  replaces every `st.info()` blue box with a pale-maroon call-out
+  (`#f9e8eb` background, `#A4243A` left border) — chosen after grepping
+  Streamlit's compiled bundle confirmed alert kinds aren't exposed as
+  DOM attributes to CSS-select on.
+- **Round 6 (b6ee0ed):** `secondaryBackgroundColor #f9e8eb` added to
+  the theme — the grey fill behind input boxes, code blocks, and
+  dataframes is now the same pale-pink tint (author: "the pale pink
+  instead of the grey"); the NFt form was scaled down to match the
+  page (title 1.9→1.25rem, calories line 1.3→1.05rem, row padding
+  0.5→0.1rem) and its vertical rhythm tightened via a scoped
+  `.st-key-<box> [data-testid="stVerticalBlock"] { gap: 0.35rem }`
+  override.
+- **Verification each round:** `scripts/check_tab_restructure.py`
+  (AppTest — tab names, section placement, chart note, kg/lbs toggle,
+  Company filter default, flush helpers, cross-company comparator
+  persistence) plus `verify_backend.py`; live server boot checks
+  (HTTP 200) after each theme restart. One new gotcha learned for
+  §11's collection: AppTest's `multiselect.options` returns the
+  format_func-FORMATTED labels, not raw values — set raw values,
+  assert against formatted ones.
+- **Still queued from the author's plan (HANDOFF.md steps):**
+  volume-needed planning aid in the Daily Intake Record (step 3);
+  two-section chart note — summary + breakdown (step 5); Excel export
+  usefulness review (step 6). Then Week 3 scope per HANDOFF.md
+  Phase 2.
 
 ---
 

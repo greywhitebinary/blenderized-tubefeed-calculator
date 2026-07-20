@@ -11,6 +11,17 @@
 
 ---
 
+> **2026-07-20 layout note:** the tab names referenced in older
+> `CONTEXT.md` entries and in this file's open items ("Build" / "Intake"
+> / "Results") are now **Nutrition Targets** / **Feed Recipes** /
+> **Daily Intake Record** (see `CONTEXT.md` §9's 2026-07-20 entry), and
+> the app is themed maroon via `.streamlit/config.toml`
+> (`primaryColor #A4243A`, `secondaryBackgroundColor #f9e8eb` — theme
+> changes require an app restart to take effect). Everything else in
+> this prompt stands.
+
+---
+
 ## Before you paste: two things
 
 1. **Your feedback is the input.** These prompts are scaffolding; the
