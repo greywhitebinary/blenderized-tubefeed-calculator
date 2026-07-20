@@ -686,7 +686,7 @@ st.markdown(
     }
     button[data-testid="stTab"] [data-testid="stMarkdownContainer"] p,
     button[data-testid="stTab"] p {
-        font-size: 1.6rem;
+        font-size: 1.9rem;
         font-weight: 700;
     }
     button[data-testid="stTab"] {
