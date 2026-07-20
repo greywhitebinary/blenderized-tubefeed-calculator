@@ -327,6 +327,19 @@ _TARGET_FORMAT_OVERRIDES: dict[str, str] = {
 # logic" discipline behind src/calculator.py's compute_nutrient_totals().
 
 
+def _note(message: str) -> None:
+    """A guidance call-out in Dietitians-of-Canada-style maroon instead of
+    st.info's default blue (author theming request 2026-07-20). Used for
+    the empty-state "nothing here yet" guidance boxes. Markdown syntax
+    won't render inside the raw HTML div -- use <strong>/<br> instead."""
+    st.markdown(
+        f'<div style="background-color: #f7e9ee; border-left: 4px solid '
+        f'#8A1538; padding: 0.6rem 0.9rem; border-radius: 0.25rem; '
+        f'color: #3d3d3d;">{message}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_add_food_ui(
     fn_df: pd.DataFrame,
     na_df: pd.DataFrame,
@@ -443,13 +456,13 @@ def render_add_food_ui(
                             key=f"{key_prefix}_grams_direct",
                         )
                 else:
-                    st.info("No household measures for this food.")
+                    _note("No household measures for this food.")
                     calculated_grams = st.number_input(
                         "Grams", min_value=0.0, value=100.0, step=1.0,
                         key=f"{key_prefix}_grams_nomeasure",
                     )
             else:
-                st.info("No foods found. Try another search.")
+                _note("No foods found. Try another search.")
         else:
             st.caption("Type at least 2 characters to search.")
 
@@ -646,17 +659,25 @@ st.set_page_config(
 # compiled frontend bundle: each tab button renders as
 # `<button data-testid="stTab">` wrapping a
 # `[data-testid="stMarkdownContainer"]` div whose `<p>` carries the label.
+# The maroon accent itself (selected-tab indicator, radios, sliders) comes
+# from .streamlit/config.toml's primaryColor; this block handles what the
+# theme can't: label size, bold, spacing, and selected-label colour
+# (author theming request 2026-07-20, Dietitians-of-Canada-style maroon).
 st.markdown(
     """
     <style>
     button[data-testid="stTab"] [data-testid="stMarkdownContainer"] p,
     button[data-testid="stTab"] p {
         font-size: 1.4rem;
-        font-weight: 600;
+        font-weight: 700;
     }
     button[data-testid="stTab"] {
         padding-top: 0.4rem;
         padding-bottom: 0.4rem;
+        margin-right: 1.25rem;
+    }
+    button[data-testid="stTab"][aria-selected="true"] p {
+        color: #8A1538;
     }
     </style>
     """,
@@ -1068,7 +1089,7 @@ with recipes_tab:
     st.subheader("Ingredients")
 
     if not selected_blend["ingredients"]:
-        st.info("Add ingredients above to get started.")
+        _note("Add ingredients above to get started.")
     else:
         st.caption(
             "\"Counts as fluid\" drives the Daily Intake Record tab's "
@@ -1381,7 +1402,7 @@ with record_tab:
     )
 
     if not st.session_state.intake_log:
-        st.info("Add rows to the Intake Record above to see daily totals.")
+        _note("Add rows to the Intake Record above to see daily totals.")
     else:
         adequacy_df, hidden_main_names = generate_adequacy_report(
             intake_totals.nutrient_totals, targets,
@@ -1471,7 +1492,7 @@ with recipes_tab:
     st.caption("If the blend needs thinning, see the density impact before you commit.")
 
     if selected_profile is None:
-        st.info(
+        _note(
             "Add ingredients and a measured volume to the blend above "
             "to use the dilution what-if."
         )
@@ -1540,10 +1561,11 @@ with recipes_tab:
                 if tk > 0 and tp > 0:
                     ro = required_daily_volume(selected_profile, tk, tp)
                     rd = required_daily_volume(diluted, tk, tp)
-                    st.info(
+                    _note(
                         f"Required daily volume of just this blend to meet "
-                        f"{tk:.0f} kcal + {tp:.0f} g protein:  \n"
-                        f"**{ro:.0f} mL** → **{rd:.0f} mL** after dilution "
+                        f"{tk:.0f} kcal + {tp:.0f} g protein:<br>"
+                        f"<strong>{ro:.0f} mL</strong> → "
+                        f"<strong>{rd:.0f} mL</strong> after dilution "
                         f"(+{rd - ro:.0f} mL)"
                     )
             else:
@@ -1572,7 +1594,7 @@ with recipes_tab:
     # blend, how does it compare to formula Y") ---
     st.subheader("Commercial Formula Comparator")
     if selected_profile is None:
-        st.info(
+        _note(
             "Add ingredients and a measured volume to the blend above "
             "to use the comparator."
         )
@@ -1669,8 +1691,8 @@ with record_tab:
             _notes_bit = f" — {flow_test_notes}" if flow_test_notes else ""
             _note_lines.append(f"Flow test:{_date_bit} {_result_word}{_notes_bit}.")
 
-        _note = " ".join(_note_lines)
-        st.code(_note, language=None)
+        _note_text = " ".join(_note_lines)
+        st.code(_note_text, language=None)
 
     # --- Export to Excel ---
     st.subheader("Export")
@@ -1745,7 +1767,7 @@ with record_tab:
 
         # Chart note text
         if st.session_state.intake_log:
-            pd.DataFrame({"Chart note": [_note]}).to_excel(
+            pd.DataFrame({"Chart note": [_note_text]}).to_excel(
                 writer, sheet_name="Chart Note", index=False
             )
 

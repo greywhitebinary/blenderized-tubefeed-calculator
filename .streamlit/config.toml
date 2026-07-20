@@ -1,12 +1,7 @@
-# Streamlit theme for the BTF Calculator.
-#
-# Deliberately NOT setting a [theme] block. Setting one — even just
-# `base = "light"` — replaces Streamlit's built-in Light/Dark/"Use system
-# setting" choice in the hamburger menu (☰ → Settings) with a single fixed
-# theme, removing the viewer's toggle. The author wants that toggle kept.
-#
-# The bug that originally motivated pinning light is fixed at the source
-# instead: the adequacy table's status cells (color_status() in
-# app/streamlit_app.py) set an explicit dark text colour on their pale
-# backgrounds, so the Status column stays readable in both Light and Dark
-# — no theme lock needed. See the comment there for details.
+# Dietitians-of-Canada-style maroon (author theming request 2026-07-20).
+# primaryColor drives the selected-tab indicator, radio buttons,
+# checkboxes, and sliders -- everything Streamlit otherwise renders in
+# its default red. Requires an app restart to take effect (the theme is
+# read at server startup, not per-rerun).
+[theme]
+primaryColor = "#8A1538"
