@@ -1,7 +1,12 @@
 # Dietitians-of-Canada-style maroon (author theming request 2026-07-20).
 # primaryColor drives the selected-tab indicator, radio buttons,
 # checkboxes, and sliders -- everything Streamlit otherwise renders in
-# its default red. Requires an app restart to take effect (the theme is
-# read at server startup, not per-rerun).
+# its default red. secondaryBackgroundColor is the pale fill behind
+# input boxes, code blocks, and dataframes -- Streamlit's default grey,
+# swapped here for the same pale-pink tint the _note() guidance boxes
+# use (author request: "the pale pink instead of the grey"). Requires
+# an app restart to take effect (the theme is read at server startup,
+# not per-rerun).
 [theme]
 primaryColor = "#A4243A"
+secondaryBackgroundColor = "#f9e8eb"

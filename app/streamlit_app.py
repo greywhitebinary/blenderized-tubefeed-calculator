@@ -504,18 +504,26 @@ def render_add_food_ui(
         st.markdown(
             f"""
             <style>
-            .nft-title {{ font-size: 1.9rem; font-weight: 800;
-                         letter-spacing: -0.02em; margin-bottom: 0.1rem; }}
-            .nft-main {{ font-weight: 700; padding-top: 0.5rem; }}
-            .nft-sub {{ font-weight: 400; padding-top: 0.5rem;
+            .nft-title {{ font-size: 1.25rem; font-weight: 800;
+                         letter-spacing: -0.02em; margin-bottom: 0.05rem; }}
+            .nft-main {{ font-weight: 700; padding-top: 0.1rem; }}
+            .nft-sub {{ font-weight: 400; padding-top: 0.1rem;
                        padding-left: 1.4em; }}
-            .nft-cal {{ font-weight: 800; font-size: 1.3rem;
-                       padding-top: 0.4rem; }}
+            .nft-cal {{ font-weight: 800; font-size: 1.05rem;
+                       padding-top: 0.1rem; }}
             hr.nft-thick {{ border: none; border-top: 6px solid #000;
-                            margin: 0.4rem 0; }}
+                            margin: 0.25rem 0; }}
             hr.nft-thin {{ border: none; border-top: 1px solid #000;
-                           margin: 0.3rem 0; }}
+                           margin: 0.15rem 0; }}
             .st-key-{box_key} input[type="number"] {{ text-align: right; }}
+            /* Tighten the vertical rhythm inside the NFt box: each
+               nutrient row is its own st.columns block, and Streamlit's
+               default 1rem vertical gap made the label sprawl far
+               beyond the compact print of a real Nutrition Facts table
+               (author feedback 2026-07-20). */
+            .st-key-{box_key} [data-testid="stVerticalBlock"] {{
+                gap: 0.35rem;
+            }}
             </style>
             """,
             unsafe_allow_html=True,
