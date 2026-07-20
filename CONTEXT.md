@@ -26,9 +26,11 @@ to it. The full business case, market analysis, and methodology are in
    other liquid. A blend is scale-free (a *formulation*) — it doesn't
    know or care how many times it gets made; see the Intake Record
    below for that.
-2. **Intake Record (banner)** — replaces the old delivery-schedule
-   input. One chronological list of rows — tube feed (blend / commercial
-   formula / water flush) and oral food/drink — each with an optional
+2. **Intake Record (Intake tab, formerly a persistent banner — see the
+   2026-07-19 layout-restructure entry in §9)** — replaces the old
+   delivery-schedule input. One chronological list of rows — tube feed
+   (blend / commercial formula / water flush) and oral food/drink — each
+   with an optional
    time and an amount; displayed grouped under "Tube Feed" and
    "Food & Drink" headers but backed by one list. Daily totals are a
    **direct sum over these rows** — never an extrapolation of a batch
@@ -364,7 +366,7 @@ author can compare their fixes or unblock themselves if stuck for too long.
 - [x] Phase 3 calculator — COMPLETE & VERIFIED (`src/models.py`, `src/calculator.py`)
 - [x] Phase 4 measures — COMPLETE & VERIFIED (`src/measures.py`)
 - [x] Phase 5 targets/report — COMPLETE & VERIFIED (`src/targets.py`, `src/report.py`, `data/targets/dri_adult_default.csv` as of 2026-07-15 — since moved to `data/packs/canada/targets.csv`, see the nutrient-registry entry below)
-- [x] Phase 6 Streamlit UI — SCAFFOLDED, bug-fixed post-audit, restructured 2026-07-17 (`app/streamlit_app.py`; recipe builder with CNF search + food-group filter + custom food from label, delivery input, targets (including fluid mL/day), live density panel, adequacy report with color-coded status (including a Free water row), dilution what-if with thinning liquid presets, commercial formula comparator, Excel export with a sanitized filename; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed; see the "UI restructure" entry below for the Build/Results tabs + persistent banner layout change)
+- [x] Phase 6 Streamlit UI — SCAFFOLDED, bug-fixed post-audit, restructured 2026-07-17, restructured again 2026-07-19 (`app/streamlit_app.py`; recipe builder with CNF search + food-group filter + custom food from label, delivery input, targets (including fluid mL/day), live density panel, adequacy report with color-coded status (including a Free water row), dilution what-if with thinning liquid presets, commercial formula comparator, Excel export with a sanitized filename; import-verified 2026-07-15; commercial formulas + thinning liquids externalized to CSV in `data/`; widget session state warning fixed; **current layout (2026-07-19) is Build/Intake/Results `st.tabs` with a collapsed "Patient & Targets" expander above them — the persistent banner described in the "UI restructure" entry below no longer exists, see the 2026-07-19 entry near the end of this section**)
 - [ ] Phase 7 polish — NOT STARTED
 
 **Pinned issues (to revisit after user testing):**
@@ -522,16 +524,18 @@ architectural change since the last audit:**
     `verify_backend.py` stage 10 checks `load_registry("no_such_pack")`
     raises `FileNotFoundError`, proving the registry is genuinely
     data-driven rather than a Canadian default with a data-shaped facade.
-  - **NOT met** for `formulas.csv` and `thinning_liquids.csv`:
-    `_load_commercial_formulas()` (`src/calculator.py`) and
-    `_load_thinning_liquids()` (`app/streamlit_app.py`) are still
-    module-level constants loaded once from a hardcoded `canada` path.
-    A US pack would today get US nutrients + US targets but **Canadian
-    formulas** — which matters, because commercial formulary is among
-    the most country-specific data in the tool. **Outstanding work:**
-    parameterize both loaders by `pack`. Note this ripples to
-    `COMMERCIAL_FORMULAS`'s importers (`src/report.py`,
-    `app/streamlit_app.py`).
+  - **Partially met, as of 2026-07-19:** `_load_commercial_formulas()`
+    (`src/calculator.py`) now takes `pack: str = DEFAULT_PACK`, matching
+    `load_registry()`'s idiom — done as a side effect of the same-day
+    commercial-formula catalog overhaul (see the 2026-07-19 entry near
+    the end of this section), not a deliberate Appendix C push. **Still
+    NOT met** for `thinning_liquids.csv`: `_load_thinning_liquids()`
+    (`app/streamlit_app.py`) is still a module-level constant loaded
+    once from a hardcoded `canada` path. A US pack would today get US
+    nutrients + US targets + US commercial formulas (if a second pack's
+    `formulas.csv` existed) but **Canadian thinning liquids** —
+    **outstanding work:** parameterize `_load_thinning_liquids()` by
+    `pack` the same way.
   - Deferred by design: kJ/salt-unit handling (future per-pack
     `config.yaml`; see Appendix C).
 
@@ -945,6 +949,98 @@ pass. Two new pins added: ask practicing RDs which nutrients they'd
 track in their own practice area; the fluids-ledger convention
 (full-volume I&O counting, per-ingredient toggle as policy) is
 author-approved but flagged revisitable after further clinical use.
+
+**Layout restructure (Build/Intake/Results tabs, no persistent banner) +
+commercial formula catalog overhaul (2026-07-19, this session) — NOT
+clinically reviewed yet; nothing pinned in this project is resolved by
+this entry:**
+
+- **Layout, display-only:** split the persistent banner (Patient,
+  Targets, and the Intake Record all in one bordered container above
+  two tabs) into three peer `st.tabs` — **"Build"**, **"Intake"**,
+  **"Results"** — plus a collapsed **"Patient & Targets"** expander
+  above them (settings, not a workflow step). The Intake Record editor
+  (delivery method, live totals summary, "Add tube feed"/"Add
+  food/drink" expanders, chronological row list) moved wholesale into
+  the new Intake tab; `session_state["intake_log"]`'s shape and
+  `aggregate_intake()` are untouched — this is display-only, per
+  `.clinerules` §2's invariant. Removed the 🔨/📊 tab-label emojis per
+  the author's request ("not the best icons"); other emojis (➕, ❌,
+  🗑️, 🥣) were deliberately left alone — not asked. Stale captions/
+  docstrings that said "in the banner above" were corrected to "in the
+  Intake tab."
+- **Commercial formula data — provenance fix:** re-verified all 8
+  original `data/packs/canada/formulas.csv` rows against the two
+  manufacturer HCP product guides now archived in
+  `data/packs/canada/formula_sources/` (`2026_nestle-product-guide.pdf`,
+  `2024_abbott-adult-product-guide.pdf`) — the data had been a
+  near-verbatim, unverified copy of the author's 2018 EN spreadsheet.
+  Found and fixed two real errors: "Isosource Fibre 1.5" had been
+  carrying the non-fibre "Isosource 1.5" product's numbers, and
+  "Resource 2.0" understated protein by ~5% (0.08 vs. actual
+  0.084 g/mL).
+- **Commercial formula data — catalog expansion:** grown from 8 to
+  **33 adult Canadian tube-feeding formulas** (21 Nestlé Health
+  Science, 12 Abbott Nutrition). Pediatric/Junior lines and oral-only
+  supplements (Boost, Ensure, Pedialyte, PediaSure) explicitly excluded
+  per the author's scope call — ask before adding those. Every row
+  cites its source PDF filename + page number and `verified: 2026-07-19`.
+- **Commercial formula data — schema expansion:** added `brand`
+  (drives a new company radio filter + brand-prefixed labels in the
+  Results tab comparator's multiselect and the Intake tab's tube-feed
+  selectbox) and, after the author asked why the catalog only carried
+  3 numeric columns when her own spreadsheet tracked more, 9 more
+  per-mL nutrient columns: `fat_per_mL`/`carbohydrate_per_mL`/
+  `fibre_per_mL` (g/mL) and `sodium_per_mL`/`potassium_per_mL`/
+  `calcium_per_mL`/`iron_per_mL`/`magnesium_per_mL`/`phosphorus_per_mL`
+  (mg/mL) — the same Nutrition Facts panel lens already used for BTF
+  recipes (`nutrients.csv`'s label tier) plus magnesium/phosphorus per
+  the EN spreadsheet. Deliberately excludes osmolality (author's call:
+  not relevant outside hospital). All new fields are optional/
+  `None`-safe, identical contract to `free_water_per_mL` — a formula
+  whose label doesn't disclose a nutrient (e.g. fibre in an elemental
+  formula) gets `None`, never a fabricated 0.
+  **This fuller nutrient set is captured in the CSV but NOT surfaced in
+  the Results tab's comparator table**, which still shows only
+  kcal/protein/water — see the new pinned item below.
+- `src/calculator.py::_load_commercial_formulas()` now takes
+  `pack: str = DEFAULT_PACK` (imported from `src.nutrients`) instead of
+  a hardcoded `_FORMULAS_CSV` path constant, matching the
+  `load_registry()` idiom Appendix C mandates. `_FORMULAS_FALLBACK`
+  (the CSV-missing safety net) was deliberately NOT expanded to mirror
+  all 33 rows/12 columns — it stays the original curated 8-formula/
+  4-field dict; a comment above it in `calculator.py` says so
+  explicitly so this isn't mistaken for a bug later.
+- `data/packs/canada/formulas.csv` gained a UTF-8 BOM prefix — opening
+  it in Excel for Mac without one rendered "Nestlé" as "Nestl√©" (Excel
+  guessed Mac Roman instead of UTF-8 for the accented character).
+  Confirmed `pd.read_csv()` auto-strips a BOM (column names unaffected)
+  before adding it; re-verified in Excel by the author after the fix.
+- `data/packs/canada/formula_sources/README.md` updated: documents
+  `brand` and the 9 new nutrient columns (g/mL vs. mg/mL called out
+  explicitly), the adult-tube-feeding-only scope convention, and was
+  reworded to be AI-tool-agnostic rather than Claude-Code-specific, per
+  the author's wish to keep the option of using other AI tools for
+  future formula updates.
+- `BUSINESS_CASE.md` Appendix A7 rewritten to describe the 33-formula
+  catalog and point at the CSV rather than reproducing a now-33-row
+  table inline.
+
+**New pinned items from this session:**
+
+- **None of the above is clinically reviewed.** The author's own words:
+  "I don't know that we can cross anything out yet... putting my
+  clinical hat on and have to think hard." Treat every number, every
+  scope call (adult-only formulas, no osmolality, which nutrients to
+  add), and every UI change above as pending her hands-on scrutiny —
+  this entry documents what changed, not that it's been validated.
+- **Results tab commercial formula comparator is a known-unhappy
+  design, not yet redesigned.** Author's own framing: the nutrients
+  monitored for a commercial formula "should be the nutrients we are
+  monitoring regularly when we eat regular foods in the community" —
+  i.e. rethink the comparator around the same label-tier lens as BTF
+  recipes, not just widen the existing kcal/protein/water table. Ask
+  her before redesigning it; she said she hasn't gotten to it yet.
 
 ---
 

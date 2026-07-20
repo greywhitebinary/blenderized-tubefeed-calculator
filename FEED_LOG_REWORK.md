@@ -18,6 +18,18 @@
 >
 > **All open questions from v1 are resolved — do not re-ask, do not
 > reintroduce the over-draw flag, do not split this into two logs. See §6.**
+>
+> **Layout note (added 2026-07-19, does not change anything below):**
+> this doc was written when the Intake Record editor lived in a
+> persistent banner above the Build/Results tabs. As of 2026-07-19 that
+> banner no longer exists — the editor moved into its own **Intake**
+> tab (alongside Build and Results), with a separate collapsed
+> "Patient & Targets" expander for what used to be the banner's
+> targets section. Every mention of "the banner" below refers to that
+> now-retired container; the underlying data model, rationale, and
+> rules (one `intake_log` list, no over-draw flag, inline expander not
+> `st.dialog`, etc.) are all still exactly as documented. See
+> `CONTEXT.md` §9's 2026-07-19 entry for the layout change itself.
 
 ---
 

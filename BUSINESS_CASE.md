@@ -779,19 +779,22 @@ The comparator picks up to four formulas via multiselect and shows
 them TRANSPOSED — metrics as columns, the BTF as the first row, each
 selected formula as a row below, all at the day's volume.
 
-Formula profiles (from EN spreadsheet — `free_water_per_mL` is the same
-sheet's W column):
-
-| Formula | kcal/mL | Protein g/mL | Free water/mL |
-|---|---|---|---|
-| Isosource Fibre 1.5 | 1.5 | 0.068 | 0.765 |
-| Isosource Fibre 1.2 | 1.2 | 0.054 | 0.804 |
-| Isosource Fibre 1.0 HP | 1.0 | 0.062 | 0.839 |
-| Nepro | 1.8 | 0.081 | 0.727 |
-| Peptamen AF 1.2 | 1.2 | 0.076 | 0.810 |
-| Peptamen Intense High Protein | 1.0 | 0.092 | 0.840 |
-| Resource 2.0 | 2.01 | 0.08 | 0.684 |
-| Peptamen 1.5 | 1.5 | 0.068 | 0.770 |
+Formula profiles: 33 adult Canadian tube-feeding formulas (Nestlé
+Health Science + Abbott Nutrition), re-verified/expanded 2026-07-19
+against manufacturer HCP product guides — see
+`data/packs/canada/formula_sources/` for the source PDFs and
+`data/packs/canada/formulas.csv` for the full data (not reproduced here
+now that it's 33 rows). Each formula carries kcal/mL, protein/mL,
+fat/carbohydrate/fibre per mL, sodium/potassium/calcium/iron/magnesium/
+phosphorus per mL, and free water per mL — the same "Nutrition Facts
+panel" lens already used for BTF recipes, per the author's own EN
+spreadsheet's tracked nutrient set. Two rows changed during the initial
+2026-07-19 re-verification pass: "Isosource Fibre 1.5" had been
+carrying the non-fibre "Isosource 1.5" product's numbers, and
+"Resource 2.0" understated protein by ~5%. As of that date, the
+Results tab's comparator table still only displays kcal/protein/water
+— the fuller nutrient set is captured for future use, not yet surfaced
+there.
 
 ### A8. Dilution What-If (recipe-development aid, not the core feature)
 

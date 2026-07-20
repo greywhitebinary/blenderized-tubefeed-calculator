@@ -108,32 +108,34 @@ If any of these are missing, see `CONTEXT.md` §3 for the tech stack and
   results panels with a preloaded blend (chicken/rice/water/oil) plus a
   small example Intake Record (two feeds of that blend, a water flush,
   and a banana eaten by mouth).
-- In the **"Patient, Targets & Intake Record"** banner: expand "Targets"
-  for the blank target fields (there are no default targets — enter
-  your own or leave them blank); the **Intake Record** below it is the
-  single source of truth for everything the client actually received —
-  use "➕ Add tube feed" (time + a blend/commercial-formula/water-flush
-  source + volume) and "➕ Add food/drink" (search CNF or enter a custom
-  food from a label, same as the Build tab) to log rows. Rows display
-  chronologically, grouped under "Tube Feed" and "Food & Drink" headers,
-  and are individually removable. The always-visible summary line
-  (`~kcal | g protein | mL fluid provided`) updates as you add rows.
-- In the **🔨 Build** tab, use the blend selector at the top to create,
+- Expand the collapsed **"Patient & Targets"** panel above the tabs for
+  the blank target fields (there are no default targets — enter your
+  own or leave them blank).
+- In the **Build** tab, use the blend selector at the top to create,
   rename, or delete blends (a blend is a *recipe formulation* — its
   densities don't depend on how many times it's made or how much of it
   gets logged in the Intake Record, by design; see `FEED_LOG_REWORK.md`
   if you're curious why). Try searching for a food (e.g., type "banana"
   in the search box), or switch to "Enter information on the food
   label" to see the Nutrition-Facts-lookalike custom-food form.
-- In the **📊 Results** tab, daily totals/adequacy/the BTF micro screen
-  come from the Intake Record above — add a few rows in the banner
-  first if the tables look empty. Try the **Per-Source Breakdown**
-  table (Tube Feed vs. Food & Drink vs. Total), the **Dilution
-  What-If** slider — a secondary aid ("what would thinning cost?"), not
-  the main way to change the recipe (that's editing ingredients
-  directly in the Build tab, which updates every number live) — the
-  formula comparator multiselect, and the copy-pasteable chart note at
-  the bottom (the Intake Record read aloud chronologically, tube and
+- In the **Intake** tab, the **Intake Record** is the single source of
+  truth for everything the client actually received — use "➕ Add tube
+  feed" (time + a blend/commercial-formula/water-flush source + volume)
+  and "➕ Add food/drink" (search CNF or enter a custom food from a
+  label, same as the Build tab) to log rows. Rows display
+  chronologically, grouped under "Tube Feed" and "Food & Drink" headers,
+  and are individually removable. The always-visible summary line
+  (`~kcal | g protein | mL fluid provided`) updates as you add rows.
+- In the **Results** tab, daily totals/adequacy/the BTF micro screen
+  come from the Intake Record — add a few rows in the Intake tab first
+  if the tables look empty. Try the **Per-Source Breakdown** table
+  (Tube Feed vs. Food & Drink vs. Total), the **Dilution What-If**
+  slider — a secondary aid ("what would thinning cost?"), not the main
+  way to change the recipe (that's editing ingredients directly in the
+  Build tab, which updates every number live) — the formula comparator
+  (now filterable by company, across a 33-formula catalog — see
+  `CONTEXT.md` §9's 2026-07-19 entry), and the copy-pasteable chart note
+  at the bottom (the Intake Record read aloud chronologically, tube and
   oral interleaved).
 
 ### Step 7: Stop the app
@@ -236,11 +238,12 @@ The short version:
 
 1. **Download** the product's healthcare-professional PDF from the
    manufacturer's site into `data/packs/canada/formula_sources/`.
-2. **Ask Claude** (in a Claude Code session in this project):
+2. **Ask an AI coding assistant** (Claude Code or any other assistant
+   able to read PDFs and edit files in this project):
    > Read the new PDFs in data/packs/canada/formula_sources/ and update
    > formulas.csv — show me each extracted value next to the PDF text
    > you got it from.
-3. **You verify the diff** — two numbers per formula, seconds to check
+3. **You verify the diff** — the numbers per formula, seconds to check
    against the PDF. You are the safety mechanism; never skip this.
 4. Commit (see "How to save your work" below).
 
@@ -291,7 +294,7 @@ the app itself, at runtime, or leaves them blank.
 | Data | File | Format |
 |---|---|---|
 | Nutrient registry (what to track, why, and target_type) | `data/packs/canada/nutrients.csv` | name, code, label, unit, tier, on_label, show_in_report, offer_target, target_type, decimals, notes |
-| Commercial formulas | `data/packs/canada/formulas.csv` | name, kcal_per_mL, protein_per_mL, free_water_per_mL, source, verified |
+| Commercial formulas (33 adult Canadian tube-feeding formulas as of 2026-07-19) | `data/packs/canada/formulas.csv` | name, brand, kcal_per_mL, protein_per_mL, fat_per_mL, carbohydrate_per_mL, fibre_per_mL, sodium_per_mL, potassium_per_mL, calcium_per_mL, iron_per_mL, magnesium_per_mL, phosphorus_per_mL, free_water_per_mL, source, verified |
 | Thinning liquid presets | `data/packs/canada/thinning_liquids.csv` | name, kcal_per_100mL, protein_g_per_100mL, water_g_per_100mL |
 
 ### To add a nutrient to track:
@@ -307,7 +310,8 @@ the app itself, at runtime, or leaves them blank.
    displayed daily, or just tracked/exported? — this is how "show what's
    needed, not everything" works: a nutrient can be `tier=label` but
    `show_in_report=no`); `offer_target` of `yes`/`no` (does the
-   custom-targets form in the banner offer a field for it?); and an
+   custom-targets form in the "Patient & Targets" panel offer a field
+   for it?); and an
    optional `target_type` (`RDA`/`AI`/`UL`/`estimate` — only `UL`
    changes the adequacy wording; leave blank otherwise).
 3. Save the file.

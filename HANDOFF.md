@@ -149,11 +149,21 @@ than writing new one-off checks.
 
 **Known open items (context, not a to-do list — don't fix unasked):**
 
-- `formulas.csv` and `thinning_liquids.csv` aren't pack-aware yet;
-  `_load_commercial_formulas()` (`src/calculator.py`) and
-  `_load_thinning_liquids()` (`app/streamlit_app.py`) load from a hardcoded
-  `canada` path. Documented in `CONTEXT.md` §9 and `BUSINESS_CASE.md`
-  Appendix C. Inert until a second country pack exists.
+- `thinning_liquids.csv` isn't pack-aware yet; `_load_thinning_liquids()`
+  (`app/streamlit_app.py`) loads from a hardcoded `canada` path.
+  `formulas.csv`/`_load_commercial_formulas()` (`src/calculator.py`) WAS
+  fixed 2026-07-19 (now takes `pack: str = DEFAULT_PACK`). Documented in
+  `CONTEXT.md` §9 and `BUSINESS_CASE.md` Appendix C. Inert until a second
+  country pack exists.
+- The commercial formula catalog grew from 8 to 33 adult Canadian
+  tube-feeding formulas on 2026-07-19, gained a `brand` column and 9 more
+  per-mL nutrient columns (fat/carbohydrate/fibre/sodium/potassium/
+  calcium/iron/magnesium/phosphorus) — see `CONTEXT.md` §9's 2026-07-19
+  entry for the full list of what changed and why. **None of it is
+  clinically reviewed yet** — the author is doing that pass next. Don't
+  treat it as validated, and don't redesign the Results tab comparator
+  table without asking her first (she's flagged it as a design she's
+  unhappy with but hasn't specified the fix for).
 - Magnesium and phosphorus are deliberately target-less. Do not invent DRI
   targets for them — see `CONTEXT.md` §9 for the clinical reasoning.
 - "Free water" in the Results tab blends two data sources into one number:

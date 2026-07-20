@@ -16,11 +16,12 @@ doc's section 1 for the bug) with:
     over-draw flag -- see FEED_LOG_REWORK.md section 6.2 for why that
     concept is removed entirely, not softened.
 
-App flow ("start with the blender"):
+App flow ("start with the blender"), three tabs plus a collapsed
+Patient & Targets settings panel above them:
   1. Build tab -- create/select a blend, search CNF or add a custom food
      from a label, enter grams and measured final volume.
-  2. Banner -- patient weight, targets, and the Intake Record (what was
-     actually given, tube feed and oral food/drink together).
+  2. Intake tab -- the Intake Record: what was actually given, tube feed
+     (blends, formulas, flushes) and oral food/drink together.
   3. Results tab (live) -- per-blend densities, daily totals from the
      Intake Record, adequacy, per-source (Tube Feed vs Food & Drink)
      breakdown, formula comparator, dilution what-if, chart note.
@@ -196,7 +197,7 @@ def default_counts_as_fluid(food_desc: str, group_code) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Session state — Blends (Build tab) + Intake Record (banner), per
+# Session state — Blends (Build tab) + Intake Record (Intake tab), per
 # FEED_LOG_REWORK.md section 3.2.
 # ---------------------------------------------------------------------------
 
@@ -278,7 +279,8 @@ def color_status(val: str) -> str:
 
 
 # Per-nutrient step sizes for the custom-target number_inputs in the
-# banner below — a UX nicety only (e.g. kcal steps by 50, not 1).
+# Patient & Targets panel below — a UX nicety only (e.g. kcal steps by 50,
+# not 1).
 # Nutrients not listed fall back to a step derived from their registry
 # `decimals`.
 _TARGET_STEP_OVERRIDES: dict[str, float] = {
@@ -713,8 +715,8 @@ st.caption("For RD use — estimates only")
 
 
 # ===========================================================================
-# Reusable Intake Record helpers — used by the banner editor below and
-# (once resolved) by the Results tab's chart note.
+# Reusable Intake Record helpers — used by the Intake tab's editor below
+# and (once resolved) by the Results tab's chart note.
 # ===========================================================================
 
 _FLUSH_LABEL = "Water flush"
@@ -731,8 +733,12 @@ def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
         label = f"Blend: {blend['name']}"
         options.append(label)
         lookup_map[label] = ("blend", bid)
-    for fname in COMMERCIAL_FORMULAS:
-        label = f"Formula: {fname}"
+    for fname, f in sorted(
+        COMMERCIAL_FORMULAS.items(),
+        key=lambda kv: (kv[1].get("brand") or "Other", kv[0]),
+    ):
+        brand = f.get("brand")
+        label = f"Formula: {brand + ' – ' if brand else ''}{fname}"
         options.append(label)
         lookup_map[label] = ("formula", fname)
     options.append(_FLUSH_LABEL)
@@ -868,138 +874,50 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
 
 
 # ===========================================================================
-# Persistent banner — patient weight, targets, and the Intake Record.
-# Sits above the tabs so it's visible regardless of which tab is active.
+# Patient & Targets — settings referenced throughout. Sits above the tabs
+# (collapsed by default) so it's reachable regardless of which tab is
+# active, without occupying permanent screen space.
 # ===========================================================================
 
-with st.container(border=True):
-    st.subheader("Patient, Targets & Intake Record")
+with st.expander("Patient & Targets", expanded=False):
+    st.markdown("**Patient weight (optional)**")
+    patient_weight_kg = st.number_input(
+        "Weight (kg)",
+        min_value=0.0,
+        value=0.0,
+        step=0.5,
+        help="Optional — used only to show kcal/kg, protein g/kg, and "
+             "fluid mL/kg in the Results tab. No target, equation, or "
+             "IBW is computed from it; assessment stays outside this app.",
+    )
+    st.caption("Blank/0 = not provided. Display only — not a target.")
 
-    with st.expander("Targets — set once, referenced throughout", expanded=False):
-        st.markdown("**Patient weight (optional)**")
-        patient_weight_kg = st.number_input(
-            "Weight (kg)",
-            min_value=0.0,
-            value=0.0,
-            step=0.5,
-            help="Optional — used only to show kcal/kg, protein g/kg, and "
-                 "fluid mL/kg in the Results tab. No target, equation, or "
-                 "IBW is computed from it; assessment stays outside this app.",
+    st.markdown("**Targets (optional)**")
+    st.caption("Blank = no target; enter patient-specific values.")
+    targets = empty_targets()
+    tc1, tc2 = st.columns(2)
+    cols = (tc1, tc2)
+    _registry_map = registry_by_name(DEFAULT_PACK)
+    for i, nutrient_name in enumerate(empty_targets()):
+        col = cols[i % 2]
+        if nutrient_name == "fluid_mL":
+            disp_label, unit, decimals = "Fluid", "mL", 0
+        else:
+            d = _registry_map[nutrient_name]
+            disp_label, unit, decimals = d.label, d.unit, d.decimals
+        step = _TARGET_STEP_OVERRIDES.get(
+            nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
         )
-        st.caption("Blank/0 = not provided. Display only — not a target.")
-
-        st.markdown("**Targets (optional)**")
-        st.caption("Blank = no target; enter patient-specific values.")
-        targets = empty_targets()
-        tc1, tc2 = st.columns(2)
-        cols = (tc1, tc2)
-        _registry_map = registry_by_name(DEFAULT_PACK)
-        for i, nutrient_name in enumerate(empty_targets()):
-            col = cols[i % 2]
-            if nutrient_name == "fluid_mL":
-                disp_label, unit, decimals = "Fluid", "mL", 0
-            else:
-                d = _registry_map[nutrient_name]
-                disp_label, unit, decimals = d.label, d.unit, d.decimals
-            step = _TARGET_STEP_OVERRIDES.get(
-                nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
-            )
-            targets[nutrient_name] = col.number_input(
-                f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step
-            )
-
-    st.markdown("**Intake Record**")
-
-    # Delivery method: a single free-choice field for chart-note wording
-    # only (FEED_LOG_REWORK.md section 3.4) — it no longer drives any math.
-    delivery_method = st.text_input(
-        "Delivery method (chart-note wording only)", "Syringe bolus",
-        help="Free text — syringe, gravity, etc. Doesn't affect any "
-             "calculation; every row's own amount is what's summed.",
-    )
-
-    # Always-visible summary line — aggregated NUTRIENT totals, never a
-    # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a
-    # meaningful single number). See FEED_LOG_REWORK.md section 3.4.
-    _banner_totals = aggregate_intake(
-        st.session_state.intake_log, st.session_state.blends, na,
-        custom_foods=st.session_state.custom_foods,
-    )
-    _b_kcal = _banner_totals.nutrient_totals.get("energy_kcal", 0.0)
-    _b_protein = _banner_totals.nutrient_totals.get("protein_g", 0.0)
-    _b_fluid = _banner_totals.fluid_provided_mL
-    st.markdown(
-        f"**Today: ~{_b_kcal:.0f} kcal | {_b_protein:.0f} g protein | "
-        f"{_b_fluid:.0f} mL fluid provided**"
-    )
-
-    # --- Add tube feed ---
-    with st.expander("➕ Add tube feed"):
-        tf1, tf2, tf3 = st.columns([1, 2, 1])
-        tf_time = tf1.time_input("Time (optional)", value=None, key="tf_time_input")
-        _source_options, _source_map = _intake_source_options()
-        tf_source_label = tf2.selectbox("Source", _source_options, key="tf_source_select")
-        tf_amount = tf3.number_input(
-            "Volume (mL)", min_value=0.0, value=0.0, step=10.0, key="tf_amount_input"
+        targets[nutrient_name] = col.number_input(
+            f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step
         )
-        if st.button("Add tube feed row", key="tf_add_btn"):
-            if tf_amount > 0:
-                tf_source_type, tf_source_id = _source_map[tf_source_label]
-                st.session_state.next_intake_id += 1
-                st.session_state.intake_log.append({
-                    "id": st.session_state.next_intake_id,
-                    "time": tf_time,
-                    "source_type": tf_source_type,
-                    "source_id": tf_source_id,
-                    "food_description": None,
-                    "amount": float(tf_amount),
-                    "unit": "mL",
-                    "counts_as_fluid": tf_source_type == "flush",
-                })
-                st.rerun()
-            else:
-                st.warning("Enter a volume greater than 0 mL.")
-
-    # --- Add food/drink (inline expander -- see _render_add_oral_ui()'s
-    # docstring for why this is an expander rather than st.dialog) ---
-    with st.expander("➕ Add food/drink"):
-        _render_add_oral_ui(fn, na, lookup, fg)
-
-    # --- Row list: grouped by section header, one underlying list
-    # (section 6.3 — "Tube Feed" and "Food & Drink" are a DISPLAY
-    # grouping, not two separately-maintained logs). Chronological, rows
-    # with no time sort last (section 6.1); each row removable.
-    if not st.session_state.intake_log:
-        st.caption("No intake logged yet.")
-    else:
-        _ordered_rows = sorted_intake_log(st.session_state.intake_log)
-        _tube_rows = [r for r in _ordered_rows if r["source_type"] in ("blend", "formula", "flush")]
-        _oral_rows = [r for r in _ordered_rows if r["source_type"] == "oral"]
-
-        def _render_intake_row(row: dict) -> None:
-            rc1, rc2 = st.columns([6, 1])
-            rc1.write(_intake_row_label(row))
-            if rc2.button("❌", key=f"del_intake_{row['id']}"):
-                st.session_state.intake_log = [
-                    r for r in st.session_state.intake_log if r["id"] != row["id"]
-                ]
-                st.rerun()
-
-        if _tube_rows:
-            st.markdown(f"*{TUBE_FEED_LABEL}*")
-            for _row in _tube_rows:
-                _render_intake_row(_row)
-        if _oral_rows:
-            st.markdown(f"*{FOOD_DRINK_LABEL}*")
-            for _row in _oral_rows:
-                _render_intake_row(_row)
 
 
 # ===========================================================================
-# Build / Results tabs
+# Build / Intake / Results tabs
 # ===========================================================================
 
-build_tab, results_tab = st.tabs(["🔨 Build", "📊 Results"])
+build_tab, intake_tab, results_tab = st.tabs(["Build", "Intake", "Results"])
 
 with build_tab:
     # --- Blend selector ---
@@ -1162,6 +1080,98 @@ with build_tab:
             st.rerun()
 
 
+with intake_tab:
+    st.subheader("Intake Record")
+    st.caption(
+        "What was actually given — tube feed (blends, formulas, flushes) "
+        "and food/drink by mouth, together in one chronological list."
+    )
+
+    # Delivery method: a single free-choice field for chart-note wording
+    # only (FEED_LOG_REWORK.md section 3.4) — it no longer drives any math.
+    delivery_method = st.text_input(
+        "Delivery method (chart-note wording only)", "Syringe bolus",
+        help="Free text — syringe, gravity, etc. Doesn't affect any "
+             "calculation; every row's own amount is what's summed.",
+    )
+
+    # Always-visible summary line — aggregated NUTRIENT totals, never a
+    # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a
+    # meaningful single number). See FEED_LOG_REWORK.md section 3.4.
+    _banner_totals = aggregate_intake(
+        st.session_state.intake_log, st.session_state.blends, na,
+        custom_foods=st.session_state.custom_foods,
+    )
+    _b_kcal = _banner_totals.nutrient_totals.get("energy_kcal", 0.0)
+    _b_protein = _banner_totals.nutrient_totals.get("protein_g", 0.0)
+    _b_fluid = _banner_totals.fluid_provided_mL
+    st.markdown(
+        f"**Today: ~{_b_kcal:.0f} kcal | {_b_protein:.0f} g protein | "
+        f"{_b_fluid:.0f} mL fluid provided**"
+    )
+
+    # --- Add tube feed ---
+    with st.expander("➕ Add tube feed"):
+        tf1, tf2, tf3 = st.columns([1, 2, 1])
+        tf_time = tf1.time_input("Time (optional)", value=None, key="tf_time_input")
+        _source_options, _source_map = _intake_source_options()
+        tf_source_label = tf2.selectbox("Source", _source_options, key="tf_source_select")
+        tf_amount = tf3.number_input(
+            "Volume (mL)", min_value=0.0, value=0.0, step=10.0, key="tf_amount_input"
+        )
+        if st.button("Add tube feed row", key="tf_add_btn"):
+            if tf_amount > 0:
+                tf_source_type, tf_source_id = _source_map[tf_source_label]
+                st.session_state.next_intake_id += 1
+                st.session_state.intake_log.append({
+                    "id": st.session_state.next_intake_id,
+                    "time": tf_time,
+                    "source_type": tf_source_type,
+                    "source_id": tf_source_id,
+                    "food_description": None,
+                    "amount": float(tf_amount),
+                    "unit": "mL",
+                    "counts_as_fluid": tf_source_type == "flush",
+                })
+                st.rerun()
+            else:
+                st.warning("Enter a volume greater than 0 mL.")
+
+    # --- Add food/drink (inline expander -- see _render_add_oral_ui()'s
+    # docstring for why this is an expander rather than st.dialog) ---
+    with st.expander("➕ Add food/drink"):
+        _render_add_oral_ui(fn, na, lookup, fg)
+
+    # --- Row list: grouped by section header, one underlying list
+    # (section 6.3 — "Tube Feed" and "Food & Drink" are a DISPLAY
+    # grouping, not two separately-maintained logs). Chronological, rows
+    # with no time sort last (section 6.1); each row removable.
+    if not st.session_state.intake_log:
+        st.caption("No intake logged yet.")
+    else:
+        _ordered_rows = sorted_intake_log(st.session_state.intake_log)
+        _tube_rows = [r for r in _ordered_rows if r["source_type"] in ("blend", "formula", "flush")]
+        _oral_rows = [r for r in _ordered_rows if r["source_type"] == "oral"]
+
+        def _render_intake_row(row: dict) -> None:
+            rc1, rc2 = st.columns([6, 1])
+            rc1.write(_intake_row_label(row))
+            if rc2.button("❌", key=f"del_intake_{row['id']}"):
+                st.session_state.intake_log = [
+                    r for r in st.session_state.intake_log if r["id"] != row["id"]
+                ]
+                st.rerun()
+
+        if _tube_rows:
+            st.markdown(f"*{TUBE_FEED_LABEL}*")
+            for _row in _tube_rows:
+                _render_intake_row(_row)
+        if _oral_rows:
+            st.markdown(f"*{FOOD_DRINK_LABEL}*")
+            for _row in _oral_rows:
+                _render_intake_row(_row)
+
+
 with results_tab:
     # --- Per-blend density panel (EVERY blend, not just selected --
     # densities are still the per-blend lens, design doc section 3.5) ---
@@ -1245,8 +1255,8 @@ with results_tab:
     # src.intake.aggregate_intake() (design doc section 3.5). ---
     st.subheader("Daily Totals & Adequacy")
     st.caption(
-        "A direct sum over the Intake Record above — never extrapolated "
-        "from a batch volume against a schedule."
+        "A direct sum over the Intake Record (Intake tab) — never "
+        "extrapolated from a batch volume against a schedule."
     )
 
     intake_totals = aggregate_intake(
@@ -1255,7 +1265,7 @@ with results_tab:
     )
 
     if not st.session_state.intake_log:
-        st.info("Add rows to the Intake Record in the banner above to see daily totals.")
+        st.info("Add rows to the Intake Record in the Intake tab to see daily totals.")
     else:
         adequacy_df, hidden_main_names = generate_adequacy_report(
             intake_totals.nutrient_totals, targets,
@@ -1429,12 +1439,29 @@ with results_tab:
             value=max(selected_profile.measured_final_volume_mL, 1200.0),
             step=50.0,
             help="An independent what-if volume for this comparison only -- "
-                 "it doesn't need to match the Intake Record above.",
+                 "it doesn't need to match the Intake Record (Intake tab).",
+        )
+        _comparator_brands = sorted(
+            {f.get("brand") or "Other" for f in COMMERCIAL_FORMULAS.values()}
+        )
+        brand_filter = st.radio(
+            "Company",
+            ["All"] + _comparator_brands,
+            horizontal=True,
+            key="comparator_brand_filter",
+        )
+        formula_pool = sorted(
+            (
+                name for name, f in COMMERCIAL_FORMULAS.items()
+                if brand_filter == "All" or (f.get("brand") or "Other") == brand_filter
+            ),
+            key=lambda n: (COMMERCIAL_FORMULAS[n].get("brand") or "Other", n),
         )
         selected_formulas = st.multiselect(
             "Compare against (up to 4)",
-            list(COMMERCIAL_FORMULAS.keys()),
+            formula_pool,
             max_selections=4,
+            format_func=lambda n: f"{COMMERCIAL_FORMULAS[n].get('brand') or 'Other'} — {n}",
         )
         comparator_df = generate_comparator_table(
             selected_profile, compare_volume_mL, selected_formulas
@@ -1460,7 +1487,7 @@ with results_tab:
     st.caption("Copy-paste into your own chart. No patient-identifying fields.")
 
     if not st.session_state.intake_log:
-        st.caption("Add Intake Record rows above to generate a chart note.")
+        st.caption("Add Intake Record rows in the Intake tab to generate a chart note.")
     else:
         _ordered_note_rows = sorted_intake_log(st.session_state.intake_log)
         _tube_note_rows = [r for r in _ordered_note_rows if r["source_type"] in ("blend", "formula", "flush")]

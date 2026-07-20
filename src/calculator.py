@@ -26,7 +26,7 @@ from pathlib import Path
 
 try:
     from src.models import Ingredient, Recipe, NutrientProfile, Delivery, DeliveryMethod
-    from src.nutrients import NUTRIENT_CODES, NUTRIENT_LABELS
+    from src.nutrients import NUTRIENT_CODES, NUTRIENT_LABELS, DEFAULT_PACK
 except ImportError:
     # Allow running as a script (python src/calculator.py) without the
     # project root on sys.path — fall back to a relative-style import.
@@ -37,7 +37,7 @@ except ImportError:
         Delivery,
         DeliveryMethod,
     )
-    from nutrients import NUTRIENT_CODES, NUTRIENT_LABELS
+    from nutrients import NUTRIENT_CODES, NUTRIENT_LABELS, DEFAULT_PACK
 
 
 # ---------------------------------------------------------------------------
@@ -414,33 +414,53 @@ def required_daily_volume(
 # ---------------------------------------------------------------------------
 
 
-# Formula profiles from the EN spreadsheet (BUSINESS_CASE.md Appendix A7).
-# These are the Canadian commercial formulas RDs commonly compare against.
+# Formula profiles (BUSINESS_CASE.md Appendix A7), re-verified 2026-07-19
+# against manufacturer HCP product guides in
+# data/packs/canada/formula_sources/ — see that folder's README for the
+# update workflow. These are the Canadian commercial formulas RDs
+# commonly compare against.
 #
-# The canonical source is data/packs/canada/formulas.csv — an RD can add
+# The canonical source is data/packs/<pack>/formulas.csv — an RD can add
 # or update formulas there without touching Python. The hardcoded dict
 # below is a fallback used only if the CSV is missing (e.g., running in a
 # stripped-down environment). Unlike src/nutrients.py::load_registry(),
 # this IS allowed to fall back — formula profiles are reference data, not
 # structural (see src/nutrients.py's module docstring for that distinction).
-_FORMULAS_CSV = Path(__file__).resolve().parent.parent / "data" / "packs" / "canada" / "formulas.csv"
-
+# Deliberately NOT kept in lockstep with every CSV column/row (e.g. it
+# has 4 fields and 8 formulas where the CSV has 12 and 33) -- it exists
+# only so the app still runs with *some* reference data if the CSV is
+# ever missing, not as a mirror of the full catalog.
 _FORMULAS_FALLBACK: dict[str, dict[str, float]] = {
-    "Isosource Fibre 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068, "free_water_per_mL": 0.765},
-    "Isosource Fibre 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.054, "free_water_per_mL": 0.804},
-    "Isosource Fibre 1.0 HP": {"kcal_per_mL": 1.0, "protein_per_mL": 0.062, "free_water_per_mL": 0.839},
-    "Nepro": {"kcal_per_mL": 1.8, "protein_per_mL": 0.081, "free_water_per_mL": 0.727},
-    "Peptamen AF 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.076, "free_water_per_mL": 0.810},
-    "Peptamen Intense High Protein": {"kcal_per_mL": 1.0, "protein_per_mL": 0.092, "free_water_per_mL": 0.840},
-    "Resource 2.0": {"kcal_per_mL": 2.01, "protein_per_mL": 0.08, "free_water_per_mL": 0.684},
-    "Peptamen 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068, "free_water_per_mL": 0.770},
+    "Isosource Fibre 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.070, "free_water_per_mL": 0.766, "brand": "Nestlé Health Science"},
+    "Isosource Fibre 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.054, "free_water_per_mL": 0.805, "brand": "Nestlé Health Science"},
+    "Isosource Fibre 1.0 HP": {"kcal_per_mL": 1.0, "protein_per_mL": 0.064, "free_water_per_mL": 0.840, "brand": "Nestlé Health Science"},
+    "Nepro": {"kcal_per_mL": 1.8, "protein_per_mL": 0.081, "free_water_per_mL": 0.727, "brand": "Abbott Nutrition"},
+    "Peptamen AF 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.076, "free_water_per_mL": 0.810, "brand": "Nestlé Health Science"},
+    "Peptamen Intense 1.0 HP": {"kcal_per_mL": 1.0, "protein_per_mL": 0.092, "free_water_per_mL": 0.840, "brand": "Nestlé Health Science"},
+    "Resource 2.0": {"kcal_per_mL": 2.0, "protein_per_mL": 0.084, "free_water_per_mL": 0.690, "brand": "Nestlé Health Science"},
+    "Peptamen 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068, "free_water_per_mL": 0.770, "brand": "Nestlé Health Science"},
 }
 
+# Per-mL nutrient columns beyond kcal/protein — same "Nutrition Facts
+# panel" lens already used for BTF recipes (data/packs/<pack>/nutrients.csv's
+# label tier), plus magnesium/phosphorus per the EN spreadsheet's own
+# tracked set. fat/carbohydrate/fibre are g/mL; sodium/potassium/calcium/
+# iron/magnesium/phosphorus are mg/mL (see formula_sources/README.md).
+# All OPTIONAL, same contract as free_water_per_mL below: a formula
+# whose label doesn't disclose one of these gets None, never a
+# fabricated 0.
+_OPTIONAL_NUTRIENT_COLUMNS = (
+    "fat_per_mL", "carbohydrate_per_mL", "fibre_per_mL",
+    "sodium_per_mL", "potassium_per_mL", "calcium_per_mL",
+    "iron_per_mL", "magnesium_per_mL", "phosphorus_per_mL",
+)
 
-def _load_commercial_formulas() -> dict[str, dict[str, float]]:
+
+def _load_commercial_formulas(pack: str = DEFAULT_PACK) -> dict[str, dict[str, float]]:
     """Load commercial formulas from CSV, falling back to hardcoded dict.
 
-    CSV format: name,kcal_per_mL,protein_per_mL,free_water_per_mL,source,verified
+    CSV format: name,brand,kcal_per_mL,protein_per_mL,<_OPTIONAL_NUTRIENT_COLUMNS>,
+    free_water_per_mL,source,verified
 
     free_water_per_mL (round-2 clinical feedback, Part 2.6) is the
     formula's free-water content per mL, from the author's own EN
@@ -449,22 +469,39 @@ def _load_commercial_formulas() -> dict[str, dict[str, float]]:
     fabricated number; callers (the comparator, the combined regimen
     summary) must handle None (e.g. render "—" / skip the free-water
     line) rather than treating it as 0, since 0 would falsely claim the
-    formula has zero free water.
+    formula has zero free water. The columns in _OPTIONAL_NUTRIENT_COLUMNS
+    follow the identical optional/None contract.
+
+    brand (the manufacturer, e.g. "Nestlé Health Science" / "Abbott
+    Nutrition") is likewise OPTIONAL — a hand-added formula row without
+    one recorded gets None, not a fabricated guess; UI grouping code
+    treats None as an "Other" bucket rather than erroring.
+
+    Args:
+        pack: Data pack name (e.g. "canada"). Defaults to DEFAULT_PACK,
+              matching the same idiom as src/nutrients.py::load_registry().
     """
-    if not _FORMULAS_CSV.exists():
+    formulas_csv = Path(__file__).resolve().parent.parent / "data" / "packs" / pack / "formulas.csv"
+    if not formulas_csv.exists():
         return dict(_FORMULAS_FALLBACK)
 
-    df = pd.read_csv(_FORMULAS_CSV)
+    df = pd.read_csv(formulas_csv)
     formulas: dict[str, dict[str, float]] = {}
     for _, row in df.iterrows():
         free_water = row.get("free_water_per_mL")
-        formulas[row["name"]] = {
+        brand = row.get("brand")
+        entry: dict[str, float] = {
             "kcal_per_mL": float(row["kcal_per_mL"]),
             "protein_per_mL": float(row["protein_per_mL"]),
             "free_water_per_mL": (
                 float(free_water) if pd.notna(free_water) else None
             ),
+            "brand": brand if pd.notna(brand) else None,
         }
+        for col in _OPTIONAL_NUTRIENT_COLUMNS:
+            val = row.get(col)
+            entry[col] = float(val) if pd.notna(val) else None
+        formulas[row["name"]] = entry
     return formulas
 
 
