@@ -298,6 +298,21 @@ _TARGET_STEP_OVERRIDES: dict[str, float] = {
     "vitamin_b12_ug": 0.5,
 }
 
+# Display formats for those same inputs: macros never need two decimal
+# places -- one at most is plenty (author feedback 2026-07-20).
+_TARGET_FORMAT_OVERRIDES: dict[str, str] = {
+    "energy_kcal": "%.0f",
+    "fluid_mL": "%.0f",
+    "protein_g": "%.1f",
+    "fat_g": "%.1f",
+    "carbohydrate_g": "%.1f",
+    "fibre_g": "%.1f",
+    "iron_mg": "%.1f",
+    "sodium_mg": "%.0f",
+    "potassium_mg": "%.0f",
+    "calcium_mg": "%.0f",
+}
+
 
 # ---------------------------------------------------------------------------
 # Reusable "add a food" component (FEED_LOG_REWORK.md section 3.3)
@@ -459,12 +474,12 @@ def render_add_food_ui(
         st.caption("Enter values exactly as printed on the nutrition facts label.")
         basis_choice = st.radio(
             "Label basis",
-            ["per ___ g", "per ___ mL"],
+            ["Serving size in weight (g)", "Serving size in volume (mL)"],
             horizontal=True,
             label_visibility="collapsed",
             key=f"{key_prefix}_basis",
         )
-        basis = "g" if basis_choice == "per ___ g" else "mL"
+        basis = "g" if "weight" in basis_choice else "mL"
 
         _registry_map = registry_by_name(DEFAULT_PACK)
         cv: dict[str, float] = {}
@@ -494,7 +509,9 @@ def render_add_food_ui(
         )
 
         def _nft_step(d) -> float:
-            return 1.0 if d.decimals == 0 else round(10 ** (-d.decimals), d.decimals)
+            # Real Nutrition Facts tables don't print two decimal places --
+            # one at most (author feedback 2026-07-20).
+            return 1.0 if d.decimals == 0 else 0.1
 
         def _nft_field(text: str, css_class: str, key: str, **kwargs) -> float:
             name_col, val_col = st.columns([3, 2])
@@ -729,7 +746,8 @@ _FLUSH_LABEL = "Water flush"
 
 def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
     """Build the "Add tube feed" source dropdown: every blend + every
-    commercial formula + "Water flush" (FEED_LOG_REWORK.md section 3.4).
+    commercial formula. Water flushes are NOT an option here -- they have
+    their own "Add water flush" expander (author feedback 2026-07-20).
     Returns (display_options, {display_option: (source_type, source_id)}).
     """
     options: list[str] = []
@@ -746,8 +764,6 @@ def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
         label = f"Formula: {brand + ' – ' if brand else ''}{fname}"
         options.append(label)
         lookup_map[label] = ("formula", fname)
-    options.append(_FLUSH_LABEL)
-    lookup_map[_FLUSH_LABEL] = ("flush", None)
     return options, lookup_map
 
 
@@ -763,7 +779,7 @@ def _intake_row_label(row: dict) -> str:
     elif source_type == "formula":
         name = row["source_id"]
     elif source_type == "flush":
-        name = _FLUSH_LABEL
+        name = row.get("food_description") or _FLUSH_LABEL
     else:
         name = row.get("food_description") or "(unknown food)"
     return f"{t_str} — {name} — {row['amount']:.0f} {row['unit']}"
@@ -892,16 +908,29 @@ targets_tab, recipes_tab, record_tab = st.tabs(
 
 with targets_tab:
     st.markdown("**Patient weight (optional)**")
-    patient_weight_kg = st.number_input(
-        "Weight (kg)",
+    _w_col, _wu_col = st.columns([3, 1])
+    _weight_unit = _wu_col.radio(
+        "Unit", ["kg", "lbs"], horizontal=True, key="weight_unit"
+    )
+    _weight_entered = _w_col.number_input(
+        f"Weight ({_weight_unit})",
         min_value=0.0,
         value=0.0,
         step=0.5,
+        format="%.1f",
         help="Optional — used only to show kcal/kg, protein g/kg, and "
              "fluid mL/kg in the Daily Intake Record tab. No target, equation, or "
              "IBW is computed from it; assessment stays outside this app.",
     )
-    st.caption("Blank/0 = not provided. Display only — not a target.")
+    patient_weight_kg = (
+        _weight_entered if _weight_unit == "kg" else _weight_entered / 2.20462
+    )
+    _kg_note = (
+        f" = {patient_weight_kg:.1f} kg"
+        if _weight_unit == "lbs" and _weight_entered > 0
+        else ""
+    )
+    st.caption(f"Blank/0 = not provided. Display only — not a target.{_kg_note}")
 
     st.markdown("**Targets (optional)**")
     st.caption("Blank = no target; enter patient-specific values.")
@@ -920,7 +949,10 @@ with targets_tab:
             nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
         )
         targets[nutrient_name] = col.number_input(
-            f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step
+            f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step,
+            format=_TARGET_FORMAT_OVERRIDES.get(
+                nutrient_name, f"%.{min(decimals, 1)}f"
+            ),
         )
 
 
@@ -1018,12 +1050,14 @@ with recipes_tab:
         min_value=0.0,
         value=float(selected_blend["measured_volume_mL"]),
         step=10.0,
-        help="Read it off the side of the blender jug, or pour into a "
-             "measuring cup after blending. Ingredient weights feed the "
-             "nutrient math; volume is always this measured number.",
         key=f"vol_{selected_blend_id}",
     )
     selected_blend["measured_volume_mL"] = measured_volume
+    st.caption(
+        "Read it off the side of the blender jug, or pour into a measuring "
+        "cup after blending. Ingredient weights feed the nutrient math; "
+        "volume is always this measured number."
+    )
 
     # --- Ingredient table ---
     st.subheader("Ingredients")
@@ -1146,6 +1180,74 @@ with record_tab:
     # docstring for why this is an expander rather than st.dialog) ---
     with st.expander("➕ Add food/drink"):
         _render_add_oral_ui(fn, na, lookup, fg)
+
+    # --- Add water flush: three precisions, one list (author feedback
+    # 2026-07-20). A single flush for the precise; a with-feeds
+    # calculation for the common "60 mL before and after each feed"
+    # pattern; a rough daily figure for med flushes (no meds list --
+    # deliberately). All produce ordinary flush rows in the one
+    # intake_log, summed the same way as everything else.
+    with st.expander("💧 Add water flush"):
+        _flush_mode = st.radio(
+            "How do you want to count flushes?",
+            ["Single flush", "With feeds (calculated)", "Med flushes (daily, rough)"],
+            horizontal=True,
+            key="flush_mode",
+        )
+        _flush_label = "Water flush"
+        _flush_time = None
+        _flush_total = 0.0
+        if _flush_mode == "Single flush":
+            _sf1, _sf2 = st.columns(2)
+            _flush_time = _sf1.time_input(
+                "Time (optional)", value=None, key="flush_single_time"
+            )
+            _flush_total = _sf2.number_input(
+                "Volume (mL)", min_value=0.0, value=0.0, step=10.0,
+                key="flush_single_amount",
+            )
+        elif _flush_mode == "With feeds (calculated)":
+            _n_feeds = sum(
+                1 for r in st.session_state.intake_log
+                if r["source_type"] in ("blend", "formula")
+            )
+            _wf1, _wf2 = st.columns(2)
+            _per_flush = _wf1.number_input(
+                "mL per flush", min_value=0.0, value=60.0, step=10.0,
+                key="flush_per",
+            )
+            _per_feed = _wf2.number_input(
+                "Flushes per feed", min_value=1, value=2, step=1,
+                key="flush_per_feed",
+            )
+            _flush_total = _per_flush * _per_feed * _n_feeds
+            _flush_label = "Water flushes with feeds"
+            st.caption(
+                f"{_n_feeds} tube feed(s) in the record × {_per_feed} flush(es) × "
+                f"{_per_flush:.0f} mL = **{_flush_total:.0f} mL**"
+            )
+        else:
+            _flush_total = st.number_input(
+                "Med flushes (mL/day — a rough figure is fine)",
+                min_value=0.0, value=100.0, step=10.0, key="flush_med_amount",
+            )
+            _flush_label = "Med flushes"
+        if st.button("Add flush row", key="flush_add_btn"):
+            if _flush_total > 0:
+                st.session_state.next_intake_id += 1
+                st.session_state.intake_log.append({
+                    "id": st.session_state.next_intake_id,
+                    "time": _flush_time,
+                    "source_type": "flush",
+                    "source_id": None,
+                    "food_description": _flush_label,
+                    "amount": float(_flush_total),
+                    "unit": "mL",
+                    "counts_as_fluid": True,
+                })
+                st.rerun()
+            else:
+                st.warning("The flush total is 0 mL — nothing to add.")
 
     # --- Row list: grouped by section header, one underlying list
     # (section 6.3 — "Tube Feed" and "Food & Drink" are a DISPLAY
@@ -1433,6 +1535,23 @@ with recipes_tab:
             else:
                 st.caption("Slide the slider to see the effect of adding thinning liquid.")
 
+    # --- Flow test documentation (pairs with the dilution what-if above:
+    # thin the blend, then record whether it flows. Optional for
+    # established recipes; handy in one place during recipe development --
+    # author feedback 2026-07-20.) ---
+    st.subheader("Flow Test")
+    st.caption(
+        "Documentation only — the tool can't measure viscosity or tube "
+        "flow. Optional for established recipes; during recipe development "
+        "it pairs with the dilution what-if above."
+    )
+    ft1, ft2 = st.columns(2)
+    flow_test_date = ft1.date_input("Date", value=None)
+    flow_test_result = ft2.selectbox("Result", ["Not done", "Passed", "Needs thinning"])
+    flow_test_notes = st.text_area(
+        "Notes", "", placeholder="e.g., flowed through a 60 mL syringe without resistance"
+    )
+
     # --- Commercial formula comparator (operates on the selected blend,
     # at a manually-chosen comparison volume -- independent of the actual
     # Intake Record, an explicit what-if: "if I gave X mL/day of just this
@@ -1452,20 +1571,12 @@ with recipes_tab:
             help="An independent what-if volume for this comparison only -- "
                  "it doesn't need to match the Intake Record (Daily Intake Record tab).",
         )
-        _comparator_brands = sorted(
-            {f.get("brand") or "Other" for f in COMMERCIAL_FORMULAS.values()}
-        )
-        brand_filter = st.radio(
-            "Company",
-            ["All"] + _comparator_brands,
-            horizontal=True,
-            key="comparator_brand_filter",
-        )
+        # No company filter radio: the multiselect lists every formula,
+        # prefixed and sorted by brand, so feeds from different companies
+        # can be compared in one table directly (author feedback
+        # 2026-07-20).
         formula_pool = sorted(
-            (
-                name for name, f in COMMERCIAL_FORMULAS.items()
-                if brand_filter == "All" or (f.get("brand") or "Other") == brand_filter
-            ),
+            COMMERCIAL_FORMULAS,
             key=lambda n: (COMMERCIAL_FORMULAS[n].get("brand") or "Other", n),
         )
         selected_formulas = st.multiselect(
@@ -1478,19 +1589,6 @@ with recipes_tab:
             selected_profile, compare_volume_mL, selected_formulas
         )
         st.dataframe(comparator_df, width="stretch", hide_index=True)
-
-    # --- Flow test documentation ---
-    st.subheader("Flow Test")
-    st.caption(
-        "The tool can't measure viscosity or tube flow — this is "
-        "documentation only, for the chart note and export."
-    )
-    ft1, ft2 = st.columns(2)
-    flow_test_date = ft1.date_input("Date", value=None)
-    flow_test_result = ft2.selectbox("Result", ["Not done", "Passed", "Needs thinning"])
-    flow_test_notes = st.text_area(
-        "Notes", "", placeholder="e.g., flowed through a 60 mL syringe without resistance"
-    )
 
 with record_tab:
     st.divider()
