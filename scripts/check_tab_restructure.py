@@ -7,7 +7,13 @@ what-if, comparator, and flow test, and the Daily Intake Record tab
 carries the intake editor, daily totals/adequacy, chart note, and export.
 """
 
+import sys
+
+sys.path.insert(0, ".")
+
 from streamlit.testing.v1 import AppTest
+
+from src.calculator import COMMERCIAL_FORMULAS
 
 
 def main() -> None:
@@ -91,6 +97,27 @@ def main() -> None:
     assert log[-1]["food_description"] == "Water flushes with feeds"
     assert log[-1]["amount"] == 60.0 * 2 * n_feeds  # defaults: 60 mL × 2 × feeds
     print(f"with-feeds helper OK: {log[-1]['amount']:.0f} mL from {n_feeds} feeds")
+
+    # (e) comparator: a pick made under one company survives switching the
+    # Company filter to the other company (round-4 feedback).
+    company_radio = next(r for r in at.radio if r.label == "Company")
+    company_radio.set_value("Abbott Nutrition").run()
+    ms = next(m for m in at.multiselect if m.key == "comparator_formula_select")
+    # AppTest's ms.options returns the FORMATTED labels ("Abbott Nutrition —
+    # Nepro"); the value itself must be the raw formula name.
+    abbott_pick = next(
+        n for n, f in COMMERCIAL_FORMULAS.items()
+        if "Nepro" in n and f.get("brand") == "Abbott Nutrition"
+    )
+    assert abbott_pick in [
+        o.split(" — ", 1)[-1] for o in ms.options
+    ], f"{abbott_pick} not offered under Abbott filter"
+    ms.set_value([abbott_pick]).run()
+    company_radio = next(r for r in at.radio if r.label == "Company")
+    company_radio.set_value("Nestlé Health Science").run()
+    kept = at.session_state["comparator_formula_select"]
+    assert any("Nepro" in n for n in kept), f"cross-company pick dropped: {kept}"
+    print(f"comparator cross-company persistence OK: kept {kept}")
 
     print("=== TAB RESTRUCTURE APPTTEST PASSED ===")
 

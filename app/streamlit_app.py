@@ -358,7 +358,7 @@ def render_add_food_ui(
         "Source",
         [
             "Search foods from the Canadian Nutrient File",
-            "Enter information on the food label",
+            "Enter a Nutrition Facts label (custom food)",
         ],
         horizontal=True,
         key=f"{key_prefix}_add_mode",
@@ -366,7 +366,7 @@ def render_add_food_ui(
 
     result: dict | None = None
 
-    if add_mode == "Search foods from the Canadian Nutrient File":
+    if add_mode == "Search foods from the Canadian Nutrient File":  # else: NFt label form
         # Food-group filter: CNF's own 23 native CNF_Food_Group categories
         # — narrows the search pool *before* the substring search below.
         group_options = ["All"] + sorted(fg_df["CNF_Food_Group_Description_EN"].tolist())
@@ -1184,7 +1184,7 @@ with record_tab:
 
     # --- Add food/drink (inline expander -- see _render_add_oral_ui()'s
     # docstring for why this is an expander rather than st.dialog) ---
-    with st.expander("➕ 🍎 Add food/drink"):
+    with st.expander("➕ 🍌 Add food/drink"):
         _render_add_oral_ui(fn, na, lookup, fg)
 
     # --- Add water flush: three precisions, one list (author feedback
@@ -1585,9 +1585,13 @@ with recipes_tab:
             help="An independent what-if volume for this comparison only -- "
                  "it doesn't need to match the Intake Record (Daily Intake Record tab).",
         )
-        # Company filter restored (round-3 feedback 2026-07-20): it narrows
-        # the multiselect's scroll list; "All" (the default) is what allows
-        # comparing feeds from different companies in one table.
+        # Company filter (restored round 3, refined round 4): picking a
+        # company narrows the SCROLL LIST only. Selections from other
+        # companies stay selected when you switch, because the multiselect's
+        # options are the narrowed pool UNION whatever is already selected
+        # (Streamlit silently drops selected values that aren't in
+        # options -- this keeps Nepro + Isosource side by side without
+        # ever scrolling the full 33).
         _comparator_brands = sorted(
             {f.get("brand") or "Other" for f in COMMERCIAL_FORMULAS.values()}
         )
@@ -1604,11 +1608,20 @@ with recipes_tab:
             ),
             key=lambda n: (COMMERCIAL_FORMULAS[n].get("brand") or "Other", n),
         )
+        _already_picked = st.session_state.get("comparator_formula_select", [])
+        _multiselect_options = formula_pool + [
+            n for n in _already_picked if n not in formula_pool
+        ]
         selected_formulas = st.multiselect(
             "Compare against (up to 4)",
-            formula_pool,
+            _multiselect_options,
             max_selections=4,
             format_func=lambda n: f"{COMMERCIAL_FORMULAS[n].get('brand') or 'Other'} — {n}",
+            key="comparator_formula_select",
+        )
+        st.caption(
+            "Company narrows the list for scrolling — feeds you already "
+            "picked stay selected when you switch companies."
         )
         comparator_df = generate_comparator_table(
             selected_profile, compare_volume_mL, selected_formulas
