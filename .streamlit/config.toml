@@ -4,4 +4,4 @@
 # its default red. Requires an app restart to take effect (the theme is
 # read at server startup, not per-rerun).
 [theme]
-primaryColor = "#8A1538"
+primaryColor = "#A4243A"

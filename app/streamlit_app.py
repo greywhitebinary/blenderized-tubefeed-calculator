@@ -333,8 +333,8 @@ def _note(message: str) -> None:
     the empty-state "nothing here yet" guidance boxes. Markdown syntax
     won't render inside the raw HTML div -- use <strong>/<br> instead."""
     st.markdown(
-        f'<div style="background-color: #f7e9ee; border-left: 4px solid '
-        f'#8A1538; padding: 0.6rem 0.9rem; border-radius: 0.25rem; '
+        f'<div style="background-color: #f9e8eb; border-left: 4px solid '
+        f'#A4243A; padding: 0.6rem 0.9rem; border-radius: 0.25rem; '
         f'color: #3d3d3d;">{message}</div>',
         unsafe_allow_html=True,
     )
@@ -668,7 +668,7 @@ st.markdown(
     <style>
     button[data-testid="stTab"] [data-testid="stMarkdownContainer"] p,
     button[data-testid="stTab"] p {
-        font-size: 1.4rem;
+        font-size: 1.6rem;
         font-weight: 700;
     }
     button[data-testid="stTab"] {
@@ -676,8 +676,12 @@ st.markdown(
         padding-bottom: 0.4rem;
         margin-right: 1.25rem;
     }
+    button[data-testid="stTab"][aria-selected="true"] {
+        background-color: #A4243A;
+        border-radius: 0.4rem 0.4rem 0 0;
+    }
     button[data-testid="stTab"][aria-selected="true"] p {
-        color: #8A1538;
+        color: #000000;
     }
     </style>
     """,
