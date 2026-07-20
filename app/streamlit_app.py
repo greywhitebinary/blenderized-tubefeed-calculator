@@ -674,6 +674,15 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    /* Base font bump: Streamlit's default body text is 16px, at the
+       small end of typical websites (~16-19px). Nearly everything in
+       Streamlit is sized in rem, so scaling the root scales the whole
+       app proportionally -- tab labels, tables, inputs, captions.
+       112.5% = 18px body text (author feedback 2026-07-20). Tune this
+       one number to resize the whole app. */
+    html {
+        font-size: 112.5%;
+    }
     button[data-testid="stTab"] [data-testid="stMarkdownContainer"] p,
     button[data-testid="stTab"] p {
         font-size: 1.6rem;
