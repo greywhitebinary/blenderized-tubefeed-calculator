@@ -514,6 +514,9 @@ def render_add_food_ui(
             return 1.0 if d.decimals == 0 else 0.1
 
         def _nft_field(text: str, css_class: str, key: str, **kwargs) -> float:
+            # %g displays the entered value with no forced trailing zeros --
+            # real labels don't print two decimal places (author feedback).
+            kwargs.setdefault("format", "%g")
             name_col, val_col = st.columns([3, 2])
             with name_col:
                 st.markdown(f'<div class="{css_class}">{text}</div>', unsafe_allow_html=True)
@@ -581,6 +584,7 @@ def render_add_food_ui(
                 min_value=0.0,
                 value=100.0,
                 step=1.0,
+                format="%g",
                 key=f"{key_prefix}_cgrams",
                 help=f"Same unit as the label basis above ({basis}) — an "
                      f"mL-basis food's usage can only be entered in mL, by "
@@ -1050,6 +1054,7 @@ with recipes_tab:
         min_value=0.0,
         value=float(selected_blend["measured_volume_mL"]),
         step=10.0,
+        format="%g",
         key=f"vol_{selected_blend_id}",
     )
     selected_blend["measured_volume_mL"] = measured_volume
@@ -1080,6 +1085,7 @@ with recipes_tab:
                 value=float(ing["grams"]),
                 min_value=0.0,
                 step=1.0,
+                format="%g",
                 key=f"grams_{ing['id']}",
                 label_visibility="collapsed",
             )
@@ -1150,7 +1156,7 @@ with record_tab:
     )
 
     # --- Add tube feed ---
-    with st.expander("➕ Add tube feed"):
+    with st.expander("➕ 💉 Add tube feed"):
         tf1, tf2, tf3 = st.columns([1, 2, 1])
         tf_time = tf1.time_input("Time (optional)", value=None, key="tf_time_input")
         _source_options, _source_map = _intake_source_options()
@@ -1178,7 +1184,7 @@ with record_tab:
 
     # --- Add food/drink (inline expander -- see _render_add_oral_ui()'s
     # docstring for why this is an expander rather than st.dialog) ---
-    with st.expander("➕ Add food/drink"):
+    with st.expander("➕ 🍎 Add food/drink"):
         _render_add_oral_ui(fn, na, lookup, fg)
 
     # --- Add water flush: three precisions, one list (author feedback
@@ -1187,7 +1193,7 @@ with record_tab:
     # pattern; a rough daily figure for med flushes (no meds list --
     # deliberately). All produce ordinary flush rows in the one
     # intake_log, summed the same way as everything else.
-    with st.expander("💧 Add water flush"):
+    with st.expander("➕ 💧 Add water flushes"):
         _flush_mode = st.radio(
             "How do you want to count flushes?",
             ["Single flush", "With feeds (calculated)", "Med flushes (daily, rough)"],
@@ -1386,7 +1392,13 @@ with record_tab:
         adequacy_display["Target"] = adequacy_display["Target"].astype(str)
         adequacy_display["% Target"] = adequacy_display["% Target"].astype(str)
         st.dataframe(
-            adequacy_display.style.map(color_status, subset=["Status"]),
+            adequacy_display.style
+            # The Styler (needed for status colouring) would otherwise
+            # render Daily Total at pandas' default 6-decimal precision;
+            # %g shows each value at its registry-rounded precision with
+            # no trailing zeros (author feedback 2026-07-20).
+            .map(color_status, subset=["Status"])
+            .format(lambda v: f"{v:g}", subset=["Daily Total"]),
             width="stretch",
             hide_index=True,
         )
@@ -1410,7 +1422,9 @@ with record_tab:
                 clinical_display["Target"] = clinical_display["Target"].astype(str)
                 clinical_display["% Target"] = clinical_display["% Target"].astype(str)
                 st.dataframe(
-                    clinical_display.style.map(color_status, subset=["Status"]),
+                    clinical_display.style
+                    .map(color_status, subset=["Status"])
+                    .format(lambda v: f"{v:g}", subset=["Daily Total"]),
                     width="stretch",
                     hide_index=True,
                 )
@@ -1571,12 +1585,23 @@ with recipes_tab:
             help="An independent what-if volume for this comparison only -- "
                  "it doesn't need to match the Intake Record (Daily Intake Record tab).",
         )
-        # No company filter radio: the multiselect lists every formula,
-        # prefixed and sorted by brand, so feeds from different companies
-        # can be compared in one table directly (author feedback
-        # 2026-07-20).
+        # Company filter restored (round-3 feedback 2026-07-20): it narrows
+        # the multiselect's scroll list; "All" (the default) is what allows
+        # comparing feeds from different companies in one table.
+        _comparator_brands = sorted(
+            {f.get("brand") or "Other" for f in COMMERCIAL_FORMULAS.values()}
+        )
+        brand_filter = st.radio(
+            "Company",
+            ["All"] + _comparator_brands,
+            horizontal=True,
+            key="comparator_brand_filter",
+        )
         formula_pool = sorted(
-            COMMERCIAL_FORMULAS,
+            (
+                name for name, f in COMMERCIAL_FORMULAS.items()
+                if brand_filter == "All" or (f.get("brand") or "Other") == brand_filter
+            ),
             key=lambda n: (COMMERCIAL_FORMULAS[n].get("brand") or "Other", n),
         )
         selected_formulas = st.multiselect(
