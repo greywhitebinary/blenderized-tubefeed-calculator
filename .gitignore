@@ -22,3 +22,6 @@ data/raw/
 # root-anchored so this does NOT touch PDFs under cnf_fcen_all-files-data_2026/)
 /BTF Calculator.pdf
 /BTF_Calculator_Complete.*
+
+# Local-only drafts (Skool posts, video scripts, etc.) — not for the repo
+/drafts/
