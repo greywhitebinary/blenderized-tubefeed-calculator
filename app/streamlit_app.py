@@ -783,7 +783,7 @@ if load_example_clicked:
         st.error("Could not find example foods in CNF.")
 
 st.title(f"🥣 {recipe_name or 'BTF day'}")
-st.caption("For RD use — estimates only")
+st.caption("⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use.")
 
 
 # ===========================================================================
@@ -1813,6 +1813,6 @@ with record_tab:
 # --- Footer ---
 st.divider()
 st.caption(
-    "For RD use — estimates only. RD clinical judgment is the final authority.  \n"
-    "Built on the Canadian Nutrient File (CNF) 2026."
+    "⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use.  \n"
+    "RD clinical judgment is the final authority. Built on the Canadian Nutrient File (CNF) 2026."
 )
