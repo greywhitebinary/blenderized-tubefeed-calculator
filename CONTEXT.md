@@ -898,8 +898,9 @@ sorting). To re-verify at any time, run:
 so verification is a single short, approvable command.
 
 Last updated: 2026-07-20 (three-tab restructure to Nutrition Targets /
-Feed Recipes / Daily Intake Record + author UI feedback rounds 1–6 +
-maroon theming — see the newest entry just above §10. Queued next:
+Feed Recipes / Daily Intake Record + author UI feedback rounds 1–8 +
+maroon theming + typography pass — see the newest entry just above §10.
+Queued next:
 HANDOFF.md steps 3 (volume-needed planning aid), 5 (two-section chart
 note), 6 (Excel export review), then Week 3 scope.)
 Previous update: 2026-07-19 (Intake Record rework complete — see the
@@ -1123,6 +1124,16 @@ this session) — display-only throughout; `intake_log`,
   §11's collection: AppTest's `multiselect.options` returns the
   format_func-FORMATTED labels, not raw values — set raw values,
   assert against formatted ones.
+- **Rounds 7–8 (db48e22, 3b85100, 03e1b78, daeb488, e81ccaa):**
+  typography pass — base font 16px → 20px (`html { font-size: 125% }`
+  — one labeled knob resizes the whole app since Streamlit sizes
+  everything in rem); explicit heading scale (h1 2rem / h2 1.5rem /
+  h3 1.25rem) below the tab labels (1.9rem) after the default
+  hierarchy inverted at the larger root; Daily Intake Record adders
+  reordered to tube feed → water flushes → oral intake (flushes are
+  part of the tube-feeding routine, so they group with the tube-side
+  entry; the oral route is its own category), oral expander renamed
+  "Add oral intake (food/drink)".
 - **Still queued from the author's plan (HANDOFF.md steps):**
   volume-needed planning aid in the Daily Intake Record (step 3);
   two-section chart note — summary + breakdown (step 5); Excel export
