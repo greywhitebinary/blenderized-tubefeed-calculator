@@ -6,6 +6,7 @@ __pycache__/
 
 # Data we generate (keep raw CNF, ignore processed parquet)
 data/processed/
+data/raw/
 *.parquet
 
 # Jupyter
