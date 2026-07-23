@@ -1139,6 +1139,40 @@ this session) — display-only throughout; `intake_log`,
   two-section chart note — summary + breakdown (step 5); Excel export
   usefulness review (step 6). Then Week 3 scope per HANDOFF.md
   Phase 2.
+- **Week-2 pre-deploy pass (2026-07-23, commits 0971142, a6e77d4):**
+  two usability fixes ahead of the Streamlit Cloud deploy. (1) A
+  commercial-tube-feed-only intake day previously showed only calories
+  and protein — `formulas.csv` already stores fat/carbohydrate/fibre/
+  sodium/potassium/calcium/iron/magnesium/phosphorus per mL for each
+  formula and `_load_commercial_formulas()` already loaded every
+  column into `COMMERCIAL_FORMULAS`, but `aggregate_intake()`'s
+  `formula` branch (`src/intake.py`) only mapped kcal/protein (+ free
+  water) into daily totals, silently dropping the rest. Added
+  `_FORMULA_COLUMN_TO_NUTRIENT`, a module-level per-mL-column ->
+  registry-nutrient-key mapping, looped in the `formula` branch,
+  skipping any column whose value is `None` (never fabricating a 0) —
+  same optional/None contract the loader already documents. Verified
+  against a single 1185 mL Resource 2.0 row: `energy_kcal`/`protein_g`
+  match exactly, all eight optional nutrients present and > 0,
+  `fibre_g` correctly absent (Resource 2.0's fibre cell is blank).
+  Known limitation, noted in a code comment: formula rows still don't
+  contribute `nutrient_coverage`, so on a *mixed* day (food/blend row +
+  formula row touching the same nutrient) the adequacy table's "N/M
+  ingredients" provenance note reflects only the food/CNF side — summed
+  values are unaffected, and a formula-only day is unaffected.
+  `compare_with_formula` in `src/calculator.py` (kcal/protein-only
+  comparator) is untouched — separate feature, out of scope. (2) On the
+  Daily Intake Record tab, swapped on-screen order so "Per-Source
+  Breakdown" renders before "Daily Totals & Adequacy" (author
+  preference), keeping the micro screen and per-kg metrics grouped
+  with Daily Totals & Adequacy; moved the "Daily Totals & Adequacy"
+  subheader+caption inside the `else` branch so an empty log shows
+  only the "Add rows…" note. Pure display reorder, no variable
+  dependency between the two blocks; Excel export sheet order
+  untouched. Verified: `verify_backend.py`, `check_app_imports.py`,
+  and `trace_calculation.py` all pass after each change; a throwaway
+  AppTest confirms "Per-Source Breakdown" precedes "Daily Totals &
+  Adequacy" in render order after loading the example day.
 
 ---
 
