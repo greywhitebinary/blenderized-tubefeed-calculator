@@ -767,38 +767,70 @@ fg = get_food_group()
 # ===========================================================================
 
 top_l, top_r = st.columns([4, 1])
-with top_l:
-    recipe_name = st.text_input("Patient / day label", "My BTF day")
 with top_r:
     st.write("")  # vertical spacer so the button aligns with the text input
     load_example_clicked = st.button("📋 Load example day", width="stretch")
 
+# NOTE: the button-click handler below is deliberately placed BEFORE the
+# "Patient / day label" text_input is instantiated (even though that input
+# renders visually to the LEFT of the button -- `with top_l:`/`with top_r:`
+# only control layout POSITION, not script execution order). This lets the
+# handler preset st.session_state["recipe_name_input"] before that widget's
+# key is ever created this run -- setting a keyed widget's session_state
+# entry AFTER it has already been instantiated in the same script run
+# raises StreamlitAPIException (the §11 widget-state gotcha); setting it
+# before instantiation is exactly how a "Load example" button is supposed
+# to preset a widget it doesn't itself own.
 if load_example_clicked:
-    chicken = find_food(fn, "Chicken, broiler, breast, skinless, boneless, meat, raw")
-    rice = find_food(fn, "Grains, rice, white, long-grain, parboiled, cooked")
+    # Synthetic case: James W, H&N RT wk 5, syringe bolus day. Real CNF
+    # foods only -- see the ingredient table in the task/CONTEXT.md S9
+    # 2026-07-23 entry for the sourcing rationale behind each pick
+    # (COOKED variants preferred where the case calls for them; "Carrot,
+    # boiled, drained" and "...with salt" both match the search substring,
+    # so this relies on find_food()'s first-match convention resolving to
+    # the unsalted row -- verified against CNF, not assumed).
+    milk = find_food(fn, "Milk, fluid, whole, pasteurized, homogenized, 3.25% M.F.")
+    yogurt = find_food(fn, "Yogourt (yogurt), Greek style, 2% M.F., plain")
+    oats = find_food(fn, "Cereal, hot, oats (oatmeal), large flakes, prepared, Rogers")
+    chicken = find_food(fn, "Chicken, broiler, breast, skinless, boneless, meat, braised")
+    banana = find_food(fn, "Banana, raw")
+    avocado = find_food(fn, "Avocado, raw, all commercial varieties")
+    carrot = find_food(fn, "Carrot, boiled, drained")
     oil = find_food(fn, "Vegetable oil, canola")
     water = find_food(fn, "Water, municipal")
-    banana = find_food(fn, "Banana, raw")
-    if chicken and rice and oil and water and banana:
+    _example_foods = [milk, yogurt, oats, chicken, banana, avocado, carrot, oil, water]
+    if all(f is not None for f in _example_foods):
         # Drop any pre-existing empty starter blend(s) so the example
-        # doesn't leave clutter alongside "Morning blend".
+        # doesn't leave clutter alongside "Whole-food blend".
         st.session_state.blends = {
             bid: b for bid, b in st.session_state.blends.items() if b["ingredients"]
         }
-        example_id = _new_blend("Morning blend")
-        st.session_state.next_ingr_id += 4
+        example_id = _new_blend("Whole-food blend")
+        st.session_state.next_ingr_id += 9
+        _base_id = st.session_state.next_ingr_id - 8
         st.session_state.blends[example_id]["ingredients"] = [
-            {"id": st.session_state.next_ingr_id - 3, "food_code": chicken, "food_description": "Chicken breast", "grams": 200.0, "unit": "g", "counts_as_fluid": False},
-            {"id": st.session_state.next_ingr_id - 2, "food_code": rice, "food_description": "Rice, cooked", "grams": 150.0, "unit": "g", "counts_as_fluid": False},
-            {"id": st.session_state.next_ingr_id - 1, "food_code": oil, "food_description": "Canola oil", "grams": 15.0, "unit": "g", "counts_as_fluid": False},
-            {"id": st.session_state.next_ingr_id, "food_code": water, "food_description": "Water, municipal", "grams": 200.0, "unit": "g", "counts_as_fluid": True},
+            {"id": _base_id + 0, "food_code": milk, "food_description": "Whole milk 3.25% M.F.", "grams": 257.0, "unit": "g", "counts_as_fluid": True},
+            {"id": _base_id + 1, "food_code": yogurt, "food_description": "Greek yogurt, plain, 2%", "grams": 100.0, "unit": "g", "counts_as_fluid": False},
+            {"id": _base_id + 2, "food_code": oats, "food_description": "Rolled oats, cooked", "grams": 100.0, "unit": "g", "counts_as_fluid": False},
+            {"id": _base_id + 3, "food_code": chicken, "food_description": "Chicken breast, cooked (skinless)", "grams": 50.0, "unit": "g", "counts_as_fluid": False},
+            {"id": _base_id + 4, "food_code": banana, "food_description": "Banana, raw", "grams": 100.0, "unit": "g", "counts_as_fluid": False},
+            {"id": _base_id + 5, "food_code": avocado, "food_description": "Avocado, raw", "grams": 50.0, "unit": "g", "counts_as_fluid": False},
+            {"id": _base_id + 6, "food_code": carrot, "food_description": "Carrots, cooked (boiled, drained)", "grams": 75.0, "unit": "g", "counts_as_fluid": False},
+            {"id": _base_id + 7, "food_code": oil, "food_description": "Canola oil", "grams": 14.0, "unit": "g", "counts_as_fluid": False},
+            {"id": _base_id + 8, "food_code": water, "food_description": "Water, municipal", "grams": 250.0, "unit": "g", "counts_as_fluid": True},
         ]
-        st.session_state.blends[example_id]["measured_volume_mL"] = 550.0
+        st.session_state.blends[example_id]["measured_volume_mL"] = 1000.0
 
-        # Example Intake Record (design doc section 3.2): 300 + 100 mL of
-        # the blend, one flush, one oral CNF food via the real
-        # household-measure entry ("1 small" banana) — internally
-        # consistent, spans both source families.
+        # Example Intake Record -- a full bolus day (design doc section
+        # 3.2): the WHOLE "Whole-food blend" batch across 4 bolus feeds
+        # (4 x 250 mL = 1000 mL, the full measured_volume_mL -- no
+        # over-draw/batch-mismatch bookkeeping, just what was actually
+        # given), 3 cartons of Resource 2.0 (237 mL each), 11 water-flush
+        # rows (before/after several feeds + free-water sips) summing to
+        # exactly 1032 mL so fluid lands at 507 (blend fluid ingredients)
+        # + 711 (formula, full-volume I&O) + 1032 (flush) = 2250 mL, and
+        # one oral CNF food via the real household-measure entry ("1
+        # small" banana) for QOL -- spans every source_type.
         banana_measures = get_measures_for_food(banana, lookup)
         small = banana_measures[
             banana_measures["Measure_Description_and_Unit_EN"].str.contains(
@@ -807,24 +839,87 @@ if load_example_clicked:
         ]
         banana_grams = float(small.iloc[0]["grams"]) if len(small) > 0 else 100.0
 
-        st.session_state.next_intake_id = 4
-        st.session_state.intake_log = [
-            {"id": 1, "time": dtime(8, 0), "source_type": "blend", "source_id": example_id,
-             "food_description": None, "amount": 300.0, "unit": "mL", "counts_as_fluid": False},
-            {"id": 2, "time": dtime(12, 0), "source_type": "blend", "source_id": example_id,
-             "food_description": None, "amount": 100.0, "unit": "mL", "counts_as_fluid": False},
-            {"id": 3, "time": dtime(10, 0), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 100.0, "unit": "mL", "counts_as_fluid": True},
-            {"id": 4, "time": dtime(8, 30), "source_type": "oral", "source_id": banana,
+        _rows = [
+            # Tube feed -- blend (full batch across 4 bolus feeds)
+            {"time": dtime(8, 0), "source_type": "blend", "source_id": example_id,
+             "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
+            {"time": dtime(12, 0), "source_type": "blend", "source_id": example_id,
+             "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
+            {"time": dtime(17, 0), "source_type": "blend", "source_id": example_id,
+             "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
+            {"time": dtime(21, 0), "source_type": "blend", "source_id": example_id,
+             "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
+            # Tube feed -- Resource 2.0, 3 cartons
+            {"time": dtime(10, 0), "source_type": "formula", "source_id": "Resource 2.0",
+             "food_description": None, "amount": 237.0, "unit": "mL", "counts_as_fluid": False},
+            {"time": dtime(14, 0), "source_type": "formula", "source_id": "Resource 2.0",
+             "food_description": None, "amount": 237.0, "unit": "mL", "counts_as_fluid": False},
+            {"time": dtime(20, 0), "source_type": "formula", "source_id": "Resource 2.0",
+             "food_description": None, "amount": 237.0, "unit": "mL", "counts_as_fluid": False},
+            # Tube feed -- water flushes: before/after several feeds + free-water sips
+            {"time": dtime(7, 45), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(8, 15), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(9, 0), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 244.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(10, 15), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(12, 15), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(14, 15), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(15, 30), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 274.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(17, 15), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(19, 0), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 274.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(20, 15), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            {"time": dtime(21, 15), "source_type": "flush", "source_id": None,
+             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            # Food & drink -- oral, small banana for QOL
+            {"time": dtime(8, 30), "source_type": "oral", "source_id": banana,
              "food_description": "Banana, raw — 1 small", "amount": banana_grams, "unit": "g",
              "counts_as_fluid": False},
+        ]
+        st.session_state.next_intake_id = len(_rows) + 1
+        st.session_state.intake_log = [
+            {"id": i + 1, **row} for i, row in enumerate(_rows)
         ]
         st.session_state.custom_foods = {}
         st.session_state.next_custom_code = -1
         st.session_state["load_example"] = True
+
+        # Assessment / Nutrition Targets tab presets (patient/day label,
+        # delivery method, weight, and the three targets this case
+        # specifies) -- all set here, BEFORE any of those widgets are
+        # instantiated further down in this same script run (the §11
+        # widget-state gotcha: this is the one and only window in which
+        # `st.session_state[key] = ...` for an already-existing widget key
+        # is legal). Other target fields (fat/carb/fibre/sodium/etc.) are
+        # deliberately left untouched -> blank, per the case.
+        st.session_state["recipe_name_input"] = "Example — James W (H&N RT wk 5)"
+        st.session_state["delivery_method_input"] = "Syringe bolus"
+        st.session_state["weight_unit"] = "kg"
+        st.session_state["patient_weight_input"] = 75.0
+        st.session_state["target_energy_kcal"] = 2250.0
+        st.session_state["target_protein_g"] = 100.0
+        st.session_state["target_fluid_mL"] = 2250.0
         st.rerun()
     else:
         st.error("Could not find example foods in CNF.")
+
+with top_l:
+    # Seed the default only the very first time this key ever exists,
+    # rather than passing value= on every run -- passing BOTH a hardcoded
+    # value= and relying on the Load Example handler's session_state
+    # preset triggers Streamlit's (harmless but noisy) "created with a
+    # default value but also had its value set via Session State" warning.
+    if "recipe_name_input" not in st.session_state:
+        st.session_state["recipe_name_input"] = "My BTF day"
+    recipe_name = st.text_input("Patient / day label", key="recipe_name_input")
 
 st.title(f"🥕🥦🥤 {recipe_name or 'BTF day'} 💉💧🍌")
 st.caption("⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use.")
@@ -1009,15 +1104,20 @@ with targets_tab:
     _weight_unit = _wu_col.radio(
         "Unit", ["kg", "lbs"], horizontal=True, key="weight_unit"
     )
+    # Seed the default only the very first time this key ever exists (see
+    # the same comment by "recipe_name_input" above) -- avoids the
+    # Session-State-vs-value= warning when Load Example presets this key.
+    if "patient_weight_input" not in st.session_state:
+        st.session_state["patient_weight_input"] = 0.0
     _weight_entered = _w_col.number_input(
         f"Weight ({_weight_unit})",
         min_value=0.0,
-        value=0.0,
         step=0.5,
         format="%.1f",
         help="Optional — used only to show kcal/kg, protein g/kg, and "
              "fluid mL/kg in the Daily Intake Record tab. No target, equation, or "
              "IBW is computed from it; assessment stays outside this app.",
+        key="patient_weight_input",
     )
     patient_weight_kg = (
         _weight_entered if _weight_unit == "kg" else _weight_entered / 2.20462
@@ -1045,11 +1145,19 @@ with targets_tab:
         step = _TARGET_STEP_OVERRIDES.get(
             nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
         )
+        _target_key = f"target_{nutrient_name}"
+        # Seed the default only the very first time this key ever exists
+        # (see the same comment by "recipe_name_input" above) -- avoids
+        # the Session-State-vs-value= warning when Load Example presets
+        # energy/protein/fluid here.
+        if _target_key not in st.session_state:
+            st.session_state[_target_key] = 0.0
         targets[nutrient_name] = col.number_input(
-            f"{disp_label} {unit}/day", min_value=0.0, value=0.0, step=step,
+            f"{disp_label} {unit}/day", min_value=0.0, step=step,
             format=_TARGET_FORMAT_OVERRIDES.get(
                 nutrient_name, f"%.{min(decimals, 1)}f"
             ),
+            key=_target_key,
         )
 
 
@@ -1227,10 +1335,16 @@ with record_tab:
 
     # Delivery method: a single free-choice field for chart-note wording
     # only (FEED_LOG_REWORK.md section 3.4) — it no longer drives any math.
+    # Seed the default only the very first time this key ever exists (see
+    # the same comment by "recipe_name_input" above) -- avoids the
+    # Session-State-vs-value= warning when Load Example presets this key.
+    if "delivery_method_input" not in st.session_state:
+        st.session_state["delivery_method_input"] = "Syringe bolus"
     delivery_method = st.text_input(
-        "Delivery method (chart-note wording only)", "Syringe bolus",
+        "Delivery method (chart-note wording only)",
         help="Free text — syringe, gravity, etc. Doesn't affect any "
              "calculation; every row's own amount is what's summed.",
+        key="delivery_method_input",
     )
 
     # Always-visible summary line — aggregated NUTRIENT totals, never a

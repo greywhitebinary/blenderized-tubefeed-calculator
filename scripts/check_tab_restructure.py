@@ -91,7 +91,10 @@ def main() -> None:
         1 for r in at.session_state["intake_log"]
         if r["source_type"] in ("blend", "formula")
     )
-    assert n_feeds == 2, n_feeds  # example day: two blend feeds
+    # 2026-07-23 case (James W): 4 blend bolus feeds + 3 Resource 2.0
+    # cartons = 7 tube-feed rows (see app/streamlit_app.py's Load Example
+    # handler and CONTEXT.md §9's 2026-07-23 entry).
+    assert n_feeds == 7, n_feeds
     next(b for b in at.button if b.key == "flush_add_btn").click().run()
     log = at.session_state["intake_log"]
     assert log[-1]["food_description"] == "Water flushes with feeds"

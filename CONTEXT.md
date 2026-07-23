@@ -1173,6 +1173,81 @@ this session) — display-only throughout; `intake_log`,
   and `trace_calculation.py` all pass after each change; a throwaway
   AppTest confirms "Per-Source Breakdown" precedes "Daily Totals &
   Adequacy" in render order after loading the example day.
+- **"Load example day" rewritten for a specific synthetic case (2026-07-23):**
+  the button now loads a realistic H&N radiotherapy syringe-bolus day
+  ("James W (H&N RT wk 5)") instead of the old generic chicken/rice/oil/
+  water blend, AND now presets the Nutrition Targets tab (patient/day
+  label, delivery method, weight, energy/protein/fluid targets) — the
+  loader previously left that tab untouched.
+  - **Blend** ("Whole-food blend", measured_volume_mL 1000): real CNF
+    foods, cooked variants preferred where the case calls for them —
+    Milk, fluid, whole, pasteurized, homogenized, 3.25% M.F. (code 113,
+    257 g, counts as fluid); Yogourt (yogurt), Greek style, 2% M.F.,
+    plain (7469, 100 g); Cereal, hot, oats (oatmeal), large flakes,
+    prepared, Rogers (1463, 100 g — CNF has no "rolled oats" entry by
+    that name, "large flakes, prepared" is the closest real cooked-oatmeal
+    match); Chicken, broiler, breast, skinless, boneless, meat, braised
+    (7321, 50 g — chosen over code 842 "breast, meat, roasted" because
+    7321's description explicitly parallels the existing raw-chicken
+    example ingredient's "skinless, boneless" wording; nutritionally
+    near-identical, ~157 kcal/100 g either way); Banana, raw (1704,
+    100 g); Avocado, raw, all commercial varieties (1511, 50 g); Carrot,
+    boiled, drained (2381, 75 g — find_food()'s substring match also
+    catches "Carrot, boiled, drained, with salt", but CNF's Food_Code
+    ordering puts the unsalted row first, verified, not assumed); Vegetable
+    oil, canola (451, 14 g); Water, municipal (2933, 250 g, counts as
+    fluid). Full 1000 mL batch delivered across 4 bolus feeds (250 mL x 4).
+  - **Intake Record** (19 rows, every source_type): 4 blend rows (08:00/
+    12:00/17:00/21:00, 250 mL each, summing to the full 1000 mL batch —
+    no over-draw bookkeeping, just what was actually given); 3 Resource
+    2.0 formula rows (10:00/14:00/20:00, 237 mL each = 711 mL); 11 water-
+    flush rows (before/after several feeds + free-water sips) summing to
+    exactly 1032 mL; 1 oral row (small banana, ~101 g via the real "1
+    small" CNF household measure, for QOL).
+  - **Verified computed totals** (AppTest, `src/intake.aggregate_intake`):
+    **2204.2 kcal, 100.4 g protein, 2250.0 mL fluid** against targets of
+    2250/100/2250 — protein and fluid land almost exactly on target
+    (100.4% and 100.0% adequacy); energy lands at 98.0% (2204 vs. the
+    task's ballpark estimate of ~2265 kcal) — a ~2.7% shortfall from
+    real, verified CNF nutrient values for the specified grams, not a
+    fudge. Not adjusted further per instruction to report rather than
+    force-fit.
+  - **Widget-state gotcha (§11) hit again, this time on STATIC widget
+    keys** (not a fresh-ID widget like `vol_{blend_id}`): the "Patient /
+    day label" text_input, weight number_input, delivery-method
+    text_input, and the three target number_inputs (`target_energy_kcal`/
+    `target_protein_g`/`target_fluid_mL`) all needed explicit `key=`
+    arguments added (previously unkeyed) so the Load Example handler
+    could preset them. Two distinct fixes were required, not one:
+    (a) the "Patient / day label" text_input is coded ABOVE the button's
+    click-handler in the script (even though it renders to the button's
+    LEFT — `with top_l:`/`with top_r:` control layout position, not
+    script execution order) — setting `st.session_state["recipe_name_input"]`
+    from the handler would otherwise try to modify a key whose widget was
+    already instantiated earlier in that same run, raising
+    `StreamlitAPIException`; fixed by moving the `with top_l:` block to
+    execute AFTER the button/handler in the script. (b) every one of
+    these widgets used to pass a hardcoded `value=0.0`/`value="..."`
+    alongside its new `key=` — legal, but once the handler's preset
+    value lands in `st.session_state[key]`, passing `value=` too trips
+    Streamlit's (non-fatal) "created with a default value but also had
+    its value set via Session State API" warning on every subsequent
+    run; fixed by dropping `value=` entirely and seeding the key's
+    default with a one-time `if key not in st.session_state: ...` guard
+    instead, for all four sites (recipe label, weight, delivery method,
+    the three targets).
+  - `scripts/check_tab_restructure.py` hardcoded the old example's tube-
+    feed row count (`n_feeds == 2`) in its "with-feeds flush helper"
+    check; updated to `n_feeds == 7` (4 blend + 3 formula) for the new
+    case. That script's separate, PRE-EXISTING Abbott/Nepro comparator
+    assertion still fails on `main` before this change too (confirmed via
+    `git stash`) — unrelated to this work, not fixed here.
+  - Verified: `scripts/verify_backend.py` ("=== ALL BACKEND MODULES
+    VERIFIED ==="), `scripts/check_app_imports.py` ("IMPORTS OK"),
+    `scripts/trace_calculation.py` ("CROSS-CHECK PASSED"), and a new
+    throwaway AppTest (blend + all 19 intake rows present with correct
+    grams/amounts; targets-tab widgets show 2250/100/2250 + weight 75;
+    computed totals as above) all pass.
 
 ---
 
