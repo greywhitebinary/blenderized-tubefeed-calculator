@@ -709,7 +709,7 @@ st.markdown(
     button[role="tab"] p,
     button[data-testid="stTab"] p,
     button[data-baseweb="tab"] p {
-        font-size: 1.9rem !important;
+        font-size: 1.25rem !important;
         font-weight: 700;
     }
     button[role="tab"][aria-selected="true"] p,
@@ -717,16 +717,16 @@ st.markdown(
     button[data-baseweb="tab"][aria-selected="true"] p {
         color: #A4243A;
     }
-    /* Heading scale. h1 = the page title (st.title), sized to match the
-       tab labels (1.9rem) -- author wants it no larger than the tabs.
-       h3 = st.subheader, the one section-heading style used across every
-       tab (bold-markdown pseudo-headings were converted to st.subheader
-       so the same conceptual heading is one consistent size everywhere);
-       kept a step down from body-scale-plus so sections read calmer.
-       h2 = st.header, currently unused but sized for a sane middle rung. */
-    h1 { font-size: 1.9rem; }
-    h2 { font-size: 1.5rem; }
-    h3 { font-size: 1.15rem; }
+    /* Heading scale -- two tiers, author-tuned on the deploy.
+       Tier A: page title (h1) sized to match the tab labels (both 1.25rem,
+       bold) -- title must be no larger than the tabs. Tier B: section
+       headings (h3 = st.subheader, the one consistent section-heading
+       style -- bold-markdown pseudo-headings were converted to
+       st.subheader so every section heading matches) a clear step down at
+       1.05rem. h2 = st.header, currently unused; kept between the tiers. */
+    h1 { font-size: 1.25rem; }
+    h2 { font-size: 1.15rem; }
+    h3 { font-size: 1.05rem; }
     </style>
     """,
     unsafe_allow_html=True,
