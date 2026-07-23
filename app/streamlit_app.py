@@ -697,22 +697,25 @@ st.markdown(
     button[role="tab"],
     button[data-testid="stTab"],
     button[data-baseweb="tab"] {
-        padding-top: 0.4rem !important;
-        padding-bottom: 0.4rem !important;
-        margin-right: 1.25rem !important;
+        padding-top: 0.4rem;
+        padding-bottom: 0.4rem;
+        margin-right: 1.25rem;
     }
+    /* Target ONLY the tab's text <p>, via the version-stable role="tab".
+       An earlier pass also matched div/span wrappers with blanket
+       !important; on Streamlit 1.60 that compounded into oversized, clunky
+       tabs. A single !important on the <p>'s font-size is enough to beat
+       Streamlit's own rem sizing without blowing up the layout. */
     button[role="tab"] p,
-    button[role="tab"] div,
-    button[role="tab"] span,
     button[data-testid="stTab"] p,
     button[data-baseweb="tab"] p {
         font-size: 1.9rem !important;
-        font-weight: 700 !important;
+        font-weight: 700;
     }
     button[role="tab"][aria-selected="true"] p,
     button[data-testid="stTab"][aria-selected="true"] p,
     button[data-baseweb="tab"][aria-selected="true"] p {
-        color: #A4243A !important;
+        color: #A4243A;
     }
     /* Heading scale: Streamlit's default h2/h3 land at/above the 1.6rem
        tab labels, which reads as an inverted hierarchy (author feedback
