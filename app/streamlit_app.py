@@ -826,7 +826,7 @@ if load_example_clicked:
     else:
         st.error("Could not find example foods in CNF.")
 
-st.title(f"🥕🥦🍌💉 {recipe_name or 'BTF day'}")
+st.title(f"🥕🥦🥤 {recipe_name or 'BTF day'} 💉💧🍌")
 st.caption("⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use.")
 
 
