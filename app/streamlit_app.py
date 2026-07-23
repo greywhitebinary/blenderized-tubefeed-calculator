@@ -684,6 +684,15 @@ st.markdown(
     html {
         font-size: 125%;
     }
+    /* Trim Streamlit's large default top padding on the main content
+       block (it reserves room to clear the top toolbar). The default
+       leaves a big empty gap above the first element; 2.5rem keeps a
+       little breathing room below the Cloud toolbar without the void.
+       Both selectors cover Streamlit version drift in the testid name. */
+    .stApp [data-testid="stMainBlockContainer"],
+    .stApp .block-container {
+        padding-top: 2.5rem !important;
+    }
     /* Tab-label sizing, version-resilient. Streamlit's tab DOM attribute
        has drifted across releases (data-baseweb="tab" on older builds,
        data-testid="stTab" on newer) and attribute selectors kept missing
@@ -732,7 +741,7 @@ st.markdown(
        selectors raises specificity above Streamlit's own rule. */
     .stApp h1,
     [data-testid="stAppViewContainer"] h1,
-    [data-testid="stHeadingWithActionElements"] h1 { font-size: 1.25rem !important; }
+    [data-testid="stHeadingWithActionElements"] h1 { font-size: 1.4rem !important; }
     .stApp h2,
     [data-testid="stAppViewContainer"] h2,
     [data-testid="stHeadingWithActionElements"] h2 { font-size: 1.15rem !important; }
