@@ -717,13 +717,16 @@ st.markdown(
     button[data-baseweb="tab"][aria-selected="true"] p {
         color: #A4243A;
     }
-    /* Heading scale: Streamlit's default h2/h3 land at/above the 1.6rem
-       tab labels, which reads as an inverted hierarchy (author feedback
-       2026-07-20 -- tabs should be the biggest labels on the page).
-       h1 = page title, h2 = st.header, h3 = st.subheader. */
-    h1 { font-size: 2rem; }
+    /* Heading scale. h1 = the page title (st.title), sized to match the
+       tab labels (1.9rem) -- author wants it no larger than the tabs.
+       h3 = st.subheader, the one section-heading style used across every
+       tab (bold-markdown pseudo-headings were converted to st.subheader
+       so the same conceptual heading is one consistent size everywhere);
+       kept a step down from body-scale-plus so sections read calmer.
+       h2 = st.header, currently unused but sized for a sane middle rung. */
+    h1 { font-size: 1.9rem; }
     h2 { font-size: 1.5rem; }
-    h3 { font-size: 1.25rem; }
+    h3 { font-size: 1.15rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -980,7 +983,7 @@ targets_tab, recipes_tab, record_tab = st.tabs(
 )
 
 with targets_tab:
-    st.markdown("**Patient weight (optional)**")
+    st.subheader("Patient weight (optional)")
     _w_col, _wu_col = st.columns([3, 1])
     _weight_unit = _wu_col.radio(
         "Unit", ["kg", "lbs"], horizontal=True, key="weight_unit"
@@ -1005,7 +1008,7 @@ with targets_tab:
     )
     st.caption(f"Blank/0 = not provided. Display only — not a target.{_kg_note}")
 
-    st.markdown("**Targets (optional)**")
+    st.subheader("Targets (optional)")
     st.caption("Blank = no target; enter patient-specific values.")
     targets = empty_targets()
     tc1, tc2 = st.columns(2)
