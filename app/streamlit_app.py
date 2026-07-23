@@ -1421,12 +1421,6 @@ with record_tab:
     # --- Daily totals, adequacy, micro screen, per-kg, per-source
     # breakdown -- all computed from the Intake Record via
     # src.intake.aggregate_intake() (design doc section 3.5). ---
-    st.subheader("Daily Totals & Adequacy")
-    st.caption(
-        "A direct sum over the Intake Record (above) — never "
-        "extrapolated from a batch volume against a schedule."
-    )
-
     intake_totals = aggregate_intake(
         st.session_state.intake_log, st.session_state.blends, na,
         custom_foods=st.session_state.custom_foods,
@@ -1435,6 +1429,22 @@ with record_tab:
     if not st.session_state.intake_log:
         _note("Add rows to the Intake Record above to see daily totals.")
     else:
+        # --- Per-source subtotal breakdown (design doc section 3.5) ---
+        st.subheader("Per-Source Breakdown")
+        st.caption(
+            f'"{TUBE_FEED_LABEL}" vs "{FOOD_DRINK_LABEL}" vs "{TOTAL_LABEL}" — combined '
+            "numbers, with the split still visible."
+        )
+        st.dataframe(
+            generate_source_breakdown(intake_totals), width="stretch", hide_index=True
+        )
+
+        st.subheader("Daily Totals & Adequacy")
+        st.caption(
+            "A direct sum over the Intake Record (above) — never "
+            "extrapolated from a batch volume against a schedule."
+        )
+
         adequacy_df, hidden_main_names = generate_adequacy_report(
             intake_totals.nutrient_totals, targets,
             fluid_provided_mL=intake_totals.fluid_provided_mL,
@@ -1504,16 +1514,6 @@ with record_tab:
                 "mL/kg/day",
             )
             st.caption("Display only — no target, equation, or IBW is computed from weight.")
-
-        # --- Per-source subtotal breakdown (new, design doc section 3.5) ---
-        st.subheader("Per-Source Breakdown")
-        st.caption(
-            f'"{TUBE_FEED_LABEL}" vs "{FOOD_DRINK_LABEL}" vs "{TOTAL_LABEL}" — combined '
-            "numbers, with the split still visible."
-        )
-        st.dataframe(
-            generate_source_breakdown(intake_totals), width="stretch", hide_index=True
-        )
 
 with recipes_tab:
     st.divider()
