@@ -723,10 +723,15 @@ st.markdown(
        headings (h3 = st.subheader, the one consistent section-heading
        style -- bold-markdown pseudo-headings were converted to
        st.subheader so every section heading matches) a clear step down at
-       1.05rem. h2 = st.header, currently unused; kept between the tiers. */
-    h1 { font-size: 1.25rem; }
-    h2 { font-size: 1.15rem; }
-    h3 { font-size: 1.05rem; }
+       1.05rem. h2 = st.header, currently unused; kept between the tiers.
+       !important is REQUIRED: on Streamlit 1.60 (the Cloud runtime) the
+       framework's own heading CSS is more specific than a bare h1/h3
+       element selector and silently wins, so the plain rules applied
+       locally (1.58) but not on the deploy -- same override trap the tab
+       rules already guard against. */
+    h1 { font-size: 1.25rem !important; }
+    h2 { font-size: 1.15rem !important; }
+    h3 { font-size: 1.05rem !important; }
     </style>
     """,
     unsafe_allow_html=True,
