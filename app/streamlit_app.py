@@ -684,17 +684,28 @@ st.markdown(
     html {
         font-size: 125%;
     }
+    /* Two selectors per rule: Streamlit's tab DOM is data-testid="stTab"
+       on recent versions (>=1.58, what this app targets) but plain
+       data-baseweb="tab" on older ones. Streamlit Community Cloud caches
+       its dependency environment and may run an older Streamlit than the
+       local .venv, so match BOTH or the deployed tabs fall back to the
+       default (small) size while local looks right. Pinned streamlit>=1.58
+       in requirements.txt is the real fix; this is belt-and-suspenders. */
     button[data-testid="stTab"] [data-testid="stMarkdownContainer"] p,
-    button[data-testid="stTab"] p {
+    button[data-testid="stTab"] p,
+    button[data-baseweb="tab"] [data-testid="stMarkdownContainer"] p,
+    button[data-baseweb="tab"] p {
         font-size: 1.9rem;
         font-weight: 700;
     }
-    button[data-testid="stTab"] {
+    button[data-testid="stTab"],
+    button[data-baseweb="tab"] {
         padding-top: 0.4rem;
         padding-bottom: 0.4rem;
         margin-right: 1.25rem;
     }
-    button[data-testid="stTab"][aria-selected="true"] p {
+    button[data-testid="stTab"][aria-selected="true"] p,
+    button[data-baseweb="tab"][aria-selected="true"] p {
         color: #A4243A;
     }
     /* Heading scale: Streamlit's default h2/h3 land at/above the 1.6rem
@@ -811,7 +822,10 @@ def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
         key=lambda kv: (kv[1].get("brand") or "Other", kv[0]),
     ):
         brand = f.get("brand")
-        label = f"Formula: {brand + ' – ' if brand else ''}{fname}"
+        # Feed name first, brand after (same rationale as the comparator
+        # multiselect): a clipped dropdown should keep the feed name, not
+        # the brand.
+        label = f"Formula: {fname}{' – ' + brand if brand else ''}"
         options.append(label)
         lookup_map[label] = ("formula", fname)
     return options, lookup_map
@@ -1669,7 +1683,10 @@ with recipes_tab:
             "Compare against (up to 4)",
             _multiselect_options,
             max_selections=4,
-            format_func=lambda n: f"{COMMERCIAL_FORMULAS[n].get('brand') or 'Other'} — {n}",
+            # Feed name FIRST, brand after: multiselect chips clip from the end,
+        # and the brand ("Nestlé Health Science") is the useless-to-clip-to
+        # part -- leading with the feed name keeps it readable when truncated.
+        format_func=lambda n: f"{n} — {COMMERCIAL_FORMULAS[n].get('brand') or 'Other'}",
             key="comparator_formula_select",
         )
         st.caption(
