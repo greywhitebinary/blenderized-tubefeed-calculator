@@ -658,7 +658,7 @@ def render_add_food_ui(
 
 st.set_page_config(
     page_title="BTF Calculator",
-    page_icon="🥣",
+    page_icon="🥕",
     layout="wide",
 )
 
@@ -741,7 +741,7 @@ st.markdown(
        selectors raises specificity above Streamlit's own rule. */
     .stApp h1,
     [data-testid="stAppViewContainer"] h1,
-    [data-testid="stHeadingWithActionElements"] h1 { font-size: 1.4rem !important; }
+    [data-testid="stHeadingWithActionElements"] h1 { font-size: 1.5rem !important; }
     .stApp h2,
     [data-testid="stAppViewContainer"] h2,
     [data-testid="stHeadingWithActionElements"] h2 { font-size: 1.15rem !important; }
@@ -826,7 +826,7 @@ if load_example_clicked:
     else:
         st.error("Could not find example foods in CNF.")
 
-st.title(f"🥣 {recipe_name or 'BTF day'}")
+st.title(f"🥕🥦🍌💉 {recipe_name or 'BTF day'}")
 st.caption("⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use.")
 
 
