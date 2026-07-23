@@ -724,14 +724,21 @@ st.markdown(
        style -- bold-markdown pseudo-headings were converted to
        st.subheader so every section heading matches) a clear step down at
        1.05rem. h2 = st.header, currently unused; kept between the tiers.
-       !important is REQUIRED: on Streamlit 1.60 (the Cloud runtime) the
-       framework's own heading CSS is more specific than a bare h1/h3
-       element selector and silently wins, so the plain rules applied
-       locally (1.58) but not on the deploy -- same override trap the tab
-       rules already guard against. */
-    h1 { font-size: 1.25rem !important; }
-    h2 { font-size: 1.15rem !important; }
-    h3 { font-size: 1.05rem !important; }
+       High specificity + !important is REQUIRED: on Streamlit 1.60 (the
+       Cloud runtime) the framework sizes headings via a CLASS selector,
+       which outranks a bare `h1 { ...!important }` (specificity is checked
+       before importance), so plain rules applied locally on 1.58 but lost
+       on the deploy. Prefixing with the stable stApp / stHeading container
+       selectors raises specificity above Streamlit's own rule. */
+    .stApp h1,
+    [data-testid="stAppViewContainer"] h1,
+    [data-testid="stHeadingWithActionElements"] h1 { font-size: 1.25rem !important; }
+    .stApp h2,
+    [data-testid="stAppViewContainer"] h2,
+    [data-testid="stHeadingWithActionElements"] h2 { font-size: 1.15rem !important; }
+    .stApp h3,
+    [data-testid="stAppViewContainer"] h3,
+    [data-testid="stHeadingWithActionElements"] h3 { font-size: 1.05rem !important; }
     </style>
     """,
     unsafe_allow_html=True,
