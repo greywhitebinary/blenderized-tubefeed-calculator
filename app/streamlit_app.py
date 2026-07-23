@@ -684,29 +684,35 @@ st.markdown(
     html {
         font-size: 125%;
     }
-    /* Two selectors per rule: Streamlit's tab DOM is data-testid="stTab"
-       on recent versions (>=1.58, what this app targets) but plain
-       data-baseweb="tab" on older ones. Streamlit Community Cloud caches
-       its dependency environment and may run an older Streamlit than the
-       local .venv, so match BOTH or the deployed tabs fall back to the
-       default (small) size while local looks right. Pinned streamlit>=1.58
-       in requirements.txt is the real fix; this is belt-and-suspenders. */
-    button[data-testid="stTab"] [data-testid="stMarkdownContainer"] p,
-    button[data-testid="stTab"] p,
-    button[data-baseweb="tab"] [data-testid="stMarkdownContainer"] p,
-    button[data-baseweb="tab"] p {
-        font-size: 1.9rem;
-        font-weight: 700;
-    }
+    /* Tab-label sizing, version-resilient. Streamlit's tab DOM attribute
+       has drifted across releases (data-baseweb="tab" on older builds,
+       data-testid="stTab" on newer) and attribute selectors kept missing
+       on the Streamlit Community Cloud runtime while matching the local
+       .venv (1.58) -- same code, different rendered DOM. The ARIA
+       role="tab" is the one attribute BaseWeb sets on the tab button in
+       EVERY version, so lead with it; the data-* selectors stay as extra
+       coverage. Target the button plus every plausible text wrapper (p /
+       div / span), and use !important -- Streamlit sizes the inner <p> in
+       rem itself, which otherwise wins over a plain rule. */
+    button[role="tab"],
     button[data-testid="stTab"],
     button[data-baseweb="tab"] {
-        padding-top: 0.4rem;
-        padding-bottom: 0.4rem;
-        margin-right: 1.25rem;
+        padding-top: 0.4rem !important;
+        padding-bottom: 0.4rem !important;
+        margin-right: 1.25rem !important;
     }
+    button[role="tab"] p,
+    button[role="tab"] div,
+    button[role="tab"] span,
+    button[data-testid="stTab"] p,
+    button[data-baseweb="tab"] p {
+        font-size: 1.9rem !important;
+        font-weight: 700 !important;
+    }
+    button[role="tab"][aria-selected="true"] p,
     button[data-testid="stTab"][aria-selected="true"] p,
     button[data-baseweb="tab"][aria-selected="true"] p {
-        color: #A4243A;
+        color: #A4243A !important;
     }
     /* Heading scale: Streamlit's default h2/h3 land at/above the 1.6rem
        tab labels, which reads as an inverted hierarchy (author feedback
