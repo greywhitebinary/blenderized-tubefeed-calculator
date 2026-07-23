@@ -74,6 +74,26 @@ TUBE_FEED_LABEL = "Tube Feed"
 FOOD_DRINK_LABEL = "Food & Drink"
 TOTAL_LABEL = "Total"
 
+# Per-mL formula columns (data/packs/<pack>/formulas.csv, loaded via
+# src.calculator._OPTIONAL_NUTRIENT_COLUMNS) mapped onto their registry
+# nutrient key (data/packs/<pack>/nutrients.csv's `name` column). Units
+# already match: fat/carbohydrate/fibre are g/mL -> *_g; sodium/potassium/
+# calcium/iron/magnesium/phosphorus are mg/mL -> *_mg. Any column a
+# formula's label doesn't disclose loads as None (see
+# _load_commercial_formulas' docstring) and is skipped in the formula
+# branch below, never fabricated as 0.
+_FORMULA_COLUMN_TO_NUTRIENT: dict[str, str] = {
+    "fat_per_mL": "fat_g",
+    "carbohydrate_per_mL": "carbohydrate_g",
+    "fibre_per_mL": "fibre_g",
+    "sodium_per_mL": "sodium_mg",
+    "potassium_per_mL": "potassium_mg",
+    "calcium_per_mL": "calcium_mg",
+    "iron_per_mL": "iron_mg",
+    "magnesium_per_mL": "magnesium_mg",
+    "phosphorus_per_mL": "phosphorus_mg",
+}
+
 
 class InvalidBlendError(ValueError):
     """A blend has ingredients but no measured volume -- the one real
@@ -214,13 +234,17 @@ def aggregate_intake(
                    does exactly this scaling, just reused with the row's
                    amount standing in for "daily volume". Fluid = the
                    blend's own fluid fraction x amount.
-      - "formula": formulas.csv per-mL kcal/protein x amount. Free water
-                   (free_water_per_mL x amount, when the formula's CSV row
-                   has it) is folded into nutrient_totals["water_g"]
-                   alongside CNF food moisture -- see IntakeTotals'
-                   docstring for why that's a deliberate, not accidental,
-                   mixing. Fluid = full amount (I&O convention -- a
-                   formula is entirely liquid).
+      - "formula": formulas.csv per-mL kcal/protein x amount, plus every
+                   other per-mL nutrient the formula's CSV row discloses
+                   (fat/carbohydrate/fibre/sodium/potassium/calcium/iron/
+                   magnesium/phosphorus -- see _FORMULA_COLUMN_TO_NUTRIENT)
+                   x amount, skipping any column that's None rather than
+                   fabricating a 0. Free water (free_water_per_mL x amount,
+                   when the formula's CSV row has it) is folded into
+                   nutrient_totals["water_g"] alongside CNF food moisture
+                   -- see IntakeTotals' docstring for why that's a
+                   deliberate, not accidental, mixing. Fluid = full amount
+                   (I&O convention -- a formula is entirely liquid).
       - "flush":   fluid only (full amount), no nutrient contribution at
                    all -- section 2: "flush rows contribute fluid only".
       - "oral":    compute_nutrient_totals() on the single food, at the
@@ -288,10 +312,24 @@ def aggregate_intake(
                 "energy_kcal": formula["kcal_per_mL"] * amount,
                 "protein_g": formula["protein_per_mL"] * amount,
             }
+            for col, nutrient_key in _FORMULA_COLUMN_TO_NUTRIENT.items():
+                per_mL = formula.get(col)
+                if per_mL is not None:
+                    row_nutrients[nutrient_key] = per_mL * amount
             fw_per_mL = formula.get("free_water_per_mL")
             if fw_per_mL is not None:
                 row_nutrients["water_g"] = fw_per_mL * amount
             row_fluid = amount
+            # Known limitation: formula rows never contribute to
+            # row_coverage (row_coverage stays {} for this branch), so on
+            # a *mixed* day where a food/blend row also touches nutrient X
+            # (coverage n/m) and a formula row supplies X too, the
+            # adequacy table's "N/M ingredients" provenance note reflects
+            # only the food/CNF side -- the formula's contribution to the
+            # summed value is correct, only the coverage note is
+            # food-only. A formula-only day is unaffected (n_total stays
+            # 0, so _zero_coverage in report.py doesn't hide the row).
+            # Out of scope to fix here; see the plan doc.
 
         elif source_type == "flush":
             row_fluid = amount
