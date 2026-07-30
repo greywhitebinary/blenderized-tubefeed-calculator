@@ -63,8 +63,10 @@ def main() -> int:
     load_seconds = time.perf_counter() - t0
     print(f"    Nutrient_Amount: {na.shape[0]} rows")
     print(f"    Food_Name: {fn.shape[0]} rows")
-    print(f"    Loaded from {source} in {load_seconds:.3f}s "
-          f"(data/processed/ preferred when present, CSV fallback otherwise)")
+    print(
+        f"    Loaded from {source} in {load_seconds:.3f}s "
+        f"(data/processed/ preferred when present, CSV fallback otherwise)"
+    )
     assert na.shape[0] > 500_000, "Nutrient_Amount looks truncated"
     assert fn.shape[0] > 5_000, "Food_Name looks truncated"
 
@@ -83,9 +85,7 @@ def main() -> int:
         )
     ]
     if len(cup_row) > 0:
-        rice_grams = measure_to_grams(
-            rice_code, int(cup_row.iloc[0]["Measure_Code"]), 1.0, lookup
-        )
+        rice_grams = measure_to_grams(rice_code, int(cup_row.iloc[0]["Measure_Code"]), 1.0, lookup)
     else:
         rice_grams = 150.0
     print(f"    Rice (1 x 250ml measure): {rice_grams:.1f} g")
@@ -146,8 +146,16 @@ def main() -> int:
     targets = empty_targets()
     assert targets.get("fluid_mL", 0.0) == 0.0, "empty_targets() should start every target at 0"
     assert set(targets.keys()) == {
-        "energy_kcal", "protein_g", "fat_g", "carbohydrate_g", "fibre_g",
-        "sodium_mg", "potassium_mg", "calcium_mg", "iron_mg", "fluid_mL",
+        "energy_kcal",
+        "protein_g",
+        "fat_g",
+        "carbohydrate_g",
+        "fibre_g",
+        "sodium_mg",
+        "potassium_mg",
+        "calcium_mg",
+        "iron_mg",
+        "fluid_mL",
     }, f"empty_targets() keys should be exactly the 9 offer_target=yes nutrients + fluid_mL, got {sorted(targets.keys())}"
     targets["energy_kcal"] = 1800.0
     targets["protein_g"] = 70.0
@@ -155,24 +163,28 @@ def main() -> int:
     targets["sodium_mg"] = 2300.0  # target_type=UL — exercises "Above/Below UL" wording below
     fluid_provided_test_mL = 950.0  # stand-in for the Intake Record's fluid ledger figure
     adequacy, hidden_main = generate_adequacy_report(
-        daily, targets, fluid_provided_mL=fluid_provided_test_mL,
+        daily,
+        targets,
+        fluid_provided_mL=fluid_provided_test_mL,
         nutrient_coverage=profile.nutrient_coverage,
     )
     print(adequacy.to_string(index=False))
     assert len(adequacy) > 0, "adequacy report is empty"
-    assert hidden_main == [], f"expected nothing hidden for a full-coverage recipe, got {hidden_main}"
-    assert "Fluid provided" in adequacy["Nutrient"].values, (
-        "adequacy report missing the Fluid provided row"
-    )
+    assert (
+        hidden_main == []
+    ), f"expected nothing hidden for a full-coverage recipe, got {hidden_main}"
+    assert (
+        "Fluid provided" in adequacy["Nutrient"].values
+    ), "adequacy report missing the Fluid provided row"
     fluid_row = adequacy[adequacy["Nutrient"] == "Fluid provided"].iloc[0]
     assert fluid_row["Unit"] == "mL", "Fluid provided row should be in mL"
     assert fluid_row["Daily Total"] == fluid_provided_test_mL, (
         "Fluid provided row should carry the fluid_provided_mL value passed in, "
         f"got {fluid_row['Daily Total']} expected {fluid_provided_test_mL}"
     )
-    assert "Free water (estimated)" in adequacy["Nutrient"].values, (
-        "adequacy report missing the secondary Free water row"
-    )
+    assert (
+        "Free water (estimated)" in adequacy["Nutrient"].values
+    ), "adequacy report missing the secondary Free water row"
     free_water_row = adequacy[adequacy["Nutrient"] == "Free water (estimated)"].iloc[0]
     assert free_water_row["Unit"] == "mL", "Free water row should be in mL"
     assert free_water_row["Target"] == "—", (
@@ -192,6 +204,7 @@ def main() -> int:
     # missing/absent value (an RD-added row that omits it) must come back
     # as None, never a fabricated 0 (0 would falsely claim zero free water).
     from src.calculator import COMMERCIAL_FORMULAS as _formulas_check
+
     peptamen_fw = _formulas_check["Peptamen 1.5"]["free_water_per_mL"]
     print(f"    Peptamen 1.5 free_water_per_mL: {peptamen_fw}")
     assert peptamen_fw == 0.770, f"expected 0.770, got {peptamen_fw}"
@@ -231,15 +244,19 @@ def main() -> int:
     # 10. Nutrient registry + tier-based reporting (the data-pack refactor)
     print("\n[10] Nutrient registry + tier-based reporting...")
     registry = load_registry(DEFAULT_PACK)
-    print(f"    Registry: {len(registry)} nutrients loaded from "
-          f"data/packs/{DEFAULT_PACK}/nutrients.csv")
+    print(
+        f"    Registry: {len(registry)} nutrients loaded from "
+        f"data/packs/{DEFAULT_PACK}/nutrients.csv"
+    )
     assert len(registry) == 19, f"expected 19 registry rows, got {len(registry)}"
     label_defs = defs_for_tier("label", pack=DEFAULT_PACK)
     clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
     engine_defs = defs_for_tier("engine", pack=DEFAULT_PACK)
     assert len(label_defs) == 13, f"expected 13 label-tier nutrients, got {len(label_defs)}"
     assert len(clinical_defs) == 5, f"expected 5 clinical-tier nutrients, got {len(clinical_defs)}"
-    assert len(engine_defs) == 1, f"expected 1 engine-tier nutrient (water_g), got {len(engine_defs)}"
+    assert (
+        len(engine_defs) == 1
+    ), f"expected 1 engine-tier nutrient (water_g), got {len(engine_defs)}"
     assert engine_defs[0].name == "water_g"
 
     # show_in_report / offer_target / target_type (round-2 registry columns):
@@ -251,21 +268,26 @@ def main() -> int:
     offer_target_defs = [d for d in registry if d.offer_target]
     assert len(shown_label) == 9, f"expected 9 displayed label nutrients, got {len(shown_label)}"
     assert {d.name for d in hidden_label} == {
-        "saturated_fat_g", "trans_fat_g", "cholesterol_mg", "sugars_g"
+        "saturated_fat_g",
+        "trans_fat_g",
+        "cholesterol_mg",
+        "sugars_g",
     }, f"unexpected hidden label-tier set: {sorted(d.name for d in hidden_label)}"
-    assert {d.name for d in offer_target_defs} == {d.name for d in shown_label}, (
-        "offer_target=yes should be exactly the 9 displayed label nutrients"
-    )
+    assert {d.name for d in offer_target_defs} == {
+        d.name for d in shown_label
+    }, "offer_target=yes should be exactly the 9 displayed label nutrients"
     assert all(not d.offer_target for d in clinical_defs), (
         "no clinical-tier nutrient (magnesium/phosphorus/zinc/vitamin D/B12) "
         "should offer a target field"
     )
     sodium_def = next(d for d in registry if d.name == "sodium_mg")
-    assert sodium_def.target_type == "UL", f"sodium target_type should be 'UL', got {sodium_def.target_type!r}"
+    assert (
+        sodium_def.target_type == "UL"
+    ), f"sodium target_type should be 'UL', got {sodium_def.target_type!r}"
     non_sodium_types = {d.target_type for d in registry if d.name != "sodium_mg"}
-    assert non_sodium_types == {""}, (
-        f"only sodium should carry a target_type; found others: {non_sodium_types}"
-    )
+    assert non_sodium_types == {
+        ""
+    }, f"only sodium should carry a target_type; found others: {non_sodium_types}"
     print(f"    9 displayed label nutrients == 9 offer_target nutrients — OK")
     print(f"    Hidden (tracked, not displayed): {sorted(d.name for d in hidden_label)}")
     print(f"    Only sodium is target_type=UL — OK")
@@ -275,8 +297,13 @@ def main() -> int:
     # saturated/trans fat, cholesterol, or sugars (show_in_report=no).
     main_names = set(adequacy["Nutrient"].values)
     for forbidden in (
-        "Vitamin D", "Vitamin B12", "Zinc",
-        "Saturated Fat", "Trans Fat", "Cholesterol", "Sugars",
+        "Vitamin D",
+        "Vitamin B12",
+        "Zinc",
+        "Saturated Fat",
+        "Trans Fat",
+        "Cholesterol",
+        "Sugars",
     ):
         assert forbidden not in main_names, (
             f"'{forbidden}' leaked into the main adequacy report — it's "
@@ -288,22 +315,30 @@ def main() -> int:
         f"expected 11 rows (9 displayed label-tier + Fluid provided + Free water), "
         f"got {len(adequacy)}"
     )
-    print(f"    Main adequacy report: {len(adequacy)} rows, no sat-fat/trans-fat/"
-          f"cholesterol/sugars/vitamin D/B12/zinc — OK")
+    print(
+        f"    Main adequacy report: {len(adequacy)} rows, no sat-fat/trans-fat/"
+        f"cholesterol/sugars/vitamin D/B12/zinc — OK"
+    )
 
     # tier="clinical" screen: the one-time ASPEN-style micro screen.
     clinical, hidden_clinical = generate_clinical_screen(
         daily, targets, nutrient_coverage=profile.nutrient_coverage
     )
     print(clinical.to_string(index=False))
-    assert hidden_clinical == [], f"expected nothing hidden for a full-coverage recipe, got {hidden_clinical}"
+    assert (
+        hidden_clinical == []
+    ), f"expected nothing hidden for a full-coverage recipe, got {hidden_clinical}"
     assert len(clinical) == 5, f"expected 5 clinical-screen rows, got {len(clinical)}"
     assert set(clinical["Nutrient"].values) == {
-        "Magnesium", "Phosphorus", "Zinc", "Vitamin D", "Vitamin B12"
+        "Magnesium",
+        "Phosphorus",
+        "Zinc",
+        "Vitamin D",
+        "Vitamin B12",
     }
-    assert (clinical["Source"] == "CNF only — labels don't carry this").all(), (
-        "every clinical-tier nutrient should be marked as not on a Canadian label"
-    )
+    assert (
+        clinical["Source"] == "CNF only — labels don't carry this"
+    ).all(), "every clinical-tier nutrient should be marked as not on a Canadian label"
 
     # target_type="UL" semantics (sodium): must say "Above UL"/"Below UL",
     # never the old "Above target"/"Meeting target" wording.
@@ -368,9 +403,9 @@ def main() -> int:
         coverage_daily, targets, nutrient_coverage=coverage_profile.nutrient_coverage
     )
     energy_row = coverage_adequacy[coverage_adequacy["Nutrient"] == "Energy"].iloc[0]
-    assert energy_row["Coverage"] == "—", (
-        f"fully-covered nutrients should show '—', not be flagged: {energy_row['Coverage']!r}"
-    )
+    assert (
+        energy_row["Coverage"] == "—"
+    ), f"fully-covered nutrients should show '—', not be flagged: {energy_row['Coverage']!r}"
 
     coverage_clinical, coverage_hidden_clinical = generate_clinical_screen(
         coverage_daily, targets, nutrient_coverage=coverage_profile.nutrient_coverage
@@ -387,8 +422,10 @@ def main() -> int:
         "adding coverage provenance changed existing nutrient totals -- "
         "P2 must be strictly additive"
     )
-    print("    Coverage flags incomplete nutrients, leaves full-coverage nutrients "
-          "unflagged, and does not alter existing totals — OK")
+    print(
+        "    Coverage flags incomplete nutrients, leaves full-coverage nutrients "
+        "unflagged, and does not alter existing totals — OK"
+    )
 
     # 12. Zero-coverage hiding (round-2 clinical feedback, Part 0 #6 / 2.2):
     # a nutrient row with ZERO ingredients supplying a value must be hidden
@@ -410,7 +447,9 @@ def main() -> int:
     custom_only_profile = calculate_profile(custom_only_recipe, na, custom_foods=custom_only_foods)
     custom_only_daily = calculate_daily_totals(custom_only_profile, 1000.0)
     hidden_adequacy, hidden_main_names = generate_adequacy_report(
-        custom_only_daily, targets, fluid_provided_mL=0.0,
+        custom_only_daily,
+        targets,
+        fluid_provided_mL=0.0,
         nutrient_coverage=custom_only_profile.nutrient_coverage,
     )
     print(f"    Hidden from main table: {hidden_main_names}")
@@ -421,13 +460,21 @@ def main() -> int:
     # concept (it's computed from the Intake Record's counts-as-fluid
     # ledger, passed in directly), so it's always shown.
     assert set(hidden_main_names) == {
-        "Fat", "Carbohydrate", "Fibre", "Sodium", "Potassium", "Calcium", "Iron",
+        "Fat",
+        "Carbohydrate",
+        "Fibre",
+        "Sodium",
+        "Potassium",
+        "Calcium",
+        "Iron",
         "Free water (estimated)",
     }, f"expected 7 zero-coverage label nutrients + Free water hidden, got {hidden_main_names}"
     visible_names = set(hidden_adequacy["Nutrient"].values)
-    assert visible_names == {"Energy", "Protein", "Fluid provided"}, (
-        f"expected only Energy/Protein/Fluid provided visible, got {visible_names}"
-    )
+    assert visible_names == {
+        "Energy",
+        "Protein",
+        "Fluid provided",
+    }, f"expected only Energy/Protein/Fluid provided visible, got {visible_names}"
     for name in hidden_main_names:
         assert name not in visible_names, f"{name!r} should be hidden but is still visible"
 
@@ -436,7 +483,11 @@ def main() -> int:
     )
     print(f"    Hidden from clinical screen: {hidden_clinical_names}")
     assert set(hidden_clinical_names) == {
-        "Magnesium", "Phosphorus", "Zinc", "Vitamin D", "Vitamin B12"
+        "Magnesium",
+        "Phosphorus",
+        "Zinc",
+        "Vitamin D",
+        "Vitamin B12",
     }, f"expected all 5 clinical nutrients hidden (custom food supplies none), got {hidden_clinical_names}"
     assert len(hidden_clinical_df) == 0, "clinical screen should be fully empty for this fixture"
     print("    Zero-coverage rows hidden from both tables, with names reported — OK")
@@ -472,31 +523,59 @@ def main() -> int:
     bug_blend = {
         "name": "Bug-case blend",
         "ingredients": [
-            {"id": 1, "food_code": chicken_code, "food_description": "Chicken breast",
-             "grams": 200.0, "unit": "g", "counts_as_fluid": False},
-            {"id": 2, "food_code": rice_code, "food_description": "Rice, cooked",
-             "grams": rice_grams, "unit": "g", "counts_as_fluid": False},
-            {"id": 3, "food_code": oil_code, "food_description": "Canola oil",
-             "grams": 15.0, "unit": "g", "counts_as_fluid": False},
+            {
+                "id": 1,
+                "food_code": chicken_code,
+                "food_description": "Chicken breast",
+                "grams": 200.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": 2,
+                "food_code": rice_code,
+                "food_description": "Rice, cooked",
+                "grams": rice_grams,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": 3,
+                "food_code": oil_code,
+                "food_description": "Canola oil",
+                "grams": 15.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
         ],
         "measured_volume_mL": 400.0,
     }
     bug_blends = {0: bug_blend}
     bug_profile, _bug_fluid_frac = resolve_blend_profile(bug_blend, na)
     bug_log_3x400 = [
-        {"id": i, "time": None, "source_type": "blend", "source_id": 0,
-         "food_description": None, "amount": 400.0, "unit": "mL", "counts_as_fluid": False}
+        {
+            "id": i,
+            "time": None,
+            "source_type": "blend",
+            "source_id": 0,
+            "food_description": None,
+            "amount": 400.0,
+            "unit": "mL",
+            "counts_as_fluid": False,
+        }
         for i in range(3)
     ]
     bug_totals_3x400 = aggregate_intake(bug_log_3x400, bug_blends, na)
     expected_1200 = calculate_daily_totals(bug_profile, 1200.0)
     for name, expected_val in expected_1200.items():
         got = bug_totals_3x400.nutrient_totals.get(name, 0.0)
-        assert abs(got - expected_val) < 1e-6, (
-            f"bug-case 3x400mL: {name} = {got}, expected density x 1200 = {expected_val}"
-        )
-    print(f"    3 rows x 400 mL of a 400 mL batch -> {bug_totals_3x400.nutrient_totals['energy_kcal']:.1f} kcal "
-          f"== density x 1200 mL, no error, no flag — OK")
+        assert (
+            abs(got - expected_val) < 1e-6
+        ), f"bug-case 3x400mL: {name} = {got}, expected density x 1200 = {expected_val}"
+    print(
+        f"    3 rows x 400 mL of a 400 mL batch -> {bug_totals_3x400.nutrient_totals['energy_kcal']:.1f} kcal "
+        f"== density x 1200 mL, no error, no flag — OK"
+    )
 
     # 13c. One blend, batch 400, logged 400 -> totals = density x 400 exactly (item 2).
     bug_log_1x400 = bug_log_3x400[:1]
@@ -504,17 +583,23 @@ def main() -> int:
     expected_400 = calculate_daily_totals(bug_profile, 400.0)
     for name, expected_val in expected_400.items():
         got = bug_totals_1x400.nutrient_totals.get(name, 0.0)
-        assert abs(got - expected_val) < 1e-6, (
-            f"1x400mL: {name} = {got}, expected density x 400 = {expected_val}"
-        )
+        assert (
+            abs(got - expected_val) < 1e-6
+        ), f"1x400mL: {name} = {got}, expected density x 400 = {expected_val}"
     print("    1 row x 400 mL of a 400 mL batch -> totals = density x 400 exactly — OK")
 
     # 13d. A blend with ingredients but measured_volume_mL == 0 must raise a
     # clear error (item 7) — the one guard that survives the rework.
-    zero_vol_blend = {"name": "No volume", "ingredients": bug_blend["ingredients"], "measured_volume_mL": 0.0}
+    zero_vol_blend = {
+        "name": "No volume",
+        "ingredients": bug_blend["ingredients"],
+        "measured_volume_mL": 0.0,
+    }
     try:
         resolve_blend_profile(zero_vol_blend, na)
-        raise AssertionError("expected InvalidBlendError for a blend with ingredients but no volume")
+        raise AssertionError(
+            "expected InvalidBlendError for a blend with ingredients but no volume"
+        )
     except InvalidBlendError:
         pass
     print("    Blend with ingredients but measured_volume_mL == 0 raises InvalidBlendError — OK")
@@ -545,14 +630,38 @@ def main() -> int:
     blend_a = {
         "name": "Morning blend",
         "ingredients": [
-            {"id": 1, "food_code": chicken_code, "food_description": "Chicken breast",
-             "grams": 200.0, "unit": "g", "counts_as_fluid": False},
-            {"id": 2, "food_code": rice_code, "food_description": "Rice, cooked",
-             "grams": rice_grams, "unit": "g", "counts_as_fluid": False},
-            {"id": 3, "food_code": oil_code, "food_description": "Canola oil",
-             "grams": 15.0, "unit": "g", "counts_as_fluid": False},
-            {"id": 4, "food_code": water_code, "food_description": "Water, municipal",
-             "grams": 200.0, "unit": "g", "counts_as_fluid": True},
+            {
+                "id": 1,
+                "food_code": chicken_code,
+                "food_description": "Chicken breast",
+                "grams": 200.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": 2,
+                "food_code": rice_code,
+                "food_description": "Rice, cooked",
+                "grams": rice_grams,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": 3,
+                "food_code": oil_code,
+                "food_description": "Canola oil",
+                "grams": 15.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": 4,
+                "food_code": water_code,
+                "food_description": "Water, municipal",
+                "grams": 200.0,
+                "unit": "g",
+                "counts_as_fluid": True,
+            },
         ],
         "measured_volume_mL": 550.0,
     }
@@ -564,8 +673,14 @@ def main() -> int:
     blend_b = {
         "name": "Fridge batch",
         "ingredients": [
-            {"id": 1, "food_code": -301, "food_description": "Fortified puree (custom)",
-             "grams": 200.0, "unit": "g", "counts_as_fluid": False},
+            {
+                "id": 1,
+                "food_code": -301,
+                "food_description": "Fortified puree (custom)",
+                "grams": 200.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
         ],
         "measured_volume_mL": 100.0,
     }
@@ -577,24 +692,86 @@ def main() -> int:
     e2e_custom_foods = {**blend_b_custom_foods, -401: {"energy_kcal": 46.0, "protein_g": 0.1}}
 
     e2e_log = [
-        {"id": 1, "time": dtime(8, 0), "source_type": "blend", "source_id": 10,
-         "food_description": None, "amount": 300.0, "unit": "mL", "counts_as_fluid": False},
-        {"id": 2, "time": dtime(8, 30), "source_type": "oral", "source_id": banana_code,
-         "food_description": "Banana, raw — 1 small", "amount": banana_grams, "unit": "g",
-         "counts_as_fluid": False},
-        {"id": 3, "time": dtime(10, 30), "source_type": "oral", "source_id": -401,
-         "food_description": "Apple juice (custom)", "amount": 125.0, "unit": "mL",
-         "counts_as_fluid": True},
-        {"id": 4, "time": dtime(12, 0), "source_type": "blend", "source_id": 10,
-         "food_description": None, "amount": 100.0, "unit": "mL", "counts_as_fluid": False},
-        {"id": 5, "time": dtime(10, 0), "source_type": "flush", "source_id": None,
-         "food_description": None, "amount": 100.0, "unit": "mL", "counts_as_fluid": True},
-        {"id": 6, "time": dtime(20, 0), "source_type": "flush", "source_id": None,
-         "food_description": None, "amount": 100.0, "unit": "mL", "counts_as_fluid": True},
-        {"id": 7, "time": dtime(15, 0), "source_type": "blend", "source_id": 20,
-         "food_description": None, "amount": 350.0, "unit": "mL", "counts_as_fluid": False},
-        {"id": 8, "time": dtime(20, 0), "source_type": "formula", "source_id": "Peptamen 1.5",
-         "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
+        {
+            "id": 1,
+            "time": dtime(8, 0),
+            "source_type": "blend",
+            "source_id": 10,
+            "food_description": None,
+            "amount": 300.0,
+            "unit": "mL",
+            "counts_as_fluid": False,
+        },
+        {
+            "id": 2,
+            "time": dtime(8, 30),
+            "source_type": "oral",
+            "source_id": banana_code,
+            "food_description": "Banana, raw — 1 small",
+            "amount": banana_grams,
+            "unit": "g",
+            "counts_as_fluid": False,
+        },
+        {
+            "id": 3,
+            "time": dtime(10, 30),
+            "source_type": "oral",
+            "source_id": -401,
+            "food_description": "Apple juice (custom)",
+            "amount": 125.0,
+            "unit": "mL",
+            "counts_as_fluid": True,
+        },
+        {
+            "id": 4,
+            "time": dtime(12, 0),
+            "source_type": "blend",
+            "source_id": 10,
+            "food_description": None,
+            "amount": 100.0,
+            "unit": "mL",
+            "counts_as_fluid": False,
+        },
+        {
+            "id": 5,
+            "time": dtime(10, 0),
+            "source_type": "flush",
+            "source_id": None,
+            "food_description": None,
+            "amount": 100.0,
+            "unit": "mL",
+            "counts_as_fluid": True,
+        },
+        {
+            "id": 6,
+            "time": dtime(20, 0),
+            "source_type": "flush",
+            "source_id": None,
+            "food_description": None,
+            "amount": 100.0,
+            "unit": "mL",
+            "counts_as_fluid": True,
+        },
+        {
+            "id": 7,
+            "time": dtime(15, 0),
+            "source_type": "blend",
+            "source_id": 20,
+            "food_description": None,
+            "amount": 350.0,
+            "unit": "mL",
+            "counts_as_fluid": False,
+        },
+        {
+            "id": 8,
+            "time": dtime(20, 0),
+            "source_type": "formula",
+            "source_id": "Peptamen 1.5",
+            "food_description": None,
+            "amount": 250.0,
+            "unit": "mL",
+            "counts_as_fluid": False,
+        },
     ]
     e2e_totals = aggregate_intake(e2e_log, e2e_blends, na, custom_foods=e2e_custom_foods)
 
@@ -613,37 +790,53 @@ def main() -> int:
     formula_free_water = 0.770 * 250.0
 
     expected_energy = (
-        daily_a_400["energy_kcal"] + blend_b_kcal + formula_kcal
-        + banana_totals.get("energy_kcal", 0.0) + apple_juice_totals["energy_kcal"]
+        daily_a_400["energy_kcal"]
+        + blend_b_kcal
+        + formula_kcal
+        + banana_totals.get("energy_kcal", 0.0)
+        + apple_juice_totals["energy_kcal"]
     )
     expected_protein = (
-        daily_a_400["protein_g"] + blend_b_protein + formula_protein
-        + banana_totals.get("protein_g", 0.0) + apple_juice_totals["protein_g"]
+        daily_a_400["protein_g"]
+        + blend_b_protein
+        + formula_protein
+        + banana_totals.get("protein_g", 0.0)
+        + apple_juice_totals["protein_g"]
     )
     expected_fluid = (
         fluid_frac_a * 400.0  # Blend A's own fluid fraction (water ingredient)
-        + 0.0                  # Blend B has no counts_as_fluid ingredient
-        + 250.0                # formula: full I&O volume
-        + 100.0 + 100.0        # two flushes: full volume each
-        + 0.0                  # banana: not counts_as_fluid
-        + 125.0                # apple juice: counts_as_fluid
+        + 0.0  # Blend B has no counts_as_fluid ingredient
+        + 250.0  # formula: full I&O volume
+        + 100.0
+        + 100.0  # two flushes: full volume each
+        + 0.0  # banana: not counts_as_fluid
+        + 125.0  # apple juice: counts_as_fluid
     )
     expected_free_water = (
-        daily_a_400.get("water_g", 0.0) + formula_free_water
+        daily_a_400.get("water_g", 0.0)
+        + formula_free_water
         + banana_totals.get("water_g", 0.0)
         # blend B's custom food and the custom apple juice carry no water_g
         # (no label reports moisture) -- flush rows are deliberately
         # excluded from free water (they contribute fluid only, section 2).
     )
 
-    print(f"    Energy: {e2e_totals.nutrient_totals['energy_kcal']:.1f} kcal "
-          f"(expected {expected_energy:.1f})")
-    print(f"    Protein: {e2e_totals.nutrient_totals['protein_g']:.1f} g "
-          f"(expected {expected_protein:.1f})")
-    print(f"    Fluid provided: {e2e_totals.fluid_provided_mL:.1f} mL "
-          f"(expected {expected_fluid:.1f})")
-    print(f"    Free water (est.): {e2e_totals.free_water_mL:.1f} mL "
-          f"(expected {expected_free_water:.1f})")
+    print(
+        f"    Energy: {e2e_totals.nutrient_totals['energy_kcal']:.1f} kcal "
+        f"(expected {expected_energy:.1f})"
+    )
+    print(
+        f"    Protein: {e2e_totals.nutrient_totals['protein_g']:.1f} g "
+        f"(expected {expected_protein:.1f})"
+    )
+    print(
+        f"    Fluid provided: {e2e_totals.fluid_provided_mL:.1f} mL "
+        f"(expected {expected_fluid:.1f})"
+    )
+    print(
+        f"    Free water (est.): {e2e_totals.free_water_mL:.1f} mL "
+        f"(expected {expected_free_water:.1f})"
+    )
     assert abs(e2e_totals.nutrient_totals["energy_kcal"] - expected_energy) < 1e-6
     assert abs(e2e_totals.nutrient_totals["protein_g"] - expected_protein) < 1e-6
     assert abs(e2e_totals.fluid_provided_mL - expected_fluid) < 1e-6
@@ -655,21 +848,38 @@ def main() -> int:
     food_drink = e2e_totals.subtotals["Food & Drink"]
     total_sub = e2e_totals.subtotals["Total"]
     for name in ("energy_kcal", "protein_g"):
-        combined = tube_feed["nutrient_totals"].get(name, 0.0) + food_drink["nutrient_totals"].get(name, 0.0)
-        assert abs(combined - total_sub["nutrient_totals"].get(name, 0.0)) < 1e-6, (
-            f"Tube Feed + Food & Drink != Total for {name}"
+        combined = tube_feed["nutrient_totals"].get(name, 0.0) + food_drink["nutrient_totals"].get(
+            name, 0.0
         )
-    assert abs(
-        tube_feed["fluid_provided_mL"] + food_drink["fluid_provided_mL"] - e2e_totals.fluid_provided_mL
-    ) < 1e-6
-    print(f"    Subtotals: Tube Feed {tube_feed['nutrient_totals']['energy_kcal']:.1f} kcal + "
-          f"Food & Drink {food_drink['nutrient_totals']['energy_kcal']:.1f} kcal "
-          f"== Total {total_sub['nutrient_totals']['energy_kcal']:.1f} kcal — OK")
+        assert (
+            abs(combined - total_sub["nutrient_totals"].get(name, 0.0)) < 1e-6
+        ), f"Tube Feed + Food & Drink != Total for {name}"
+    assert (
+        abs(
+            tube_feed["fluid_provided_mL"]
+            + food_drink["fluid_provided_mL"]
+            - e2e_totals.fluid_provided_mL
+        )
+        < 1e-6
+    )
+    print(
+        f"    Subtotals: Tube Feed {tube_feed['nutrient_totals']['energy_kcal']:.1f} kcal + "
+        f"Food & Drink {food_drink['nutrient_totals']['energy_kcal']:.1f} kcal "
+        f"== Total {total_sub['nutrient_totals']['energy_kcal']:.1f} kcal — OK"
+    )
 
     # Chronological sort (section 6.1): unset-time rows sort last.
     unsorted_log = e2e_log + [
-        {"id": 9, "time": None, "source_type": "flush", "source_id": None,
-         "food_description": None, "amount": 50.0, "unit": "mL", "counts_as_fluid": True}
+        {
+            "id": 9,
+            "time": None,
+            "source_type": "flush",
+            "source_id": None,
+            "food_description": None,
+            "amount": 50.0,
+            "unit": "mL",
+            "counts_as_fluid": True,
+        }
     ]
     ordered = sorted_intake_log(unsorted_log)
     assert ordered[0]["time"] == dtime(8, 0), "expected the earliest-timed row first"

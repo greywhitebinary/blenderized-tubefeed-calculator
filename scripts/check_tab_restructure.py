@@ -88,8 +88,7 @@ def main() -> None:
     flush_radio = next(r for r in at.radio if r.key == "flush_mode")
     flush_radio.set_value("With feeds (calculated)").run()
     n_feeds = sum(
-        1 for r in at.session_state["intake_log"]
-        if r["source_type"] in ("blend", "formula")
+        1 for r in at.session_state["intake_log"] if r["source_type"] in ("blend", "formula")
     )
     # 2026-07-23 case (James W): 4 blend bolus feeds + 3 Resource 2.0
     # cartons = 7 tube-feed rows (see app/streamlit_app.py's Load Example
@@ -110,7 +109,8 @@ def main() -> None:
     # Nutrition", feed-name-first since commit 1f3af36); the value itself
     # must be the raw formula name.
     abbott_pick = next(
-        n for n, f in COMMERCIAL_FORMULAS.items()
+        n
+        for n, f in COMMERCIAL_FORMULAS.items()
         if "Nepro" in n and f.get("brand") == "Abbott Nutrition"
     )
     assert abbott_pick in [

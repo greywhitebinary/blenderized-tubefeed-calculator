@@ -25,7 +25,6 @@ from src.data_loader import (
     load_measure_weight_conversion,
 )
 
-
 # Measure_Type_Code 6 = User-defined household measures
 HOUSEHOLD_MEASURE_TYPE = 6
 
@@ -53,8 +52,12 @@ def load_measure_lookup() -> pd.DataFrame:
 
     # Select and rename columns for clarity
     result = merged[
-        ["Food_Code", "Measure_Code", "Measure_Weight_Conversion",
-         "Measure_Description_and_Unit_EN"]
+        [
+            "Food_Code",
+            "Measure_Code",
+            "Measure_Weight_Conversion",
+            "Measure_Description_and_Unit_EN",
+        ]
     ].rename(columns={"Measure_Weight_Conversion": "grams"})
 
     return result
@@ -84,14 +87,12 @@ def measure_to_grams(
         lookup_df = load_measure_lookup()
 
     row = lookup_df[
-        (lookup_df["Food_Code"] == food_code)
-        & (lookup_df["Measure_Code"] == measure_code)
+        (lookup_df["Food_Code"] == food_code) & (lookup_df["Measure_Code"] == measure_code)
     ]
 
     if len(row) == 0:
         raise ValueError(
-            f"No household measure found for Food_Code {food_code}, "
-            f"Measure_Code {measure_code}"
+            f"No household measure found for Food_Code {food_code}, " f"Measure_Code {measure_code}"
         )
 
     grams_per_measure = float(row.iloc[0]["grams"])
@@ -128,6 +129,7 @@ def get_measures_for_food(
 
 if __name__ == "__main__":
     import sys
+
     sys.path.insert(0, ".")
 
     from src.data_loader import load_food_name

@@ -273,9 +273,7 @@ def aggregate_intake(
     def _get_blend(blend_id):
         if blend_id not in _blend_cache:
             blend = blends[blend_id]
-            profile, fluid_frac = resolve_blend_profile(
-                blend, nutrient_amount_df, custom_foods
-            )
+            profile, fluid_frac = resolve_blend_profile(blend, nutrient_amount_df, custom_foods)
             ingredients = [
                 Ingredient(ing["food_code"], ing.get("food_description", ""), ing["grams"])
                 for ing in blend.get("ingredients", [])

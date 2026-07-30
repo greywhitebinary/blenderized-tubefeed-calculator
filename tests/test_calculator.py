@@ -36,7 +36,6 @@ from tests.conftest import (
     CUSTOM_PROTEIN_SHAKE,
 )
 
-
 # ---------------------------------------------------------------------------
 # compute_nutrient_totals() -- the per-100 g scaling core
 # ---------------------------------------------------------------------------
@@ -91,9 +90,7 @@ class TestComputeNutrientTotals:
         assert totals["energy_kcal"] == pytest.approx(165 * 2.0)
         assert totals["fat_g"] == pytest.approx(3.6 * 2.0)  # oil's fat: 0
 
-    def test_coverage_distinguishes_missing_data_from_a_true_zero(
-        self, nutrient_amount_df
-    ):
+    def test_coverage_distinguishes_missing_data_from_a_true_zero(self, nutrient_amount_df):
         """A missing CNF row and an ingredient that truly has 0 g both
         sum to 0 in nutrient_totals -- indistinguishable from the total
         alone. nutrient_coverage is what tells them apart: the 0-gram
@@ -111,9 +108,7 @@ class TestComputeNutrientTotals:
             Ingredient(FOOD_ABSENT, "Mystery food, not in CNF fixture", 50.0),
             Ingredient(FOOD_OIL, "Canola oil", 0.0),
         ]
-        _totals, coverage = compute_nutrient_totals_and_coverage(
-            ingredients, nutrient_amount_df
-        )
+        _totals, coverage = compute_nutrient_totals_and_coverage(ingredients, nutrient_amount_df)
 
         n_supplying, n_total = coverage["fat_g"]
         assert n_total == 4
@@ -153,9 +148,7 @@ class TestCalculateProfileDensities:
         assert profile.protein_per_mL == pytest.approx(0.1321)
         assert profile.free_water_fraction == pytest.approx(0.764)
 
-    def test_measured_volume_is_an_input_never_computed_from_ingredients(
-        self, nutrient_amount_df
-    ):
+    def test_measured_volume_is_an_input_never_computed_from_ingredients(self, nutrient_amount_df):
         """The measured final volume is a number the RD reads off a jug --
         it is NOT derived from summing ingredient grams (blending adds
         air, some water evaporates or is absorbed, etc. -- see
@@ -187,9 +180,7 @@ class TestCalculateProfileDensities:
         assert profile_b.kcal_per_mL == pytest.approx(profile_b.total_kcal / 800.0)
         assert profile_a.kcal_per_mL == pytest.approx(profile_b.kcal_per_mL * 2)
 
-    def test_zero_measured_volume_returns_zero_densities_not_a_crash(
-        self, nutrient_amount_df
-    ):
+    def test_zero_measured_volume_returns_zero_densities_not_a_crash(self, nutrient_amount_df):
         """A recipe with ingredients but no measured volume yet (RD
         hasn't measured the jug) must not raise ZeroDivisionError --
         calculate_profile()'s guard returns an empty-totals profile, and
@@ -319,9 +310,7 @@ class TestLabelToPer100g:
 
 
 class TestCustomFoodFolding:
-    def test_custom_food_contributes_alongside_cnf_foods(
-        self, nutrient_amount_df, custom_foods
-    ):
+    def test_custom_food_contributes_alongside_cnf_foods(self, nutrient_amount_df, custom_foods):
         """A blend of 100 g CNF chicken + 50 g of a custom "protein shake"
         food entered from a nutrition-facts label (250 kcal, 10 g
         protein, 120 mg sodium per 100 g -- see conftest.py's

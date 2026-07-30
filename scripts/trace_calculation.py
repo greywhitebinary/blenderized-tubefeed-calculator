@@ -90,8 +90,10 @@ def main() -> int:
 
     # ---- [1] Ingredient table -------------------------------------------
     ingr_df = pd.DataFrame(
-        [{"Food_Code": i.food_code, "food": i.food_description, "grams": i.grams}
-         for i in recipe.ingredients]
+        [
+            {"Food_Code": i.food_code, "food": i.food_description, "grams": i.grams}
+            for i in recipe.ingredients
+        ]
     )
     print("\n[1] INGREDIENT TABLE (what you put in the blender)")
     print(ingr_df.to_string(index=False))
@@ -101,21 +103,26 @@ def main() -> int:
     na_filtered = na[na["Nutrient_Code"].isin(tracked)]
     print(f"\n[2] NUTRIENT_AMOUNT FILTER")
     print(f"    Full table: {len(na):,} rows (every food x every nutrient CNF measured)")
-    print(f"    After keeping only the {len(tracked)} tracked nutrient codes: "
-          f"{len(na_filtered):,} rows")
+    print(
+        f"    After keeping only the {len(tracked)} tracked nutrient codes: "
+        f"{len(na_filtered):,} rows"
+    )
     print(f"    Every value is PER 100 g of edible food — the CNF convention.")
 
     # ---- [3] The merge ---------------------------------------------------
     merged = ingr_df.merge(
         na_filtered[["Food_Code", "Nutrient_Code", "Nutrient_Amount"]],
-        on="Food_Code", how="inner",
+        on="Food_Code",
+        how="inner",
     )
     merged["nutrient"] = merged["Nutrient_Code"].map(_CODE_TO_NAME)
     n_ingr = len(recipe.ingredients)
     max_rows = n_ingr * len(tracked)
     print(f"\n[3] MERGE ingredients x nutrient amounts ON Food_Code (inner join)")
-    print(f"    {n_ingr} ingredients x up to {len(tracked)} tracked nutrients "
-          f"= up to {max_rows} rows; got {len(merged)}.")
+    print(
+        f"    {n_ingr} ingredients x up to {len(tracked)} tracked nutrients "
+        f"= up to {max_rows} rows; got {len(merged)}."
+    )
     print(f"    (Fewer than {max_rows} means some food LACKS a CNF row for some")
     print(f"     nutrient — see the missing-data audit at the end.)")
 
@@ -128,9 +135,7 @@ def main() -> int:
     print(show.sort_values(["food", "nutrient"]).to_string(index=False))
 
     # ---- [5] Group + sum -------------------------------------------------
-    totals = (
-        merged.groupby("nutrient")["scaled_amount"].sum().reindex(NUTRIENT_CODES.keys())
-    )
+    totals = merged.groupby("nutrient")["scaled_amount"].sum().reindex(NUTRIENT_CODES.keys())
     print(f"\n[5] RECIPE TOTALS: sum scaled_amount across ingredients, per nutrient")
     print(f"    (This is the column-sum of table [4], grouped by nutrient.)")
     print(totals.to_string())
@@ -142,10 +147,14 @@ def main() -> int:
     print(f"    Measured, not computed — blending air and rinse water make")
     print(f"    volume incalculable from weights; you read it off the container.")
     print(f"    kcal/mL      = {profile.total_kcal:,.1f} / {v:.0f} = {profile.kcal_per_mL:.4f}")
-    print(f"    protein g/mL = {profile.total_protein_g:,.1f} / {v:.0f} = {profile.protein_per_mL:.4f}")
+    print(
+        f"    protein g/mL = {profile.total_protein_g:,.1f} / {v:.0f} = {profile.protein_per_mL:.4f}"
+    )
     fw = profile.total_water_g + recipe.added_water_mL
-    print(f"    free water   = (food water {profile.total_water_g:,.1f} g "
-          f"+ added {recipe.added_water_mL:.0f} mL) / {v:.0f} = {profile.free_water_fraction:.4f}")
+    print(
+        f"    free water   = (food water {profile.total_water_g:,.1f} g "
+        f"+ added {recipe.added_water_mL:.0f} mL) / {v:.0f} = {profile.free_water_fraction:.4f}"
+    )
     print(f"    (1 g water ~ 1 mL — standard clinical approximation)")
 
     # Cross-check: trace totals must equal the calculator's totals exactly.
@@ -159,11 +168,15 @@ def main() -> int:
     daily_vol = 1200.0
     daily = calculate_daily_totals(profile, daily_vol)
     print(f"\n[7] DAILY TOTALS at {daily_vol:.0f} mL/day: density x daily volume")
-    print(f"    equivalently: recipe_total x ({daily_vol:.0f} / {v:.0f}) "
-          f"= recipe_total x {daily_vol / v:.4f}")
+    print(
+        f"    equivalently: recipe_total x ({daily_vol:.0f} / {v:.0f}) "
+        f"= recipe_total x {daily_vol / v:.4f}"
+    )
     for name in NUTRIENT_CODES:
-        print(f"    {NUTRIENT_LABELS[name]:<20} {profile.nutrient_totals.get(name, 0.0):>10,.2f} "
-              f"-> {daily.get(name, 0.0):>10,.2f} /day")
+        print(
+            f"    {NUTRIENT_LABELS[name]:<20} {profile.nutrient_totals.get(name, 0.0):>10,.2f} "
+            f"-> {daily.get(name, 0.0):>10,.2f} /day"
+        )
 
     # ---- Missing-data audit ----------------------------------------------
     print("\n" + "=" * 72)
@@ -180,12 +193,8 @@ missing data, not missing nutrition.
 """)
     any_missing = False
     for i in recipe.ingredients:
-        have = set(
-            na_filtered[na_filtered["Food_Code"] == i.food_code]["Nutrient_Code"]
-        )
-        missing = [
-            _CODE_TO_NAME[c] for c in tracked if c not in have
-        ]
+        have = set(na_filtered[na_filtered["Food_Code"] == i.food_code]["Nutrient_Code"])
+        missing = [_CODE_TO_NAME[c] for c in tracked if c not in have]
         status = ", ".join(missing) if missing else "none — full coverage"
         if missing:
             any_missing = True

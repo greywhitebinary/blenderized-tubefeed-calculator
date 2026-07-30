@@ -216,11 +216,7 @@ def codes_for(tier: str | None = None, pack: str = DEFAULT_PACK) -> dict[str, in
     matches the pre-registry NUTRIENT_CODES behaviour (calculate_profile
     needs water_g's code even though it's never its own report row).
     """
-    return {
-        d.name: d.code
-        for d in load_registry(pack)
-        if tier is None or d.tier == tier
-    }
+    return {d.name: d.code for d in load_registry(pack) if tier is None or d.tier == tier}
 
 
 def defs_for_tier(tier: str, pack: str = DEFAULT_PACK) -> list[NutrientDef]:
@@ -261,7 +257,9 @@ if __name__ == "__main__":
         rows = [d for d in registry if d.tier == tier]
         print(f"{tier} ({len(rows)}):")
         for d in rows:
-            print(f"  {d.name:<20} code={d.code:<4} on_label={d.on_label!s:<5} {d.label} ({d.unit})")
+            print(
+                f"  {d.name:<20} code={d.code:<4} on_label={d.on_label!s:<5} {d.label} ({d.unit})"
+            )
         print()
 
     print("✅ Nutrients registry smoke test passed.")

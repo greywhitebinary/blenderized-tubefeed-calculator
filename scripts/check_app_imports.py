@@ -1,4 +1,5 @@
 """Quick check that app/streamlit_app.py imports resolve without error."""
+
 import sys
 from pathlib import Path
 

@@ -131,6 +131,7 @@ THINNING_LIQUIDS: dict[str, dict[str, float]] = _load_thinning_liquids()
 # Cached data loading — avoids re-reading 565k-row CSV on every rerun
 # ---------------------------------------------------------------------------
 
+
 @st.cache_data
 def get_food_name():
     return load_food_name()
@@ -155,6 +156,7 @@ def get_food_group():
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def sanitize_filename(name: str, fallback: str = "btf") -> str:
     """Strip characters that break filenames/downloads on common filesystems.
 
@@ -167,9 +169,7 @@ def sanitize_filename(name: str, fallback: str = "btf") -> str:
 
 def find_food(fn_df: pd.DataFrame, desc: str) -> int | None:
     """Find the first Food_Code matching a description substring."""
-    m = fn_df[fn_df["Food_Description_EN"].str.contains(
-        desc, case=False, na=False, regex=False
-    )]
+    m = fn_df[fn_df["Food_Description_EN"].str.contains(desc, case=False, na=False, regex=False)]
     if len(m) == 0:
         return None
     return int(m.iloc[0]["Food_Code"])
@@ -205,6 +205,7 @@ def default_counts_as_fluid(food_desc: str, group_code) -> bool:
 # Session state — Blends (Build tab) + Intake Record (Intake tab), per
 # FEED_LOG_REWORK.md section 3.2.
 # ---------------------------------------------------------------------------
+
 
 def _new_blend(name: str) -> int:
     """Create a new empty blend, select it, and return its id."""
@@ -334,7 +335,7 @@ def _note(message: str) -> None:
     won't render inside the raw HTML div -- use <strong>/<br> instead."""
     st.markdown(
         f'<div style="background-color: #f9e8eb; border-left: 4px solid '
-        f'#A4243A; padding: 0.6rem 0.9rem; border-radius: 0.25rem; '
+        f"#A4243A; padding: 0.6rem 0.9rem; border-radius: 0.25rem; "
         f'color: #3d3d3d;">{message}</div>',
         unsafe_allow_html=True,
     )
@@ -393,7 +394,9 @@ def render_add_food_ui(
         gc1, gc2 = st.columns([1, 2])
         selected_group = gc1.selectbox("Food group", group_options, key=f"{key_prefix}_group")
         search_term = gc2.text_input(
-            "Search foods", "", placeholder="e.g., chicken, rice, oil",
+            "Search foods",
+            "",
+            placeholder="e.g., chicken, rice, oil",
             key=f"{key_prefix}_search",
         )
 
@@ -407,9 +410,11 @@ def render_add_food_ui(
             search_pool = fn_df[fn_df["CNF_Food_Group_Code"] == group_code_by_desc[selected_group]]
 
         if len(search_term) >= 2:
-            matches = search_pool[search_pool["Food_Description_EN"].str.contains(
-                search_term, case=False, na=False, regex=False
-            )]
+            matches = search_pool[
+                search_pool["Food_Description_EN"].str.contains(
+                    search_term, case=False, na=False, regex=False
+                )
+            ]
             matches = matches.sort_values("Food_Description_EN").head(50)
 
             if len(matches) > 0:
@@ -458,7 +463,10 @@ def render_add_food_ui(
                 else:
                     _note("No household measures for this food.")
                     calculated_grams = st.number_input(
-                        "Grams", min_value=0.0, value=100.0, step=1.0,
+                        "Grams",
+                        min_value=0.0,
+                        value=100.0,
+                        step=1.0,
                         key=f"{key_prefix}_grams_nomeasure",
                     )
             else:
@@ -542,9 +550,7 @@ def render_add_food_ui(
             with name_col:
                 st.markdown(f'<div class="{css_class}">{text}</div>', unsafe_allow_html=True)
             with val_col:
-                return st.number_input(
-                    text, label_visibility="collapsed", key=key, **kwargs
-                )
+                return st.number_input(text, label_visibility="collapsed", key=key, **kwargs)
 
         label_col, _spacer = st.columns([2, 3])
         with label_col:
@@ -552,29 +558,47 @@ def render_add_food_ui(
                 st.markdown('<div class="nft-title">Nutrition Facts</div>', unsafe_allow_html=True)
                 cname = st.text_input("Food name", "", key=f"{key_prefix}_cname")
                 cserving = _nft_field(
-                    f"Serving size ({basis})", "nft-main", f"{key_prefix}_cv_serving",
-                    min_value=1.0, value=100.0, step=1.0,
+                    f"Serving size ({basis})",
+                    "nft-main",
+                    f"{key_prefix}_cv_serving",
+                    min_value=1.0,
+                    value=100.0,
+                    step=1.0,
                 )
                 st.markdown('<hr class="nft-thick">', unsafe_allow_html=True)
 
                 label_defs = [d for d in defs_for_tier("label", pack=DEFAULT_PACK) if d.on_label]
                 energy_def = next(d for d in label_defs if d.name == "energy_kcal")
                 cv[energy_def.name] = _nft_field(
-                    f"{energy_def.label} ({energy_def.unit})", "nft-cal", f"{key_prefix}_cv_energy",
-                    min_value=0.0, value=0.0, step=1.0,
+                    f"{energy_def.label} ({energy_def.unit})",
+                    "nft-cal",
+                    f"{key_prefix}_cv_energy",
+                    min_value=0.0,
+                    value=0.0,
+                    step=1.0,
                 )
                 st.markdown('<hr class="nft-thin">', unsafe_allow_html=True)
 
                 NFT_MAIN_NAMES = {
-                    "fat_g", "carbohydrate_g", "protein_g", "cholesterol_mg",
-                    "sodium_mg", "potassium_mg", "calcium_mg", "iron_mg",
+                    "fat_g",
+                    "carbohydrate_g",
+                    "protein_g",
+                    "cholesterol_mg",
+                    "sodium_mg",
+                    "potassium_mg",
+                    "calcium_mg",
+                    "iron_mg",
                 }
                 remaining_defs = [d for d in label_defs if d.name != "energy_kcal"]
                 for d in remaining_defs:
                     css_class = "nft-main" if d.name in NFT_MAIN_NAMES else "nft-sub"
                     cv[d.name] = _nft_field(
-                        f"{d.label} ({d.unit})", css_class, f"{key_prefix}_cv_{d.name}",
-                        min_value=0.0, value=0.0, step=_nft_step(d),
+                        f"{d.label} ({d.unit})",
+                        css_class,
+                        f"{key_prefix}_cv_{d.name}",
+                        min_value=0.0,
+                        value=0.0,
+                        step=_nft_step(d),
                     )
                     if d.name == "sodium_mg":
                         st.markdown('<hr class="nft-thick">', unsafe_allow_html=True)
@@ -589,8 +613,12 @@ def render_add_food_ui(
                     clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
                     for d in clinical_defs:
                         cv[d.name] = _nft_field(
-                            f"{d.label} ({d.unit})", "nft-sub", f"{key_prefix}_cv_clin_{d.name}",
-                            min_value=0.0, value=0.0, step=_nft_step(d),
+                            f"{d.label} ({d.unit})",
+                            "nft-sub",
+                            f"{key_prefix}_cv_clin_{d.name}",
+                            min_value=0.0,
+                            value=0.0,
+                            step=_nft_step(d),
                         )
 
             st.caption(
@@ -608,8 +636,8 @@ def render_add_food_ui(
                 format="%g",
                 key=f"{key_prefix}_cgrams",
                 help=f"Same unit as the label basis above ({basis}) — an "
-                     f"mL-basis food's usage can only be entered in mL, by "
-                     f"design (no cross-conversion between g and mL).",
+                f"mL-basis food's usage can only be entered in mL, by "
+                f"design (no cross-conversion between g and mL).",
             )
 
             # mL-basis custom foods default to counts-as-fluid=True — a
@@ -619,7 +647,8 @@ def render_add_food_ui(
             _custom_default_fluid = basis == "mL"
             if show_counts_as_fluid_toggle:
                 _custom_final_fluid = st.checkbox(
-                    "Counts as fluid", value=_custom_default_fluid,
+                    "Counts as fluid",
+                    value=_custom_default_fluid,
                     key=f"{key_prefix}_custom_fluid_toggle",
                 )
             else:
@@ -809,15 +838,78 @@ if load_example_clicked:
         st.session_state.next_ingr_id += 9
         _base_id = st.session_state.next_ingr_id - 8
         st.session_state.blends[example_id]["ingredients"] = [
-            {"id": _base_id + 0, "food_code": milk, "food_description": "Whole milk 3.25% M.F.", "grams": 257.0, "unit": "g", "counts_as_fluid": True},
-            {"id": _base_id + 1, "food_code": yogurt, "food_description": "Greek yogurt, plain, 2%", "grams": 100.0, "unit": "g", "counts_as_fluid": False},
-            {"id": _base_id + 2, "food_code": oats, "food_description": "Rolled oats, cooked", "grams": 100.0, "unit": "g", "counts_as_fluid": False},
-            {"id": _base_id + 3, "food_code": chicken, "food_description": "Chicken breast, cooked (skinless)", "grams": 50.0, "unit": "g", "counts_as_fluid": False},
-            {"id": _base_id + 4, "food_code": banana, "food_description": "Banana, raw", "grams": 100.0, "unit": "g", "counts_as_fluid": False},
-            {"id": _base_id + 5, "food_code": avocado, "food_description": "Avocado, raw", "grams": 50.0, "unit": "g", "counts_as_fluid": False},
-            {"id": _base_id + 6, "food_code": carrot, "food_description": "Carrots, cooked (boiled, drained)", "grams": 75.0, "unit": "g", "counts_as_fluid": False},
-            {"id": _base_id + 7, "food_code": oil, "food_description": "Canola oil", "grams": 14.0, "unit": "g", "counts_as_fluid": False},
-            {"id": _base_id + 8, "food_code": water, "food_description": "Water, municipal", "grams": 250.0, "unit": "g", "counts_as_fluid": True},
+            {
+                "id": _base_id + 0,
+                "food_code": milk,
+                "food_description": "Whole milk 3.25% M.F.",
+                "grams": 257.0,
+                "unit": "g",
+                "counts_as_fluid": True,
+            },
+            {
+                "id": _base_id + 1,
+                "food_code": yogurt,
+                "food_description": "Greek yogurt, plain, 2%",
+                "grams": 100.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": _base_id + 2,
+                "food_code": oats,
+                "food_description": "Rolled oats, cooked",
+                "grams": 100.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": _base_id + 3,
+                "food_code": chicken,
+                "food_description": "Chicken breast, cooked (skinless)",
+                "grams": 50.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": _base_id + 4,
+                "food_code": banana,
+                "food_description": "Banana, raw",
+                "grams": 100.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": _base_id + 5,
+                "food_code": avocado,
+                "food_description": "Avocado, raw",
+                "grams": 50.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": _base_id + 6,
+                "food_code": carrot,
+                "food_description": "Carrots, cooked (boiled, drained)",
+                "grams": 75.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": _base_id + 7,
+                "food_code": oil,
+                "food_description": "Canola oil",
+                "grams": 14.0,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
+            {
+                "id": _base_id + 8,
+                "food_code": water,
+                "food_description": "Water, municipal",
+                "grams": 250.0,
+                "unit": "g",
+                "counts_as_fluid": True,
+            },
         ]
         st.session_state.blends[example_id]["measured_volume_mL"] = 1000.0
 
@@ -841,53 +933,183 @@ if load_example_clicked:
 
         _rows = [
             # Tube feed -- blend (full batch across 4 bolus feeds)
-            {"time": dtime(8, 0), "source_type": "blend", "source_id": example_id,
-             "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
-            {"time": dtime(12, 0), "source_type": "blend", "source_id": example_id,
-             "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
-            {"time": dtime(17, 0), "source_type": "blend", "source_id": example_id,
-             "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
-            {"time": dtime(21, 0), "source_type": "blend", "source_id": example_id,
-             "food_description": None, "amount": 250.0, "unit": "mL", "counts_as_fluid": False},
+            {
+                "time": dtime(8, 0),
+                "source_type": "blend",
+                "source_id": example_id,
+                "food_description": None,
+                "amount": 250.0,
+                "unit": "mL",
+                "counts_as_fluid": False,
+            },
+            {
+                "time": dtime(12, 0),
+                "source_type": "blend",
+                "source_id": example_id,
+                "food_description": None,
+                "amount": 250.0,
+                "unit": "mL",
+                "counts_as_fluid": False,
+            },
+            {
+                "time": dtime(17, 0),
+                "source_type": "blend",
+                "source_id": example_id,
+                "food_description": None,
+                "amount": 250.0,
+                "unit": "mL",
+                "counts_as_fluid": False,
+            },
+            {
+                "time": dtime(21, 0),
+                "source_type": "blend",
+                "source_id": example_id,
+                "food_description": None,
+                "amount": 250.0,
+                "unit": "mL",
+                "counts_as_fluid": False,
+            },
             # Tube feed -- Resource 2.0, 3 cartons
-            {"time": dtime(10, 0), "source_type": "formula", "source_id": "Resource 2.0",
-             "food_description": None, "amount": 237.0, "unit": "mL", "counts_as_fluid": False},
-            {"time": dtime(14, 0), "source_type": "formula", "source_id": "Resource 2.0",
-             "food_description": None, "amount": 237.0, "unit": "mL", "counts_as_fluid": False},
-            {"time": dtime(20, 0), "source_type": "formula", "source_id": "Resource 2.0",
-             "food_description": None, "amount": 237.0, "unit": "mL", "counts_as_fluid": False},
+            {
+                "time": dtime(10, 0),
+                "source_type": "formula",
+                "source_id": "Resource 2.0",
+                "food_description": None,
+                "amount": 237.0,
+                "unit": "mL",
+                "counts_as_fluid": False,
+            },
+            {
+                "time": dtime(14, 0),
+                "source_type": "formula",
+                "source_id": "Resource 2.0",
+                "food_description": None,
+                "amount": 237.0,
+                "unit": "mL",
+                "counts_as_fluid": False,
+            },
+            {
+                "time": dtime(20, 0),
+                "source_type": "formula",
+                "source_id": "Resource 2.0",
+                "food_description": None,
+                "amount": 237.0,
+                "unit": "mL",
+                "counts_as_fluid": False,
+            },
             # Tube feed -- water flushes: before/after several feeds + free-water sips
-            {"time": dtime(7, 45), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(8, 15), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(9, 0), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 244.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(10, 15), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(12, 15), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(14, 15), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(15, 30), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 274.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(17, 15), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(19, 0), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 274.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(20, 15), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
-            {"time": dtime(21, 15), "source_type": "flush", "source_id": None,
-             "food_description": None, "amount": 30.0, "unit": "mL", "counts_as_fluid": True},
+            {
+                "time": dtime(7, 45),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 30.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(8, 15),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 30.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(9, 0),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 244.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(10, 15),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 30.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(12, 15),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 30.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(14, 15),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 30.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(15, 30),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 274.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(17, 15),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 30.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(19, 0),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 274.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(20, 15),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 30.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
+            {
+                "time": dtime(21, 15),
+                "source_type": "flush",
+                "source_id": None,
+                "food_description": None,
+                "amount": 30.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            },
             # Food & drink -- oral, small banana for QOL
-            {"time": dtime(8, 30), "source_type": "oral", "source_id": banana,
-             "food_description": "Banana, raw — 1 small", "amount": banana_grams, "unit": "g",
-             "counts_as_fluid": False},
+            {
+                "time": dtime(8, 30),
+                "source_type": "oral",
+                "source_id": banana,
+                "food_description": "Banana, raw — 1 small",
+                "amount": banana_grams,
+                "unit": "g",
+                "counts_as_fluid": False,
+            },
         ]
         st.session_state.next_intake_id = len(_rows) + 1
-        st.session_state.intake_log = [
-            {"id": i + 1, **row} for i, row in enumerate(_rows)
-        ]
+        st.session_state.intake_log = [{"id": i + 1, **row} for i, row in enumerate(_rows)]
         st.session_state.custom_foods = {}
         st.session_state.next_custom_code = -1
         st.session_state["load_example"] = True
@@ -922,7 +1144,9 @@ with top_l:
     recipe_name = st.text_input("Patient / day label", key="recipe_name_input")
 
 st.title(f"🥕🥦🥤 {recipe_name or 'BTF day'} 💉💧🍌")
-st.caption("⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use.")
+st.caption(
+    "⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use."
+)
 
 
 # ===========================================================================
@@ -1066,23 +1290,28 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
     st.caption("Log a single food or drink the client had by mouth.")
     oral_time = st.time_input("Time (optional)", value=None, key="oral_time_input")
     new_food = render_add_food_ui(
-        fn_df, na_df, lookup_df, fg_df,
+        fn_df,
+        na_df,
+        lookup_df,
+        fg_df,
         key_prefix="oral_add",
         add_button_label="Add",
         show_counts_as_fluid_toggle=True,
     )
     if new_food is not None:
         st.session_state.next_intake_id += 1
-        st.session_state.intake_log.append({
-            "id": st.session_state.next_intake_id,
-            "time": oral_time,
-            "source_type": "oral",
-            "source_id": new_food["food_code"],
-            "food_description": new_food["food_description"],
-            "amount": new_food["grams"],
-            "unit": new_food["unit"],
-            "counts_as_fluid": new_food["counts_as_fluid"],
-        })
+        st.session_state.intake_log.append(
+            {
+                "id": st.session_state.next_intake_id,
+                "time": oral_time,
+                "source_type": "oral",
+                "source_id": new_food["food_code"],
+                "food_description": new_food["food_description"],
+                "amount": new_food["grams"],
+                "unit": new_food["unit"],
+                "counts_as_fluid": new_food["counts_as_fluid"],
+            }
+        )
         st.rerun()
 
 
@@ -1101,9 +1330,7 @@ targets_tab, recipes_tab, record_tab = st.tabs(
 with targets_tab:
     st.subheader("Patient weight (optional)")
     _w_col, _wu_col = st.columns([3, 1])
-    _weight_unit = _wu_col.radio(
-        "Unit", ["kg", "lbs"], horizontal=True, key="weight_unit"
-    )
+    _weight_unit = _wu_col.radio("Unit", ["kg", "lbs"], horizontal=True, key="weight_unit")
     # Seed the default only the very first time this key ever exists (see
     # the same comment by "recipe_name_input" above) -- avoids the
     # Session-State-vs-value= warning when Load Example presets this key.
@@ -1115,17 +1342,13 @@ with targets_tab:
         step=0.5,
         format="%.1f",
         help="Optional — used only to show kcal/kg, protein g/kg, and "
-             "fluid mL/kg in the Daily Intake Record tab. No target, equation, or "
-             "IBW is computed from it; assessment stays outside this app.",
+        "fluid mL/kg in the Daily Intake Record tab. No target, equation, or "
+        "IBW is computed from it; assessment stays outside this app.",
         key="patient_weight_input",
     )
-    patient_weight_kg = (
-        _weight_entered if _weight_unit == "kg" else _weight_entered / 2.20462
-    )
+    patient_weight_kg = _weight_entered if _weight_unit == "kg" else _weight_entered / 2.20462
     _kg_note = (
-        f" = {patient_weight_kg:.1f} kg"
-        if _weight_unit == "lbs" and _weight_entered > 0
-        else ""
+        f" = {patient_weight_kg:.1f} kg" if _weight_unit == "lbs" and _weight_entered > 0 else ""
     )
     st.caption(f"Blank/0 = not provided. Display only — not a target.{_kg_note}")
 
@@ -1153,10 +1376,10 @@ with targets_tab:
         if _target_key not in st.session_state:
             st.session_state[_target_key] = 0.0
         targets[nutrient_name] = col.number_input(
-            f"{disp_label} {unit}/day", min_value=0.0, step=step,
-            format=_TARGET_FORMAT_OVERRIDES.get(
-                nutrient_name, f"%.{min(decimals, 1)}f"
-            ),
+            f"{disp_label} {unit}/day",
+            min_value=0.0,
+            step=step,
+            format=_TARGET_FORMAT_OVERRIDES.get(nutrient_name, f"%.{min(decimals, 1)}f"),
             key=_target_key,
         )
 
@@ -1189,11 +1412,13 @@ with recipes_tab:
         removed_id = selected_blend_id
         del st.session_state.blends[removed_id]
         removed_rows = [
-            r for r in st.session_state.intake_log
+            r
+            for r in st.session_state.intake_log
             if r["source_type"] == "blend" and r["source_id"] == removed_id
         ]
         st.session_state.intake_log = [
-            r for r in st.session_state.intake_log
+            r
+            for r in st.session_state.intake_log
             if not (r["source_type"] == "blend" and r["source_id"] == removed_id)
         ]
         st.session_state.selected_blend_id = next(iter(st.session_state.blends))
@@ -1236,14 +1461,21 @@ with recipes_tab:
     # --- Add ingredient (reusable component, section 3.3) ---
     st.subheader(f'Add ingredient to "{selected_blend["name"]}"')
     new_ingredient = render_add_food_ui(
-        fn, na, lookup, fg, key_prefix=f"blend_{selected_blend_id}",
+        fn,
+        na,
+        lookup,
+        fg,
+        key_prefix=f"blend_{selected_blend_id}",
         add_button_label="Add to blend",
     )
     if new_ingredient is not None:
         st.session_state.next_ingr_id += 1
-        selected_blend["ingredients"].append({
-            "id": st.session_state.next_ingr_id, **new_ingredient,
-        })
+        selected_blend["ingredients"].append(
+            {
+                "id": st.session_state.next_ingr_id,
+                **new_ingredient,
+            }
+        )
         st.rerun()
 
     # --- Blend details ---
@@ -1272,7 +1504,7 @@ with recipes_tab:
         _note("Add ingredients above to get started.")
     else:
         st.caption(
-            "\"Counts as fluid\" drives the Daily Intake Record tab's "
+            '"Counts as fluid" drives the Daily Intake Record tab\'s '
             "Fluid provided row (full-volume I&O convention) — auto-checked for CNF "
             "Beverages and mL-basis custom foods, always your call "
             "otherwise (e.g. soup has no validated rule of thumb)."
@@ -1303,21 +1535,22 @@ with recipes_tab:
                 st.rerun()
 
         total_g = sum(
-            ing["grams"] for ing in selected_blend["ingredients"]
-            if ing.get("unit", "g") == "g"
+            ing["grams"] for ing in selected_blend["ingredients"] if ing.get("unit", "g") == "g"
         )
         total_mL = sum(
-            ing["grams"] for ing in selected_blend["ingredients"]
-            if ing.get("unit", "g") == "mL"
+            ing["grams"] for ing in selected_blend["ingredients"] if ing.get("unit", "g") == "mL"
         )
         if total_mL > 0:
             st.caption(f"Total ingredient weight: **{total_g:.0f} g** + **{total_mL:.0f} mL**")
         else:
             st.caption(f"Total ingredient weight: **{total_g:.0f} g**")
 
-        _blend_fluid_mL = blend_fluid_fraction(
-            selected_blend["ingredients"], selected_blend["measured_volume_mL"]
-        ) * selected_blend["measured_volume_mL"]
+        _blend_fluid_mL = (
+            blend_fluid_fraction(
+                selected_blend["ingredients"], selected_blend["measured_volume_mL"]
+            )
+            * selected_blend["measured_volume_mL"]
+        )
         if _blend_fluid_mL > 0:
             st.caption(f"Fluid from ingredients (this batch): **{_blend_fluid_mL:.0f} mL**")
 
@@ -1343,7 +1576,7 @@ with record_tab:
     delivery_method = st.text_input(
         "Delivery method (chart-note wording only)",
         help="Free text — syringe, gravity, etc. Doesn't affect any "
-             "calculation; every row's own amount is what's summed.",
+        "calculation; every row's own amount is what's summed.",
         key="delivery_method_input",
     )
 
@@ -1351,7 +1584,9 @@ with record_tab:
     # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a
     # meaningful single number). See FEED_LOG_REWORK.md section 3.4.
     _banner_totals = aggregate_intake(
-        st.session_state.intake_log, st.session_state.blends, na,
+        st.session_state.intake_log,
+        st.session_state.blends,
+        na,
         custom_foods=st.session_state.custom_foods,
     )
     _b_kcal = _banner_totals.nutrient_totals.get("energy_kcal", 0.0)
@@ -1375,16 +1610,18 @@ with record_tab:
             if tf_amount > 0:
                 tf_source_type, tf_source_id = _source_map[tf_source_label]
                 st.session_state.next_intake_id += 1
-                st.session_state.intake_log.append({
-                    "id": st.session_state.next_intake_id,
-                    "time": tf_time,
-                    "source_type": tf_source_type,
-                    "source_id": tf_source_id,
-                    "food_description": None,
-                    "amount": float(tf_amount),
-                    "unit": "mL",
-                    "counts_as_fluid": tf_source_type == "flush",
-                })
+                st.session_state.intake_log.append(
+                    {
+                        "id": st.session_state.next_intake_id,
+                        "time": tf_time,
+                        "source_type": tf_source_type,
+                        "source_id": tf_source_id,
+                        "food_description": None,
+                        "amount": float(tf_amount),
+                        "unit": "mL",
+                        "counts_as_fluid": tf_source_type == "flush",
+                    }
+                )
                 st.rerun()
             else:
                 st.warning("Enter a volume greater than 0 mL.")
@@ -1411,25 +1648,31 @@ with record_tab:
         _flush_total = 0.0
         if _flush_mode == "Single flush":
             _sf1, _sf2 = st.columns(2)
-            _flush_time = _sf1.time_input(
-                "Time (optional)", value=None, key="flush_single_time"
-            )
+            _flush_time = _sf1.time_input("Time (optional)", value=None, key="flush_single_time")
             _flush_total = _sf2.number_input(
-                "Volume (mL)", min_value=0.0, value=0.0, step=10.0,
+                "Volume (mL)",
+                min_value=0.0,
+                value=0.0,
+                step=10.0,
                 key="flush_single_amount",
             )
         elif _flush_mode == "With feeds (calculated)":
             _n_feeds = sum(
-                1 for r in st.session_state.intake_log
-                if r["source_type"] in ("blend", "formula")
+                1 for r in st.session_state.intake_log if r["source_type"] in ("blend", "formula")
             )
             _wf1, _wf2 = st.columns(2)
             _per_flush = _wf1.number_input(
-                "mL per flush", min_value=0.0, value=60.0, step=10.0,
+                "mL per flush",
+                min_value=0.0,
+                value=60.0,
+                step=10.0,
                 key="flush_per",
             )
             _per_feed = _wf2.number_input(
-                "Flushes per feed", min_value=1, value=2, step=1,
+                "Flushes per feed",
+                min_value=1,
+                value=2,
+                step=1,
                 key="flush_per_feed",
             )
             _flush_total = _per_flush * _per_feed * _n_feeds
@@ -1441,22 +1684,27 @@ with record_tab:
         else:
             _flush_total = st.number_input(
                 "Med flushes (mL/day — a rough figure is fine)",
-                min_value=0.0, value=100.0, step=10.0, key="flush_med_amount",
+                min_value=0.0,
+                value=100.0,
+                step=10.0,
+                key="flush_med_amount",
             )
             _flush_label = "Med flushes"
         if st.button("Add flush row", key="flush_add_btn"):
             if _flush_total > 0:
                 st.session_state.next_intake_id += 1
-                st.session_state.intake_log.append({
-                    "id": st.session_state.next_intake_id,
-                    "time": _flush_time,
-                    "source_type": "flush",
-                    "source_id": None,
-                    "food_description": _flush_label,
-                    "amount": float(_flush_total),
-                    "unit": "mL",
-                    "counts_as_fluid": True,
-                })
+                st.session_state.intake_log.append(
+                    {
+                        "id": st.session_state.next_intake_id,
+                        "time": _flush_time,
+                        "source_type": "flush",
+                        "source_id": None,
+                        "food_description": _flush_label,
+                        "amount": float(_flush_total),
+                        "unit": "mL",
+                        "counts_as_fluid": True,
+                    }
+                )
                 st.rerun()
             else:
                 st.warning("The flush total is 0 mL — nothing to add.")
@@ -1507,22 +1755,34 @@ with recipes_tab:
     _density_rows = []
     for _bid, _blend in st.session_state.blends.items():
         if not _blend["ingredients"]:
-            _density_rows.append({
-                "Blend": _blend["name"], "kcal/mL": "—", "protein g/mL": "—",
-                "Free-water fraction": "—", "Measured volume (mL)": _blend["measured_volume_mL"],
-                "Coverage": "—", "Note": "No ingredients yet",
-            })
+            _density_rows.append(
+                {
+                    "Blend": _blend["name"],
+                    "kcal/mL": "—",
+                    "protein g/mL": "—",
+                    "Free-water fraction": "—",
+                    "Measured volume (mL)": _blend["measured_volume_mL"],
+                    "Coverage": "—",
+                    "Note": "No ingredients yet",
+                }
+            )
             continue
         try:
             _b_profile, _b_fluid_frac = resolve_blend_profile(
                 _blend, na, st.session_state.custom_foods
             )
         except InvalidBlendError:
-            _density_rows.append({
-                "Blend": _blend["name"], "kcal/mL": "—", "protein g/mL": "—",
-                "Free-water fraction": "—", "Measured volume (mL)": 0,
-                "Coverage": "—", "Note": "Ingredients but no measured volume",
-            })
+            _density_rows.append(
+                {
+                    "Blend": _blend["name"],
+                    "kcal/mL": "—",
+                    "protein g/mL": "—",
+                    "Free-water fraction": "—",
+                    "Measured volume (mL)": 0,
+                    "Coverage": "—",
+                    "Note": "Ingredients but no measured volume",
+                }
+            )
             continue
         _b_ingredients = [
             Ingredient(i["food_code"], i["food_description"], i["grams"])
@@ -1532,15 +1792,17 @@ with recipes_tab:
             _b_ingredients, na, st.session_state.custom_foods
         )
         _n_full = sum(1 for n_sup, n_tot in _b_coverage.values() if n_tot == 0 or n_sup == n_tot)
-        _density_rows.append({
-            "Blend": _blend["name"],
-            "kcal/mL": round(_b_profile.kcal_per_mL, 3),
-            "protein g/mL": round(_b_profile.protein_per_mL, 3),
-            "Free-water fraction": round(_b_profile.free_water_fraction, 3),
-            "Measured volume (mL)": _b_profile.measured_final_volume_mL,
-            "Coverage": f"{_n_full}/{len(_b_coverage)} nutrients fully covered",
-            "Note": "",
-        })
+        _density_rows.append(
+            {
+                "Blend": _blend["name"],
+                "kcal/mL": round(_b_profile.kcal_per_mL, 3),
+                "protein g/mL": round(_b_profile.protein_per_mL, 3),
+                "Free-water fraction": round(_b_profile.free_water_fraction, 3),
+                "Measured volume (mL)": _b_profile.measured_final_volume_mL,
+                "Coverage": f"{_n_full}/{len(_b_coverage)} nutrients fully covered",
+                "Note": "",
+            }
+        )
     _density_df = pd.DataFrame(_density_rows)
     # kcal/mL, protein g/mL, and Free-water fraction mix floats with the
     # "—" placeholder for a not-yet-buildable blend — cast to str before
@@ -1583,7 +1845,9 @@ with record_tab:
     # breakdown -- all computed from the Intake Record via
     # src.intake.aggregate_intake() (design doc section 3.5). ---
     intake_totals = aggregate_intake(
-        st.session_state.intake_log, st.session_state.blends, na,
+        st.session_state.intake_log,
+        st.session_state.blends,
+        na,
         custom_foods=st.session_state.custom_foods,
     )
 
@@ -1596,9 +1860,7 @@ with record_tab:
             f'"{TUBE_FEED_LABEL}" vs "{FOOD_DRINK_LABEL}" vs "{TOTAL_LABEL}" — combined '
             "numbers, with the split still visible."
         )
-        st.dataframe(
-            generate_source_breakdown(intake_totals), width="stretch", hide_index=True
-        )
+        st.dataframe(generate_source_breakdown(intake_totals), width="stretch", hide_index=True)
 
         st.subheader("Daily Totals & Adequacy")
         st.caption(
@@ -1607,7 +1869,8 @@ with record_tab:
         )
 
         adequacy_df, hidden_main_names = generate_adequacy_report(
-            intake_totals.nutrient_totals, targets,
+            intake_totals.nutrient_totals,
+            targets,
             fluid_provided_mL=intake_totals.fluid_provided_mL,
             nutrient_coverage=intake_totals.nutrient_coverage,
         )
@@ -1620,24 +1883,24 @@ with record_tab:
             # render Daily Total at pandas' default 6-decimal precision;
             # %g shows each value at its registry-rounded precision with
             # no trailing zeros (author feedback 2026-07-20).
-            .map(color_status, subset=["Status"])
-            .format(lambda v: f"{v:g}", subset=["Daily Total"]),
+            .map(color_status, subset=["Status"]).format(
+                lambda v: f"{v:g}", subset=["Daily Total"]
+            ),
             width="stretch",
             hide_index=True,
         )
         if hidden_main_names:
-            st.caption(
-                "Not shown — no data from any ingredient: " + ", ".join(hidden_main_names)
-            )
+            st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
 
         with st.expander("BTF micro screen — vitamins & minerals not on labels"):
             st.caption(
-                "A one-time supplementation screen (ASPEN-style: \"does this "
+                'A one-time supplementation screen (ASPEN-style: "does this '
                 "day's intake need a multivitamin?\"), not a daily-tracked panel "
                 "like the table above."
             )
             clinical_df, hidden_clinical_names = generate_clinical_screen(
-                intake_totals.nutrient_totals, targets,
+                intake_totals.nutrient_totals,
+                targets,
                 nutrient_coverage=intake_totals.nutrient_coverage,
             )
             if len(clinical_df) > 0:
@@ -1645,9 +1908,9 @@ with record_tab:
                 clinical_display["Target"] = clinical_display["Target"].astype(str)
                 clinical_display["% Target"] = clinical_display["% Target"].astype(str)
                 st.dataframe(
-                    clinical_display.style
-                    .map(color_status, subset=["Status"])
-                    .format(lambda v: f"{v:g}", subset=["Daily Total"]),
+                    clinical_display.style.map(color_status, subset=["Status"]).format(
+                        lambda v: f"{v:g}", subset=["Daily Total"]
+                    ),
                     width="stretch",
                     hide_index=True,
                 )
@@ -1699,9 +1962,7 @@ with recipes_tab:
             if liquid_type == "Custom" and added_mL > 0:
                 cc1, cc2, cc3 = st.columns(3)
                 liq_kcal = cc1.number_input("kcal", min_value=0.0, value=0.0, step=1.0)
-                liq_protein = cc2.number_input(
-                    "Protein (g)", min_value=0.0, value=0.0, step=0.1
-                )
+                liq_protein = cc2.number_input("Protein (g)", min_value=0.0, value=0.0, step=0.1)
                 liq_water = cc3.number_input(
                     "Water (g)", min_value=0.0, value=float(added_mL), step=1.0
                 )
@@ -1786,10 +2047,7 @@ with recipes_tab:
     # blend, how does it compare to formula Y") ---
     st.subheader("Commercial Formula Comparator")
     if selected_profile is None:
-        _note(
-            "Add ingredients and a measured volume to the blend above "
-            "to use the comparator."
-        )
+        _note("Add ingredients and a measured volume to the blend above " "to use the comparator.")
     else:
         compare_volume_mL = st.number_input(
             "Compare at daily volume (mL)",
@@ -1797,7 +2055,7 @@ with recipes_tab:
             value=max(selected_profile.measured_final_volume_mL, 1200.0),
             step=50.0,
             help="An independent what-if volume for this comparison only -- "
-                 "it doesn't need to match the Intake Record (Daily Intake Record tab).",
+            "it doesn't need to match the Intake Record (Daily Intake Record tab).",
         )
         # Company filter (restored round 3, refined round 4): picking a
         # company narrows the SCROLL LIST only. Selections from other
@@ -1817,23 +2075,22 @@ with recipes_tab:
         )
         formula_pool = sorted(
             (
-                name for name, f in COMMERCIAL_FORMULAS.items()
+                name
+                for name, f in COMMERCIAL_FORMULAS.items()
                 if brand_filter == "All" or (f.get("brand") or "Other") == brand_filter
             ),
             key=lambda n: (COMMERCIAL_FORMULAS[n].get("brand") or "Other", n),
         )
         _already_picked = st.session_state.get("comparator_formula_select", [])
-        _multiselect_options = formula_pool + [
-            n for n in _already_picked if n not in formula_pool
-        ]
+        _multiselect_options = formula_pool + [n for n in _already_picked if n not in formula_pool]
         selected_formulas = st.multiselect(
             "Compare against (up to 4)",
             _multiselect_options,
             max_selections=4,
             # Feed name FIRST, brand after: multiselect chips clip from the end,
-        # and the brand ("Nestlé Health Science") is the useless-to-clip-to
-        # part -- leading with the feed name keeps it readable when truncated.
-        format_func=lambda n: f"{n} — {COMMERCIAL_FORMULAS[n].get('brand') or 'Other'}",
+            # and the brand ("Nestlé Health Science") is the useless-to-clip-to
+            # part -- leading with the feed name keeps it readable when truncated.
+            format_func=lambda n: f"{n} — {COMMERCIAL_FORMULAS[n].get('brand') or 'Other'}",
             key="comparator_formula_select",
         )
         st.caption(
@@ -1857,13 +2114,17 @@ with record_tab:
         st.caption("Add Intake Record rows above to generate a chart note.")
     else:
         _ordered_note_rows = sorted_intake_log(st.session_state.intake_log)
-        _tube_note_rows = [r for r in _ordered_note_rows if r["source_type"] in ("blend", "formula", "flush")]
+        _tube_note_rows = [
+            r for r in _ordered_note_rows if r["source_type"] in ("blend", "formula", "flush")
+        ]
         _oral_note_rows = [r for r in _ordered_note_rows if r["source_type"] == "oral"]
 
         _note_lines = []
         if _tube_note_rows:
             _note_lines.append(
-                f"BTF via {delivery_method}: " + "; ".join(_format_tube_feed_bits(_tube_note_rows)) + "."
+                f"BTF via {delivery_method}: "
+                + "; ".join(_format_tube_feed_bits(_tube_note_rows))
+                + "."
             )
         if _oral_note_rows:
             _note_lines.append("Oral: " + "; ".join(_format_oral_bits(_oral_note_rows)) + ".")
@@ -1872,7 +2133,9 @@ with record_tab:
         _daily_cho = intake_totals.nutrient_totals.get("carbohydrate_g", 0.0)
         _daily_protein = intake_totals.nutrient_totals.get("protein_g", 0.0)
         _daily_fat = intake_totals.nutrient_totals.get("fat_g", 0.0)
-        _weight_bit = f" ({_daily_protein / patient_weight_kg:.1f} g/kg)" if patient_weight_kg > 0 else ""
+        _weight_bit = (
+            f" ({_daily_protein / patient_weight_kg:.1f} g/kg)" if patient_weight_kg > 0 else ""
+        )
         _note_lines.append(
             f"Provides ~{_daily_kcal:.0f} kcal, {_daily_cho:.0f} g CHO, "
             f"{_daily_protein:.0f} g protein{_weight_bit}, {_daily_fat:.0f} g fat."
@@ -1906,19 +2169,33 @@ with record_tab:
         if st.session_state.intake_log:
             _export_rows = []
             for row in sorted_intake_log(st.session_state.intake_log):
-                _export_rows.append({
-                    "Time": row["time"].strftime("%H:%M") if row["time"] else "",
-                    "Section": TUBE_FEED_LABEL if row["source_type"] in ("blend", "formula", "flush") else FOOD_DRINK_LABEL,
-                    "Source type": row["source_type"],
-                    "Source": _intake_row_label(row).split(" — ")[1],
-                    "Amount": row["amount"],
-                    "Unit": row["unit"],
-                    "Counts as fluid": row["counts_as_fluid"],
-                })
+                _export_rows.append(
+                    {
+                        "Time": row["time"].strftime("%H:%M") if row["time"] else "",
+                        "Section": (
+                            TUBE_FEED_LABEL
+                            if row["source_type"] in ("blend", "formula", "flush")
+                            else FOOD_DRINK_LABEL
+                        ),
+                        "Source type": row["source_type"],
+                        "Source": _intake_row_label(row).split(" — ")[1],
+                        "Amount": row["amount"],
+                        "Unit": row["unit"],
+                        "Counts as fluid": row["counts_as_fluid"],
+                    }
+                )
             pd.DataFrame(_export_rows).to_excel(writer, sheet_name="Intake Record", index=False)
         else:
             pd.DataFrame(
-                {"Time": [], "Section": [], "Source type": [], "Source": [], "Amount": [], "Unit": [], "Counts as fluid": []}
+                {
+                    "Time": [],
+                    "Section": [],
+                    "Source type": [],
+                    "Source": [],
+                    "Amount": [],
+                    "Unit": [],
+                    "Counts as fluid": [],
+                }
             ).to_excel(writer, sheet_name="Intake Record", index=False)
 
         # One sheet per blend: ingredient list + measured volume.
@@ -1939,12 +2216,14 @@ with record_tab:
         # Daily totals sheets, if the Intake Record has anything logged.
         if st.session_state.intake_log:
             generate_adequacy_report(
-                intake_totals.nutrient_totals, targets,
+                intake_totals.nutrient_totals,
+                targets,
                 fluid_provided_mL=intake_totals.fluid_provided_mL,
                 nutrient_coverage=intake_totals.nutrient_coverage,
             )[0].to_excel(writer, sheet_name="Adequacy", index=False)
             generate_clinical_screen(
-                intake_totals.nutrient_totals, targets,
+                intake_totals.nutrient_totals,
+                targets,
                 nutrient_coverage=intake_totals.nutrient_coverage,
             )[0].to_excel(writer, sheet_name="Micro Screen", index=False)
             generate_source_breakdown(intake_totals).to_excel(

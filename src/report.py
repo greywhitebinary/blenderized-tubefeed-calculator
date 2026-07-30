@@ -84,8 +84,8 @@ except ImportError:
 
 
 # Adequacy status thresholds (Appendix A6)
-BELOW_THRESHOLD = 0.90   # < 90% → Below
-ABOVE_THRESHOLD = 1.10   # > 110% → Above
+BELOW_THRESHOLD = 0.90  # < 90% → Below
+ABOVE_THRESHOLD = 1.10  # > 110% → Above
 
 # Source column text (P1-4 / P1-6): tells the RD whether a custom food
 # entered from a nutrition facts label could ever supply this nutrient.
@@ -398,8 +398,7 @@ def generate_formula_comparison(
                 "BTF": round(profile.kcal_per_mL, 3),
                 "Formula": COMMERCIAL_FORMULAS[formula_name]["kcal_per_mL"],
                 "Difference": round(
-                    profile.kcal_per_mL
-                    - COMMERCIAL_FORMULAS[formula_name]["kcal_per_mL"],
+                    profile.kcal_per_mL - COMMERCIAL_FORMULAS[formula_name]["kcal_per_mL"],
                     3,
                 ),
             },
@@ -408,8 +407,7 @@ def generate_formula_comparison(
                 "BTF": round(profile.protein_per_mL, 3),
                 "Formula": COMMERCIAL_FORMULAS[formula_name]["protein_per_mL"],
                 "Difference": round(
-                    profile.protein_per_mL
-                    - COMMERCIAL_FORMULAS[formula_name]["protein_per_mL"],
+                    profile.protein_per_mL - COMMERCIAL_FORMULAS[formula_name]["protein_per_mL"],
                     3,
                 ),
             },

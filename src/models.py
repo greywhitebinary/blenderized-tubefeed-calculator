@@ -20,7 +20,6 @@ Key design decisions (from CONTEXT.md §1):
 from dataclasses import dataclass, field
 from enum import Enum
 
-
 # ---------------------------------------------------------------------------
 # Recipe-building blocks
 # ---------------------------------------------------------------------------

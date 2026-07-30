@@ -24,7 +24,6 @@ import pytest
 from src.nutrients import load_registry
 from src.targets import empty_targets
 
-
 # ---------------------------------------------------------------------------
 # empty_targets() shape: keys come from the registry's offer_target column
 # ---------------------------------------------------------------------------
@@ -47,7 +46,7 @@ def test_empty_targets_keys_match_registry_offer_target_flags():
 
 
 def test_empty_targets_all_values_are_zero():
-    """"Empty" means every value starts at 0.0 (blank) -- this is the
+    """ "Empty" means every value starts at 0.0 (blank) -- this is the
     ONLY way targets are seeded in this app; there is no DRI/default
     variant to fall back to. A nonzero value here would mean a default
     crept back in.

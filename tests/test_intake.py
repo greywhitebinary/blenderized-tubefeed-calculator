@@ -29,16 +29,13 @@ from src.intake import (
 
 from tests.conftest import FOOD_BANANA
 
-
 # ---------------------------------------------------------------------------
 # aggregate_intake() for each source_type
 # ---------------------------------------------------------------------------
 
 
 class TestAggregateIntakeBySourceType:
-    def test_blend_row_scales_by_the_blends_own_densities(
-        self, blends, nutrient_amount_df
-    ):
+    def test_blend_row_scales_by_the_blends_own_densities(self, blends, nutrient_amount_df):
         """A blend row's contribution = that blend's per-mL density x the
         row's amount (calculate_daily_totals() reused with "amount"
         standing in for "daily volume" -- see aggregate_intake()'s
@@ -203,9 +200,7 @@ class TestNoOverDrawFlag:
         # Specifically NOT the full 500 mL batch's 525 kcal:
         assert totals.nutrient_totals["energy_kcal"] != pytest.approx(525.0)
 
-    def test_logging_the_same_blend_twice_in_a_day_just_sums(
-        self, blends, nutrient_amount_df
-    ):
+    def test_logging_the_same_blend_twice_in_a_day_just_sums(self, blends, nutrient_amount_df):
         """Logging a blend more than once a day is the ordinary
         fridge-batch case (make it once, draw from it across the day) --
         not an anomaly. Two 300 mL boluses of the same 500 mL-batch
@@ -218,8 +213,22 @@ class TestNoOverDrawFlag:
         more than once today," which is normal.
         """
         intake_log = [
-            {"id": 1, "time": dtime(8, 0), "source_type": "blend", "source_id": 1, "amount": 300.0, "unit": "mL"},
-            {"id": 2, "time": dtime(14, 0), "source_type": "blend", "source_id": 1, "amount": 300.0, "unit": "mL"},
+            {
+                "id": 1,
+                "time": dtime(8, 0),
+                "source_type": "blend",
+                "source_id": 1,
+                "amount": 300.0,
+                "unit": "mL",
+            },
+            {
+                "id": 2,
+                "time": dtime(14, 0),
+                "source_type": "blend",
+                "source_id": 1,
+                "amount": 300.0,
+                "unit": "mL",
+            },
         ]
         totals = aggregate_intake(intake_log, blends, nutrient_amount_df)
 
@@ -266,9 +275,7 @@ class TestInvalidBlendError:
         with pytest.raises(InvalidBlendError):
             resolve_blend_profile(bad_blend, nutrient_amount_df)
 
-    def test_blend_with_no_ingredients_and_zero_volume_does_not_raise(
-        self, nutrient_amount_df
-    ):
+    def test_blend_with_no_ingredients_and_zero_volume_does_not_raise(self, nutrient_amount_df):
         """An empty, brand-new blend (no ingredients yet, volume not
         measured yet) is not invalid -- it just has nothing in it. The
         guard is specifically "has ingredients but no volume", not "has
@@ -329,9 +336,30 @@ class TestMixedDay:
         which must in turn equal the top-level IntakeTotals fields.
         """
         intake_log = [
-            {"id": 1, "time": dtime(8, 0), "source_type": "blend", "source_id": 1, "amount": 300.0, "unit": "mL"},
-            {"id": 2, "time": dtime(12, 0), "source_type": "formula", "source_id": "Test Formula 1.2", "amount": 400.0, "unit": "mL"},
-            {"id": 3, "time": dtime(15, 0), "source_type": "flush", "source_id": None, "amount": 100.0, "unit": "mL"},
+            {
+                "id": 1,
+                "time": dtime(8, 0),
+                "source_type": "blend",
+                "source_id": 1,
+                "amount": 300.0,
+                "unit": "mL",
+            },
+            {
+                "id": 2,
+                "time": dtime(12, 0),
+                "source_type": "formula",
+                "source_id": "Test Formula 1.2",
+                "amount": 400.0,
+                "unit": "mL",
+            },
+            {
+                "id": 3,
+                "time": dtime(15, 0),
+                "source_type": "flush",
+                "source_id": None,
+                "amount": 100.0,
+                "unit": "mL",
+            },
             {
                 "id": 4,
                 "time": None,

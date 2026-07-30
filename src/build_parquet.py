@@ -63,9 +63,7 @@ def load_parquet(name: str, parquet_dir: Path = PARQUET_DIR) -> pd.DataFrame:
     """
     path = parquet_dir / f"{name}.parquet"
     if not path.exists():
-        raise FileNotFoundError(
-            f"{path} not found. Run build_parquet() first to generate it."
-        )
+        raise FileNotFoundError(f"{path} not found. Run build_parquet() first to generate it.")
     return pd.read_parquet(path)
 
 
@@ -77,9 +75,7 @@ def load_all_parquet(parquet_dir: Path = PARQUET_DIR) -> dict[str, pd.DataFrame]
         "nutrient_amount": load_parquet("nutrient_amount", parquet_dir),
         "measure_name": load_parquet("measure_name", parquet_dir),
         "measure_type": load_parquet("measure_type", parquet_dir),
-        "measure_weight_conversion": load_parquet(
-            "measure_weight_conversion", parquet_dir
-        ),
+        "measure_weight_conversion": load_parquet("measure_weight_conversion", parquet_dir),
         "food_group": load_parquet("food_group", parquet_dir),
     }
 

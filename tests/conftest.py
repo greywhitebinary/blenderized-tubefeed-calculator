@@ -40,25 +40,24 @@ import pytest
 
 from src.models import Ingredient, Recipe
 
-
 # ---------------------------------------------------------------------------
 # Food codes used across both test files. Real CNF Food_Codes are 5-digit
 # numbers from the real ~5,993-row Food_Name.csv; these small numbers are
 # obviously fixture-only and can never collide with a real Food_Code.
 # ---------------------------------------------------------------------------
 
-FOOD_CHICKEN = 1001   # Chicken breast, cooked -- a lean protein ingredient
-FOOD_RICE = 1002      # Rice, white, cooked -- a carbohydrate ingredient
-FOOD_OIL = 1003       # Canola oil -- a pure-fat, zero-water ingredient
-FOOD_BANANA = 1004    # Banana, raw -- used as an oral/Food & Drink item
-FOOD_WATER = 1005     # Plain water -- 100 g water per 100 g, 0 kcal
-FOOD_ABSENT = 9999    # Deliberately has NO rows in nutrient_amount_df --
-                      # simulates a CNF food_code with no nutrient data,
-                      # e.g. a food whose CNF record is incomplete.
+FOOD_CHICKEN = 1001  # Chicken breast, cooked -- a lean protein ingredient
+FOOD_RICE = 1002  # Rice, white, cooked -- a carbohydrate ingredient
+FOOD_OIL = 1003  # Canola oil -- a pure-fat, zero-water ingredient
+FOOD_BANANA = 1004  # Banana, raw -- used as an oral/Food & Drink item
+FOOD_WATER = 1005  # Plain water -- 100 g water per 100 g, 0 kcal
+FOOD_ABSENT = 9999  # Deliberately has NO rows in nutrient_amount_df --
+# simulates a CNF food_code with no nutrient data,
+# e.g. a food whose CNF record is incomplete.
 
 CUSTOM_PROTEIN_SHAKE = -1  # A custom food entered from a nutrition-facts
-                           # label (negative food_code, per Appendix A9 --
-                           # never collides with a real CNF Food_Code).
+# label (negative food_code, per Appendix A9 --
+# never collides with a real CNF Food_Code).
 
 
 @pytest.fixture
@@ -75,12 +74,12 @@ def nutrient_amount_df() -> pd.DataFrame:
     rows = [
         # Chicken breast, cooked -- per 100 g
         (FOOD_CHICKEN, 208, 165.0),  # energy_kcal
-        (FOOD_CHICKEN, 203, 31.0),   # protein_g
-        (FOOD_CHICKEN, 255, 65.0),   # water_g (moisture)
-        (FOOD_CHICKEN, 307, 74.0),   # sodium_mg
-        (FOOD_CHICKEN, 204, 3.6),    # fat_g
-        (FOOD_CHICKEN, 291, 0.0),    # fibre_g
-        (FOOD_CHICKEN, 205, 0.0),    # carbohydrate_g
+        (FOOD_CHICKEN, 203, 31.0),  # protein_g
+        (FOOD_CHICKEN, 255, 65.0),  # water_g (moisture)
+        (FOOD_CHICKEN, 307, 74.0),  # sodium_mg
+        (FOOD_CHICKEN, 204, 3.6),  # fat_g
+        (FOOD_CHICKEN, 291, 0.0),  # fibre_g
+        (FOOD_CHICKEN, 205, 0.0),  # carbohydrate_g
         # Rice, white, cooked -- per 100 g
         (FOOD_RICE, 208, 130.0),
         (FOOD_RICE, 203, 2.7),
@@ -106,8 +105,8 @@ def nutrient_amount_df() -> pd.DataFrame:
         (FOOD_BANANA, 291, 2.6),
         (FOOD_BANANA, 205, 23.0),
         (FOOD_BANANA, 306, 358.0),  # potassium_mg
-        (FOOD_BANANA, 301, 5.0),    # calcium_mg
-        (FOOD_BANANA, 303, 0.26),   # iron_mg
+        (FOOD_BANANA, 301, 5.0),  # calcium_mg
+        (FOOD_BANANA, 303, 0.26),  # iron_mg
         # Plain water -- per 100 g is 100 g water, nothing else
         (FOOD_WATER, 208, 0.0),
         (FOOD_WATER, 203, 0.0),

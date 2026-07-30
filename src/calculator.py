@@ -100,9 +100,7 @@ def _scale_ingredients(
 
     # Step 2: Filter Nutrient_Amount to only the codes we track
     tracked_codes = list(NUTRIENT_CODES.values())
-    na_filtered = nutrient_amount_df[
-        nutrient_amount_df["Nutrient_Code"].isin(tracked_codes)
-    ].copy()
+    na_filtered = nutrient_amount_df[nutrient_amount_df["Nutrient_Code"].isin(tracked_codes)].copy()
 
     # Step 3: Merge ingredients with nutrient amounts
     #   inner join: only rows where the food_code exists in both tables.
@@ -206,9 +204,7 @@ def compute_nutrient_totals(
     Returns:
         Dict of nutrient_name -> total amount (e.g. "energy_kcal": 74.3).
     """
-    nutrient_totals, _merged = _scale_ingredients(
-        ingredients, nutrient_amount_df, custom_foods
-    )
+    nutrient_totals, _merged = _scale_ingredients(ingredients, nutrient_amount_df, custom_foods)
     return nutrient_totals
 
 
@@ -224,9 +220,7 @@ def compute_nutrient_totals_and_coverage(
     and oral rows outside a full Recipe/NutrientProfile, without
     duplicating the merge-and-scale logic a second time.
     """
-    nutrient_totals, merged = _scale_ingredients(
-        ingredients, nutrient_amount_df, custom_foods
-    )
+    nutrient_totals, merged = _scale_ingredients(ingredients, nutrient_amount_df, custom_foods)
     coverage = _coverage_from_merged(ingredients, merged, custom_foods)
     return nutrient_totals, coverage
 
@@ -402,9 +396,7 @@ def required_daily_volume(
     """
     vol_for_kcal = target_kcal / profile.kcal_per_mL if profile.kcal_per_mL > 0 else float("inf")
     vol_for_protein = (
-        target_protein_g / profile.protein_per_mL
-        if profile.protein_per_mL > 0
-        else float("inf")
+        target_protein_g / profile.protein_per_mL if profile.protein_per_mL > 0 else float("inf")
     )
     return max(vol_for_kcal, vol_for_protein)
 
@@ -431,14 +423,54 @@ def required_daily_volume(
 # only so the app still runs with *some* reference data if the CSV is
 # ever missing, not as a mirror of the full catalog.
 _FORMULAS_FALLBACK: dict[str, dict[str, float]] = {
-    "Isosource Fibre 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.070, "free_water_per_mL": 0.766, "brand": "Nestlé Health Science"},
-    "Isosource Fibre 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.054, "free_water_per_mL": 0.805, "brand": "Nestlé Health Science"},
-    "Isosource Fibre 1.0 HP": {"kcal_per_mL": 1.0, "protein_per_mL": 0.064, "free_water_per_mL": 0.840, "brand": "Nestlé Health Science"},
-    "Nepro": {"kcal_per_mL": 1.8, "protein_per_mL": 0.081, "free_water_per_mL": 0.727, "brand": "Abbott Nutrition"},
-    "Peptamen AF 1.2": {"kcal_per_mL": 1.2, "protein_per_mL": 0.076, "free_water_per_mL": 0.810, "brand": "Nestlé Health Science"},
-    "Peptamen Intense 1.0 HP": {"kcal_per_mL": 1.0, "protein_per_mL": 0.092, "free_water_per_mL": 0.840, "brand": "Nestlé Health Science"},
-    "Resource 2.0": {"kcal_per_mL": 2.0, "protein_per_mL": 0.084, "free_water_per_mL": 0.690, "brand": "Nestlé Health Science"},
-    "Peptamen 1.5": {"kcal_per_mL": 1.5, "protein_per_mL": 0.068, "free_water_per_mL": 0.770, "brand": "Nestlé Health Science"},
+    "Isosource Fibre 1.5": {
+        "kcal_per_mL": 1.5,
+        "protein_per_mL": 0.070,
+        "free_water_per_mL": 0.766,
+        "brand": "Nestlé Health Science",
+    },
+    "Isosource Fibre 1.2": {
+        "kcal_per_mL": 1.2,
+        "protein_per_mL": 0.054,
+        "free_water_per_mL": 0.805,
+        "brand": "Nestlé Health Science",
+    },
+    "Isosource Fibre 1.0 HP": {
+        "kcal_per_mL": 1.0,
+        "protein_per_mL": 0.064,
+        "free_water_per_mL": 0.840,
+        "brand": "Nestlé Health Science",
+    },
+    "Nepro": {
+        "kcal_per_mL": 1.8,
+        "protein_per_mL": 0.081,
+        "free_water_per_mL": 0.727,
+        "brand": "Abbott Nutrition",
+    },
+    "Peptamen AF 1.2": {
+        "kcal_per_mL": 1.2,
+        "protein_per_mL": 0.076,
+        "free_water_per_mL": 0.810,
+        "brand": "Nestlé Health Science",
+    },
+    "Peptamen Intense 1.0 HP": {
+        "kcal_per_mL": 1.0,
+        "protein_per_mL": 0.092,
+        "free_water_per_mL": 0.840,
+        "brand": "Nestlé Health Science",
+    },
+    "Resource 2.0": {
+        "kcal_per_mL": 2.0,
+        "protein_per_mL": 0.084,
+        "free_water_per_mL": 0.690,
+        "brand": "Nestlé Health Science",
+    },
+    "Peptamen 1.5": {
+        "kcal_per_mL": 1.5,
+        "protein_per_mL": 0.068,
+        "free_water_per_mL": 0.770,
+        "brand": "Nestlé Health Science",
+    },
 }
 
 # Per-mL nutrient columns beyond kcal/protein — same "Nutrition Facts
@@ -450,9 +482,15 @@ _FORMULAS_FALLBACK: dict[str, dict[str, float]] = {
 # whose label doesn't disclose one of these gets None, never a
 # fabricated 0.
 _OPTIONAL_NUTRIENT_COLUMNS = (
-    "fat_per_mL", "carbohydrate_per_mL", "fibre_per_mL",
-    "sodium_per_mL", "potassium_per_mL", "calcium_per_mL",
-    "iron_per_mL", "magnesium_per_mL", "phosphorus_per_mL",
+    "fat_per_mL",
+    "carbohydrate_per_mL",
+    "fibre_per_mL",
+    "sodium_per_mL",
+    "potassium_per_mL",
+    "calcium_per_mL",
+    "iron_per_mL",
+    "magnesium_per_mL",
+    "phosphorus_per_mL",
 )
 
 
@@ -493,9 +531,7 @@ def _load_commercial_formulas(pack: str = DEFAULT_PACK) -> dict[str, dict[str, f
         entry: dict[str, float] = {
             "kcal_per_mL": float(row["kcal_per_mL"]),
             "protein_per_mL": float(row["protein_per_mL"]),
-            "free_water_per_mL": (
-                float(free_water) if pd.notna(free_water) else None
-            ),
+            "free_water_per_mL": (float(free_water) if pd.notna(free_water) else None),
             "brand": brand if pd.notna(brand) else None,
         }
         for col in _OPTIONAL_NUTRIENT_COLUMNS:
@@ -530,8 +566,7 @@ def compare_with_formula(
     formula = COMMERCIAL_FORMULAS.get(formula_name)
     if formula is None:
         raise ValueError(
-            f"Unknown formula '{formula_name}'. "
-            f"Available: {list(COMMERCIAL_FORMULAS.keys())}"
+            f"Unknown formula '{formula_name}'. " f"Available: {list(COMMERCIAL_FORMULAS.keys())}"
         )
 
     return {
@@ -607,6 +642,7 @@ if __name__ == "__main__":
     # Quick test: build a simple recipe and calculate its profile.
     # Uses real CNF data — chicken breast + rice + canola oil.
     import sys
+
     sys.path.insert(0, ".")
 
     from src.data_loader import load_nutrient_amount, load_food_name
@@ -643,8 +679,10 @@ if __name__ == "__main__":
     )
 
     print(f"\nRecipe: {recipe.name}")
-    print(f"  {len(recipe.ingredients)} ingredients, {recipe.added_water_mL} mL added water, "
-          f"{recipe.measured_final_volume_mL} mL measured volume")
+    print(
+        f"  {len(recipe.ingredients)} ingredients, {recipe.added_water_mL} mL added water, "
+        f"{recipe.measured_final_volume_mL} mL measured volume"
+    )
 
     print("\nCalculating profile...")
     profile = calculate_profile(recipe, na)
@@ -674,7 +712,9 @@ if __name__ == "__main__":
     print(f"  New volume:      {diluted.measured_final_volume_mL:.0f} mL")
     print(f"  kcal/mL:         {diluted.kcal_per_mL:.3f} (was {profile.kcal_per_mL:.3f})")
     print(f"  protein g/mL:    {diluted.protein_per_mL:.3f} (was {profile.protein_per_mL:.3f})")
-    print(f"  free water frac: {diluted.free_water_fraction:.3f} (was {profile.free_water_fraction:.3f})")
+    print(
+        f"  free water frac: {diluted.free_water_fraction:.3f} (was {profile.free_water_fraction:.3f})"
+    )
 
     # Required volume to meet 1800 kcal, 75g protein
     req_vol = required_daily_volume(profile, target_kcal=1800, target_protein_g=75)
@@ -684,8 +724,12 @@ if __name__ == "__main__":
     # Formula comparison
     comparison = compare_with_formula(profile, "Peptamen 1.5", 1200)
     print(f"\n--- BTF vs Peptamen 1.5 at 1200 mL/day ---")
-    print(f"  BTF:     {comparison['btf']['kcal']:.0f} kcal, {comparison['btf']['protein_g']:.1f} g protein")
-    print(f"  Formula: {comparison['formula']['kcal']:.0f} kcal, {comparison['formula']['protein_g']:.1f} g protein")
+    print(
+        f"  BTF:     {comparison['btf']['kcal']:.0f} kcal, {comparison['btf']['protein_g']:.1f} g protein"
+    )
+    print(
+        f"  Formula: {comparison['formula']['kcal']:.0f} kcal, {comparison['formula']['protein_g']:.1f} g protein"
+    )
 
     vol_needed = volume_to_match_formula_kcal(profile, "Peptamen 1.5", 1200)
     print(f"\n  BTF volume needed to match Peptamen 1.5's kcal: {vol_needed:.0f} mL")
