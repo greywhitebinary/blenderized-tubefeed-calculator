@@ -366,33 +366,90 @@ author can compare their fixes or unblock themselves if stuck for too long.
   See the phase-level record below for detail. **The UI is PINNED at the
   author's request** — see the pinned-issues list below before touching
   layout.
-- [ ] Week 3 — Build to Last — IN PROGRESS (2026-07-30). Sub-items:
+- [ ] Week 3 — Build to Last — IN PROGRESS (2026-07-30; first batch landed
+  in commits 4aa69d7, b1453b5, e9b4f33, 4d50166). Sub-items:
   - [x] **Streamlit Community Cloud deploy — DONE 2026-07-23.** Live at
     <https://btfcalc.streamlit.app>, auto-deploying from `main`. See the
     deploy entry in this section and §11 for the version-skew gotchas.
-  - [ ] **pytest suite** — `tests/` is still empty. The four
-    `scripts/*.py` checkers are real coverage but nothing runs them
-    automatically; see the broken-checker item in the pinned list below
-    for what that costs.
-  - [ ] **GitHub Actions CI** — no `.github/` directory yet. The CNF
-    CSVs **are** committed (13 tracked files, whole repo history ~14 MB),
-    so a runner can execute `verify_backend.py` — it is just slow
-    (565k-row CSV parse), which argues for a separate job rather than
-    skipping it.
-  - [ ] **Split runtime vs dev dependencies** — `requirements.txt` ships
-    jupyter/pytest/black/ruff to production, so Cloud installs ~130
-    packages it never uses and rebuilds are slow. See §11's deploy
-    gotchas.
-  - [ ] **Fix `scripts/check_tab_restructure.py`** — failing on `main`
-    since 2026-07-23; see the pinned list below.
+  - [x] **pytest suite — DONE** (2026-07-30, commits 4aa69d7 + b1453b5).
+    **57 tests, 0.07s, no CNF load** — small hand-built fixture
+    DataFrames only; `verify_backend.py` keeps the real-data integration
+    role. `tests/conftest.py` + `test_calculator.py` (15) +
+    `test_intake.py` (12) + `test_nutrients.py` (13) + `test_report.py`
+    (13) + `test_targets.py` (5). Two things worth knowing about how
+    they're written: (1) the tests read the **registry at test time**
+    rather than hardcoding a nutrient list, so they survive an RD editing
+    `nutrients.csv`; the three deliberately frozen values (sodium's code
+    307 and its UL `target_type`, magnesium/phosphorus having no target)
+    are commented with which documented decision each one guards.
+    (2) The over-draw bug is pinned **structurally**, not just
+    numerically — `test_intake.py` asserts the *absence* of any
+    over-draw field on `IntakeTotals` by checking the dataclass's field
+    set, so re-adding a batch-mismatch flag fails the suite rather than
+    passing quietly. Neither agent found a backend bug; behaviour matched
+    the documentation throughout.
+  - [x] **GitHub Actions CI — DONE** (2026-07-30, commit e9b4f33).
+    `.github/workflows/ci.yml`, two jobs. Fast job on push/PR: pytest +
+    ruff + black. **Both lint steps are `continue-on-error` on purpose**
+    — black would reformat 22 of 25 files (~1,571 lines) and that diff is
+    not approved, so failing CI on day one for pre-existing style would
+    be noise, not signal. Drop `continue-on-error` once the reformat
+    lands. Separate `verify-backend` job on manual dispatch + weekly
+    schedule (not every push): the CNF CSVs **are** committed (13 tracked
+    files, ~14 MB history) so a runner genuinely can run it, but a
+    565k-row parse shouldn't gate every push. Note `"on":` is quoted in
+    the YAML — bare `on` parses as boolean `true` under YAML's default
+    resolver.
+  - [x] **Runtime/dev dependency split — DONE** (2026-07-30, commit
+    e9b4f33). Runtime is now pandas + streamlit (pin intact) + openpyxl.
+    **pyarrow moved to dev, and the reasoning matters:** `data_loader`
+    prefers a Parquet cache under `data/processed/`, but that directory
+    is gitignored with zero tracked files, so the deployed app — always a
+    fresh clone — has **never once called `read_parquet`** and has been
+    on the CSV fallback since launch. The dependency was already dead
+    weight in production. **The local case is the reverse and is a
+    trap:** a local checkout usually *does* have the cache, and
+    `data_loader.py:53-54` calls `read_parquet` as soon as those files
+    exist with no `try`/`except`, so a runtime-only `pip install` would
+    `ImportError` on startup. `requirements.txt` now opens with a pointer
+    to install `requirements-dev.txt` locally. **Open, needs author
+    approval:** a two-line `try/except ImportError` fallback to CSV in
+    `data_loader` removes the sharp edge entirely, but touches verified
+    backend code, so it was not done unasked.
+  - [x] **`scripts/check_tab_restructure.py` — FIXED** (2026-07-30,
+    commit e9b4f33). One character: `split(" — ", 1)[-1]` → `[0]`, since
+    1f3af36 moved the feed name to *before* the separator. Assertion
+    strength unchanged. Now prints `=== TAB RESTRUCTURE APPTTEST
+    PASSED ===`.
   - [ ] **Formula rows don't contribute `nutrient_coverage`** — known
     limitation recorded 2026-07-23 and not yet fixed; see the pinned
     list below.
   - [ ] **`thinning_liquids.csv` pack-awareness** — the last loader with
     a hardcoded `canada` path. Ride-along with the USDA pack work.
   - [ ] **USDA SR Legacy supplement** — the substantive feature work of
-    Week 3, and the one an RD would notice. Design proposal first, author
-    sign-off, then implementation — see `HANDOFF.md` Phase 2 item 4.
+    Week 3, and the one an RD would notice. **Design proposal written and
+    awaiting the author's sign-off: `USDA_SUPPLEMENT.md`** (2026-07-30,
+    commit 4d50166). No code, no data artifact built — five questions in
+    its §10 need her ruling first. Two findings from it belong here
+    because they change the decision, not just the implementation:
+    - **CNF's own `Food_Name.csv` has a `USDA_NDB_Code` column, 80%
+      populated**, matching SR Legacy's `NDB_number` for ~96% of rows.
+      Deduplicating CNF against USDA is a real key join, not fuzzy
+      description matching. This makes the build far more trustworthy
+      than expected.
+    - **The premise in `BUSINESS_CASE.md` §8 is weaker than written.**
+      Its motivating cultural-food examples are *already in CNF 2026* —
+      verified directly against `Food_Name.csv`: plantain 6 entries,
+      cassava 2, okra 6, yam 7, taro 13, breadfruit 4, jackfruit 2. Bok
+      choy is absent from USDA and present in CNF (the opposite of the
+      assumed direction); egusi and dal are in neither, so only custom
+      food entry addresses those. After filtering, 7,793 SR Legacy foods
+      reduce to 1,628 genuinely new rows, **66% of which are fine-grained
+      USDA butchery cuts** irrelevant to a blended feed. The supplement
+      still has value — a long tail of USDA-specific whole foods, plus
+      redundancy — but "fixes the ethnic-food gap" is not that value.
+      **Author to decide** whether to reframe §8, narrow the scope to a
+      hand-curated list, or deprioritise the item.
 - [ ] Week 4 — Ship + Pitch — NOT STARTED (polish from RD pilot feedback,
   validation appendix, and the AI-assist features moved here from Week 3:
   label-photo extraction and PDF → formulas extraction. Saving/loading a
@@ -432,6 +489,20 @@ author can compare their fixes or unblock themselves if stuck for too long.
   nobody noticed, because nothing runs it automatically — this is the
   single clearest argument for the Week 3 CI work.** Fix the assertion
   (the app is fine; the checker is stale).
+- **`dilute()` models only kcal/protein/water from the added liquid**
+  (documented scope boundary, surfaced by the 2026-07-30 test work — not
+  a bug today, but a live trap for whoever extends that panel).
+  `src/calculator.py:337-343` takes `liquid_kcal`, `liquid_protein_g` and
+  `liquid_water_g` and nothing else, and `thinning_liquids.csv` has
+  matching columns — so the **"Broth (chicken)" preset contributes no
+  sodium**. Nothing misleading is displayed today: the Dilution What-If
+  panel renders only volume, kcal/mL, protein/mL and free-water fraction,
+  which is exactly what the function models, and the diluted profile only
+  feeds `required_daily_volume()` (kcal/protein based). **The trap:** if
+  that panel ever grows a micronutrient row, or a diluted profile is fed
+  into the adequacy table, thinning with broth would show sodium density
+  *falling* while real broth adds a sodium load. Whether that is worth
+  modelling is a clinical call for the author.
 - **Formula rows don't contribute `nutrient_coverage`** (known limitation,
   recorded 2026-07-23, still open). `aggregate_intake()`'s `formula`
   branch sums every disclosed per-mL nutrient into the daily totals
