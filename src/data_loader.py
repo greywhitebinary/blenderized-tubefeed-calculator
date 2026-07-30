@@ -51,7 +51,17 @@ def _load_table(
     if data_dir == CNF_DIR:
         parquet_path = PARQUET_DIR / parquet_name
         if parquet_path.exists():
-            return pd.read_parquet(parquet_path)
+            try:
+                return pd.read_parquet(parquet_path)
+            except ImportError:
+                # pyarrow is a DEV-ONLY dependency (see requirements-dev.txt
+                # for why). Without it pandas can't read Parquet — but the
+                # cache is only ever a speed optimisation, never a source of
+                # truth, so fall through to the CSV instead of crashing.
+                # This is the path a local checkout takes if someone
+                # installs requirements.txt alone while a built cache sits
+                # in data/processed/: slower startup, identical numbers.
+                pass
 
     read_kwargs = {} if encoding is None else {"encoding": encoding}
     return pd.read_csv(data_dir / csv_name, **read_kwargs)
