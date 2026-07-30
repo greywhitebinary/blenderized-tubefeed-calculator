@@ -29,7 +29,7 @@ from src.intake import (
     InvalidBlendError,
 )
 
-from tests.conftest import FOOD_BANANA
+from tests.conftest import FOOD_BANANA, FOOD_CHICKEN, FOOD_ABSENT
 
 # ---------------------------------------------------------------------------
 # aggregate_intake() for each source_type
@@ -419,6 +419,173 @@ class TestMixedDay:
             ].get(key, 0.0)
             assert total["nutrient_totals"].get(key, 0.0) == pytest.approx(expected)
             assert totals.nutrient_totals.get(key, 0.0) == pytest.approx(expected)
+
+
+# ---------------------------------------------------------------------------
+# Formula rows now contribute to nutrient_coverage (the fix under test).
+#
+# CONTEXT.md's pinned-issues list and the comment that used to live in
+# aggregate_intake()'s formula branch documented this as a known
+# limitation: formula rows summed their disclosed nutrients into the
+# daily totals correctly but left row_coverage == {}, so on a mixed day
+# the adequacy table's "N/M ingredients" note reflected only the
+# food/CNF side. A commercial formula is one product, not a CNF
+# ingredient list, so it counts as ONE instance per tracked nutrient --
+# (1, 1) for what its CSV row discloses (kcal/protein always, since
+# those columns are mandatory; the optional per-mL columns and free
+# water when the product's row has them), (0, 1) for what it doesn't
+# (a None column, or a tracked nutrient formulas.csv has no column for
+# at all, e.g. the clinical-tier zinc/vitamin D/B12 fields). Never
+# (0, 0) -- that would make the row invisible to the count instead of
+# flagging it as "we don't know".
+# ---------------------------------------------------------------------------
+
+
+class TestFormulaCoverage:
+    def test_formula_row_supplies_coverage_for_disclosed_nutrients(
+        self, blends, nutrient_amount_df, formulas
+    ):
+        """A formula-only day: energy_kcal/protein_g are always disclosed
+        (mandatory CSV columns -- see _load_commercial_formulas), and this
+        fixture's formula also discloses sodium_per_mL and
+        free_water_per_mL -- all four should show full (1, 1) coverage,
+        not the empty {} the old code left behind."""
+        intake_log = [
+            {
+                "id": 1,
+                "time": dtime(12, 0),
+                "source_type": "formula",
+                "source_id": "Test Formula 1.2",
+                "amount": 400.0,
+                "unit": "mL",
+            }
+        ]
+        totals = aggregate_intake(intake_log, blends, nutrient_amount_df, formulas=formulas)
+
+        assert totals.nutrient_coverage["energy_kcal"] == (1, 1)
+        assert totals.nutrient_coverage["protein_g"] == (1, 1)
+        assert totals.nutrient_coverage["sodium_mg"] == (1, 1)
+        assert totals.nutrient_coverage["water_g"] == (1, 1)
+
+    def test_formula_row_flags_undisclosed_nutrient_without_fabricating_a_zero(
+        self, blends, nutrient_amount_df, formulas
+    ):
+        """fibre_g has no fibre_per_mL value in this fixture's formula
+        (the column is simply absent, matching the real loader's
+        "missing column -> None" contract), and zinc_mg has no formula
+        column AT ALL -- it's a clinical-tier nutrient formulas.csv never
+        tracks. Both must show n_total=1, n_supplying=0: the "we don't
+        know" signal, never a fabricated 0 folded into the total AND
+        never a silently-dropped coverage entry either."""
+        intake_log = [
+            {
+                "id": 1,
+                "time": dtime(12, 0),
+                "source_type": "formula",
+                "source_id": "Test Formula 1.2",
+                "amount": 400.0,
+                "unit": "mL",
+            }
+        ]
+        totals = aggregate_intake(intake_log, blends, nutrient_amount_df, formulas=formulas)
+
+        assert totals.nutrient_coverage["fibre_g"] == (0, 1)
+        assert totals.nutrient_coverage["zinc_mg"] == (0, 1)
+        assert "fibre_g" not in totals.nutrient_totals
+
+    def test_formula_only_day_disclosed_nutrients_are_not_hidden(
+        self, blends, nutrient_amount_df, formulas
+    ):
+        """report.py's _zero_coverage() hides a row when n_supplying == 0
+        and n_total > 0. For nutrients the formula DOES disclose, coverage
+        must come out fully supplied (n_supplying == n_total) so those
+        rows are never mistakenly hidden on a formula-only day -- this is
+        the "formula-only day is unaffected" guarantee the fix must not
+        regress, checked directly against the coverage tuples that drive
+        report.py's hiding logic (without importing report.py, which this
+        task doesn't touch)."""
+        intake_log = [
+            {
+                "id": 1,
+                "time": dtime(12, 0),
+                "source_type": "formula",
+                "source_id": "Test Formula 1.2",
+                "amount": 400.0,
+                "unit": "mL",
+            }
+        ]
+        totals = aggregate_intake(intake_log, blends, nutrient_amount_df, formulas=formulas)
+
+        for name in ("energy_kcal", "protein_g", "sodium_mg", "water_g"):
+            n_supplying, n_total = totals.nutrient_coverage[name]
+            assert n_total > 0
+            assert n_supplying == n_total  # full coverage -- report.py would not hide this
+
+    def test_mixed_day_coverage_reflects_both_blend_and_formula(self, nutrient_amount_df, formulas):
+        """The bug this task exists to fix. A 2-ingredient blend where
+        only chicken has a sodium row (FOOD_ABSENT has no CNF data at
+        all) gives an intentionally partial sodium_mg coverage of
+        (1, 2) from the blend alone. Before the fix, that (1, 2) was ALL
+        a mixed day would ever show for sodium, because the formula row
+        contributed nothing -- the adequacy table's "N/M ingredients"
+        note reflected only the food/CNF side even though the formula
+        (which also discloses sodium_per_mL) was part of the day. After
+        the fix, the formula's own (1, 1) folds in via _add_coverage to
+        give (2, 3) -- reflecting BOTH sources.
+        """
+        blends_local = {
+            1: {
+                "name": "Partial-data blend",
+                "ingredients": [
+                    {
+                        "id": 1,
+                        "food_code": FOOD_CHICKEN,
+                        "food_description": "Chicken breast, cooked",
+                        "grams": 100.0,
+                        "unit": "g",
+                        "counts_as_fluid": False,
+                    },
+                    {
+                        "id": 2,
+                        "food_code": FOOD_ABSENT,
+                        "food_description": "Food with no CNF data",
+                        "grams": 100.0,
+                        "unit": "g",
+                        "counts_as_fluid": False,
+                    },
+                ],
+                "measured_volume_mL": 200.0,
+            }
+        }
+        blend_row = {
+            "id": 1,
+            "time": dtime(8, 0),
+            "source_type": "blend",
+            "source_id": 1,
+            "amount": 200.0,
+            "unit": "mL",
+        }
+        formula_row = {
+            "id": 2,
+            "time": dtime(12, 0),
+            "source_type": "formula",
+            "source_id": "Test Formula 1.2",
+            "amount": 400.0,
+            "unit": "mL",
+        }
+
+        # Isolated baseline: the blend alone really is partial (1, 2) --
+        # confirms the mixed-day number below isn't an artifact of the
+        # blend's own coverage math.
+        blend_only = aggregate_intake([blend_row], blends_local, nutrient_amount_df)
+        assert blend_only.nutrient_coverage["sodium_mg"] == (1, 2)
+
+        # Mixed day: the formula's own (1, 1) must fold in on top of the
+        # blend's (1, 2), not be dropped.
+        mixed = aggregate_intake(
+            [blend_row, formula_row], blends_local, nutrient_amount_df, formulas=formulas
+        )
+        assert mixed.nutrient_coverage["sodium_mg"] == (2, 3)
 
 
 class TestWaterSources:

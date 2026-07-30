@@ -52,6 +52,7 @@ try:
         compute_nutrient_totals,
         compute_nutrient_totals_and_coverage,
         COMMERCIAL_FORMULAS,
+        NUTRIENT_CODES,
     )
 except ImportError:
     from models import Ingredient, Recipe, NutrientProfile
@@ -61,6 +62,7 @@ except ImportError:
         compute_nutrient_totals,
         compute_nutrient_totals_and_coverage,
         COMMERCIAL_FORMULAS,
+        NUTRIENT_CODES,
     )
 
 
@@ -90,7 +92,17 @@ TOTAL_LABEL = "Total"
 # calcium/iron/magnesium/phosphorus are mg/mL -> *_mg. Any column a
 # formula's label doesn't disclose loads as None (see
 # _load_commercial_formulas' docstring) and is skipped in the formula
-# branch below, never fabricated as 0.
+# branch below, never fabricated as 0. Also drives that branch's
+# row_coverage (a formula is one product, not an ingredient list -- see
+# the "formula:" bullet in aggregate_intake()'s docstring): this same
+# mapping tells us which NUTRIENT_CODES entries a formula's CSV row is
+# even capable of disclosing, so we know which "not disclosed" cases are
+# "this product's label doesn't say" (counts toward n_total) vs. which
+# tracked nutrients (e.g. the clinical-tier zinc/vitamin D/B12 fields)
+# formulas.csv has no column for at all -- both count toward n_total
+# without incrementing n_supplying, the same "we don't know" contract
+# already used for a custom food's unfilled label fields
+# (src/calculator.py::_coverage_from_merged()). Never fabricate a 0.
 _FORMULA_COLUMN_TO_NUTRIENT: dict[str, str] = {
     "fat_per_mL": "fat_g",
     "carbohydrate_per_mL": "carbohydrate_g",
@@ -188,11 +200,15 @@ class IntakeTotals:
                             nutrient_coverage, for the Results-tab
                             per-source breakdown (design doc section 3.5).
         nutrient_coverage: nutrient_name -> (n_supplying, n_total), summed
-                            across every blend/oral row's underlying food
-                            instances (formula and flush rows don't have
-                            CNF-derived coverage, so they don't contribute
-                            to either count -- see the module docstring
-                            note on why formulas are excluded).
+                            across every row's contribution: blend/oral
+                            rows contribute per-ingredient CNF-derived
+                            counts (as before); a formula row counts as
+                            ONE instance per tracked nutrient -- supplying
+                            it if formulas.csv discloses a value, adding
+                            to n_total either way (see the "formula:"
+                            bullet below and _FORMULA_COLUMN_TO_NUTRIENT's
+                            comment). Flush rows have no nutrient content
+                            at all and don't contribute to either count.
     """
 
     nutrient_totals: dict[str, float] = field(default_factory=dict)
@@ -267,6 +283,22 @@ def aggregate_intake(
                    -- see IntakeTotals' docstring for why that's a
                    deliberate, not accidental, mixing. Fluid = full amount
                    (I&O convention -- a formula is entirely liquid).
+                   Coverage: a commercial formula is one product, not a
+                   CNF ingredient list, so it counts as ONE instance per
+                   tracked nutrient rather than contributing an
+                   ingredient-by-ingredient count -- (1, 1) for a nutrient
+                   the formula's CSV row discloses (kcal/protein always;
+                   the optional columns and free water when present),
+                   (0, 1) for one it doesn't (a None column, or a tracked
+                   nutrient formulas.csv has no column for at all, e.g.
+                   zinc/vitamin D/B12). The (0, 1) case is the fix this
+                   docstring is pinning: it's what makes a mixed day's "N/M
+                   ingredients" note reflect the formula's row instead of
+                   silently dropping it, and it's also what makes a
+                   formula's non-disclosed nutrients correctly read as
+                   "we don't know" instead of a fabricated 0 -- see
+                   src/calculator.py::_coverage_from_merged() for the
+                   identical contract on the CNF/custom-food side.
       - "flush":   fluid only (full amount), no nutrient contribution at
                    all -- section 2: "flush rows contribute fluid only".
       - "oral":    compute_nutrient_totals() on the single food, at the
@@ -342,16 +374,35 @@ def aggregate_intake(
             if fw_per_mL is not None:
                 row_nutrients["water_g"] = fw_per_mL * amount
             row_fluid = amount
-            # Known limitation: formula rows never contribute to
-            # row_coverage (row_coverage stays {} for this branch), so on
-            # a *mixed* day where a food/blend row also touches nutrient X
-            # (coverage n/m) and a formula row supplies X too, the
-            # adequacy table's "N/M ingredients" provenance note reflects
-            # only the food/CNF side -- the formula's contribution to the
-            # summed value is correct, only the coverage note is
-            # food-only. A formula-only day is unaffected (n_total stays
-            # 0, so _zero_coverage in report.py doesn't hide the row).
-            # Out of scope to fix here; see the plan doc.
+            # Coverage: a commercial formula is ONE product, not a CNF
+            # ingredient list -- there's no "ingredient instance" to
+            # count the way _coverage_from_merged() counts CNF rows. So
+            # this row counts as exactly one instance PER TRACKED
+            # NUTRIENT (the same NUTRIENT_CODES universe
+            # _coverage_from_merged() iterates -- never a hardcoded
+            # list): "supplying" (1, 1) for a nutrient this formula's CSV
+            # row actually discloses a value for, "not supplying" (0, 1)
+            # for one it doesn't. kcal_per_mL/protein_per_mL are
+            # mandatory columns (see _load_commercial_formulas -- never
+            # None), so energy_kcal/protein_g are always "supplying".
+            # Everything else -- an optional column that's None for this
+            # product, or a tracked nutrient formulas.csv has no column
+            # for at all (e.g. the clinical-tier zinc/vitamin D/B12
+            # fields) -- is "not disclosed": n_total still gets this row
+            # (that's the "we don't know" signal an RD needs), n_supplying
+            # doesn't. Never fabricate a 0. On a mixed day this makes the
+            # formula's contribution show up in the "N/M ingredients"
+            # note alongside the food/CNF side, fixing the limitation
+            # this branch used to carry a comment about.
+            disclosed = {"energy_kcal", "protein_g"}
+            disclosed.update(
+                nutrient_key
+                for col, nutrient_key in _FORMULA_COLUMN_TO_NUTRIENT.items()
+                if formula.get(col) is not None
+            )
+            if fw_per_mL is not None:
+                disclosed.add("water_g")
+            row_coverage = {name: (1 if name in disclosed else 0, 1) for name in NUTRIENT_CODES}
 
         elif source_type == "flush":
             row_fluid = amount
