@@ -213,6 +213,7 @@ blenderized-tubefeed-calculator/
 ├── tests/
 ├── notebooks/
 │   ├── 00_explore_cnf.ipynb         # data-exploration sandbox
+│   ├── 01_learn_cnf.ipynb           # guided CNF learning notebook (9 parts, executed)
 │   └── PHASE2_SPEC.md               # spec, hint list, verification for Phase 2
 ├── BUSINESS_CASE.md                  # Week 1 deliverable + full methodology
 ├── CONTEXT.md                       # this file (internal project management)
@@ -590,6 +591,12 @@ author can compare their fixes or unblock themselves if stuck for too long.
   closing the browser tab currently loses everything, which is the most
   likely first complaint from an RD pilot; it needs a design pass against
   the no-PHI-by-design commitment before anything is built.)
+  - **2026-07-30:** Added `notebooks/01_learn_cnf.ipynb` — a guided,
+    part-by-part tutorial notebook (9 sections + Answers + cheat sheet)
+    that teaches the CNF database and pandas manipulation by hand, with
+    "Your turn" exercises. All cells executed, outputs visible. Built to
+    answer "what's in the CNF?" with the author's own hands. No `src/` or
+    app changes; raw data untouched; 106 tests still pass.
 
 **Phase-level record (module breakdown, kept for detail):**
 
