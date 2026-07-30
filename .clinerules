@@ -22,6 +22,29 @@
    `FEED_LOG_REWORK.md` §6.2 before touching `src/intake.py` or the
    Intake Record UI in `app/streamlit_app.py`.
 
+2b. HARD RULES for any feature that calls a paid API (e.g. the
+   label-photo extraction planned for Week 4). Agreed 2026-07-30
+   BEFORE the feature exists, so it is not renegotiated later:
+
+   **(a) The spend cap ships in the SAME COMMIT as the API call.**
+   Not a follow-up task, not a TODO. The app is public at
+   https://btfcalc.streamlit.app with the key in Streamlit secrets,
+   so every call any visitor makes bills the author personally.
+   All three are required: a per-session call limit in
+   st.session_state; a spend limit on the key itself in the provider
+   console (this is the one that holds when the app code is wrong);
+   and a visible per-use notice. Missing any one = the feature does
+   not ship. Implementing the call and leaving the cap for later is
+   an incomplete task, not a partial success.
+
+   **(b) A photo fills the NFt form; it never writes straight into a
+   blend.** Extraction output lands in the existing "custom food from
+   label" fields as editable drafts for the RD to read and confirm. A
+   misread sodium digit flows into a patient's daily total. The AI is
+   a typing shortcut, not a data source, and the UI must say so.
+
+   See CONTEXT.md §11 ("HARD RULES for paid-API features").
+
 3. To verify the backend, run:
 
    .venv/bin/python scripts/verify_backend.py
@@ -32,13 +55,24 @@
    a Streamlit AppTest script (see recent commits for the pattern) —
    "imports OK" alone does not prove a UI change works.
 
-4. Current work: the app is feature-complete for its core loop (build
-   blends → log an Intake Record spanning tube feed and oral intake →
-   see live results). Remaining work is Week 3 scope (pytest suite, CI,
-   Streamlit Cloud deploy, USDA SR Legacy supplement) plus the pinned
-   issues in CONTEXT.md §9. See CONTEXT.md §1 for the app flow,
-   FEED_LOG_REWORK.md for the Intake Record design rationale, and
-   HANDOFF.md for a paste-ready prompt covering both.
+4. Current work (2026-07-30): Week 2 is COMPLETE and the app is live
+   at https://btfcalc.streamlit.app. Week 3 ("Build to Last") is in
+   progress: pytest suite, GitHub Actions CI, runtime/dev dependency
+   split, the failing scripts/check_tab_restructure.py, formula-row
+   nutrient_coverage, thinning_liquids pack-awareness, and the USDA
+   SR Legacy supplement. The Streamlit Cloud deploy sub-item is
+   already DONE. The AI-assist features (label-photo extraction,
+   PDF → formulas) were moved to Week 4. See CONTEXT.md §9 for the
+   sub-item checklist, §1 for the app flow, FEED_LOG_REWORK.md for
+   the Intake Record design rationale, and HANDOFF.md for a
+   paste-ready prompt.
+
+   **THE UI IS PINNED** (author's instruction, 2026-07-30). She is
+   satisfied with the current layout and will revise it herself as
+   features land. Do not restructure tabs, retheme, resize type, or
+   reorder sections, and do not start the three parked UI items
+   (volume-needed planning aid, two-section chart note, Excel export
+   review) unasked. See CONTEXT.md §9's pinned-issues list.
 
 5. Never modify anything under cnf_fcen_all-files-data_2026/ (raw data).
 

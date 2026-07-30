@@ -576,8 +576,22 @@ key held in deployment secrets, never in the repo.
 |---|---|---|
 | **1 — Plan It** | This document posted publicly | Concept, market, requirements, methodology — including the Intake Record model (§7.3), the per-country nutrient registry (Appendix C), and the AI roadmap (§7) |
 | **2 — Core Feature** | Working Streamlit app | Data layer (CNF load, registry); calculator (blends → densities); Intake Record → daily totals; two-tier adequacy + fluids ledger; comparator; NFt-lookalike custom-food entry; chart note; export |
-| **3 — Build to Last** | Tests, CI, public deploy, AI-assist edges | pytest suite, GitHub Actions, Streamlit Cloud deploy for RD pilot testing, label-photo extraction (flagship), PDF → formulas extraction, USDA supplement |
-| **4 — Ship + Pitch** | Live app + 2–3 min demo | Polish from pilot feedback, validation appendix, demo video |
+| **3 — Build to Last** | Tests, CI, public deploy, USDA | pytest suite, GitHub Actions, runtime/dev dependency split, Streamlit Cloud deploy for RD pilot testing (**done 2026-07-23** — live at <https://btfcalc.streamlit.app>), USDA supplement |
+| **4 — Ship + Pitch** | Live app + write-up | Polish from pilot feedback, validation appendix, AI-assist edges (label-photo extraction, PDF → formulas extraction), possible JSON save/load |
+
+> **Scope reconciled 2026-07-30.** The AI-assist features were originally
+> listed under Week 3 here while `HANDOFF.md` Phase 2 omitted them —
+> three documents, three definitions of Week 3. Settled: **they are Week
+> 4.** Week 3 is durability (tests, CI, dependency hygiene) plus the USDA
+> supplement. Custom food entry from a nutrition-facts label typed by hand
+> already shipped in Week 2; it is the *photo* extraction that moved.
+>
+> **Before building any paid-API feature, read the hard rules in
+> `CONTEXT.md` §11.** In short: the spend cap ships in the same commit as
+> the API call (the app is public, and every call any visitor makes bills
+> the author personally), and a photo fills the NFt form as editable
+> drafts for the RD to confirm — it never writes a value straight into a
+> blend, because a misread digit flows into a patient's daily total.
 
 ---
 

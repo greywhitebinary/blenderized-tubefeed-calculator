@@ -111,6 +111,24 @@ down the clinical content.
   duplicate the grams×nutrient/100 merge-and-scale logic inline.
 - **Never modify anything under `cnf_fcen_all-files-data_2026/`** (raw
   Health Canada data).
+- **Any feature that calls a paid API ships its spend cap in the SAME
+  COMMIT.** Agreed 2026-07-30, before the label-photo feature exists, so
+  it can't be renegotiated under deadline pressure. The app is public at
+  <https://btfcalc.streamlit.app> with the API key in Streamlit secrets —
+  **every call any visitor makes is billed to the author personally.**
+  Three things are required together: a per-session call limit in
+  `st.session_state`; a spend limit on the key itself in the provider
+  console (the one that still protects her when the app code is wrong);
+  and a visible per-use notice. Missing any one means the feature does not
+  ship. Writing the API call and leaving the cap as a follow-up is an
+  **incomplete task**, not a partial success.
+- **A label photo fills the NFt form — it never writes a value straight
+  into a blend.** Extraction output lands in the existing "custom food
+  from label" fields as editable drafts; the RD reads every field and
+  confirms before anything commits to a recipe. A misread sodium or
+  protein digit flows into a patient's daily total. The AI is a typing
+  shortcut, not a data source, and the interface must say so. Full text of
+  both rules: `CONTEXT.md` §11.
 
 **How to verify — use these, never long inline `python -c` commands:**
 
@@ -234,22 +252,67 @@ This is **Week 3 — "Build to Last"** of a 4-week build plan
    - Use small fixture DataFrames — **do not** load the 565k-row CNF file
      in unit tests (that's what `verify_backend.py` is for).
 2. **GitHub Actions CI** — run pytest + `ruff` + `black --check` on push.
-   Don't run `verify_backend.py` in CI unless the CNF data is available to
-   the runner; if it isn't, say so rather than silently skipping.
-3. **Streamlit Community Cloud deploy** — free public URL, auto-deploy from
-   GitHub. Requires the author's own Streamlit account connected to
-   GitHub via share.streamlit.io — an AI agent cannot complete the
-   account-linking step; scope your work to what's ready for that
-   (confirm the app boots cleanly from a fresh clone, check whether
-   `data/processed/*.parquet` — gitignored — is needed at runtime;
-   `src/data_loader.py` prefers parquet and falls back to CSV, so confirm
-   the CSV path works standalone, or build parquet at startup) and hand
-   the actual deploy step back to the author.
-4. **USDA SR Legacy supplement** (see `BUSINESS_CASE.md` §8) — CNF-first
+   **The CNF data question is settled: the CNF CSVs ARE committed** (13
+   tracked files under `cnf_fcen_all-files-data_2026/`; the whole repo
+   history is only ~14 MB), so a runner *can* execute
+   `verify_backend.py`. It is simply slow — a 565k-row CSV parse — which
+   argues for putting it in a separate job rather than on every push, not
+   for skipping it.
+3. ~~**Streamlit Community Cloud deploy**~~ — **DONE 2026-07-23.** Live at
+   <https://btfcalc.streamlit.app>, auto-deploying from `main`. The
+   fresh-clone boot check passed on the CSV fallback path alone (no
+   parquet, no local state). Two things were learned the hard way and are
+   now recorded in `CONTEXT.md` §11: Cloud resolves *newer* package
+   versions than the local `.venv` (it installed streamlit 1.60 against a
+   `>=1.58` pin, whose different tab DOM broke CSS that worked locally —
+   `streamlit==1.58.0` is now pinned), and "Reboot app" does not reliably
+   reinstall dependencies. **Remaining sub-item:** `requirements.txt` still
+   ships jupyter/pytest/black/ruff to production, so Cloud installs ~130
+   unused packages — split runtime from dev dependencies.
+4. **Fix `scripts/check_tab_restructure.py`** — failing on `main` since
+   2026-07-23 at line 115 (`AssertionError: Nepro not offered under Abbott
+   filter`). The app is fine; the checker is stale. It parses formula
+   labels with `o.split(" — ", 1)[-1]`, and commit 1f3af36 changed those
+   labels to feed-name-first, so the parse now yields the brand instead of
+   the feed name. It went unnoticed for a week because nothing runs it —
+   which is the argument for item 2.
+5. **Formula rows don't contribute `nutrient_coverage`** — known limitation
+   recorded 2026-07-23. `aggregate_intake()`'s `formula` branch sums every
+   disclosed per-mL nutrient into daily totals correctly but adds nothing
+   to the coverage counts, so on a *mixed* day the adequacy table's "N/M
+   ingredients" note reflects only the food/CNF side. Summed values are
+   unaffected; a formula-only day is unaffected. Small fix — but that note
+   is what tells an RD how complete a row's data is.
+6. **`thinning_liquids.csv` pack-awareness** — `_load_thinning_liquids()`
+   in `app/streamlit_app.py` still loads from a hardcoded `canada` path,
+   the last loader that does. Inert until a second pack exists, so fold it
+   into the USDA pack work rather than doing it as a separate errand.
+7. **USDA SR Legacy supplement** (see `BUSINESS_CASE.md` §8) — CNF-first
    search, USDA fallback for foods CNF lacks. **Design it as a data pack
    concern**, consistent with Appendix C. Whole foods are interchangeable
    across databases; packaged foods are not. Propose the design and get my
    sign-off *before* implementing — this is the biggest change in Week 3.
+   Three decisions the proposal must settle, because they are expensive to
+   reverse in a clinical tool: (a) **where the derived table lives** — the
+   raw USDA download under `data/raw/usda/` is gitignored and ~1 GB, and
+   Cloud only has what's committed, so runtime cannot read it; something
+   small and pre-built has to be committed instead, and whether that is a
+   supplement *inside* the Canada pack or a shared source each pack opts
+   into is the author's call; (b) **nutrient-code mapping** — CNF keys on
+   numeric `Nutrient_Code` (307 = sodium, deliberately; see §11's `"NA"`
+   gotcha) and USDA has its own ids, so a mapping table is required and is
+   exactly where a wrong value would hide silently; (c) **provenance in the
+   report** — `report.py::_source_text` and the "N/M ingredients" note
+   should show which database a value came from, because an RD needs to
+   know.
+
+**Note on scope:** the AI-assist features (label-photo extraction,
+PDF → formulas) were **moved to Week 4** on 2026-07-30. `BUSINESS_CASE.md`
+§12 previously listed them under Week 3, which conflicted with this list;
+that is now reconciled. Before building either, read the **hard rules for
+paid-API features** in "Architecture you must not break" above — the spend
+cap ships in the same commit, and a photo fills the NFt form rather than
+writing into a blend.
 
 Plan first, show me the plan, then implement one item at a time with
 verification after each. Commit per item; don't push. Update `CONTEXT.md`

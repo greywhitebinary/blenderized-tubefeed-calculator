@@ -162,7 +162,7 @@ nutrition facts labels covers specific branded products.
 | Validation  | pydantic (later)  | typed input models; prep for API stage         |
 | Tests       | pytest            | standard, simple                               |
 | Formatting  | black + ruff      | auto-style + linter; teaches conventions        |
-| Deployment  | Streamlit Community Cloud | free, public URL, auto-deploys from GitHub |
+| Deployment  | Streamlit Community Cloud | free, public URL, auto-deploys from GitHub. **LIVE since 2026-07-23 at <https://btfcalc.streamlit.app>** (repo `greywhitebinary/blenderized-tubefeed-calculator`, branch `main`, main file `app/streamlit_app.py`). See §11 for version-skew gotchas. |
 
 Deliberately NOT yet included: database, FastAPI, React. Those are the
 graduation path — see §6.
@@ -253,8 +253,15 @@ column name becomes `﻿Nutrient_Code` and merges silently fail.
 |---|---|---|
 | **1 — Plan It** | `BUSINESS_CASE.md` posted publicly | Concept, market, requirements, methodology |
 | **2 — Core Feature** | Working Streamlit app | Build calculator, measures, targets/report, Streamlit UI |
-| **3 — Build to Last** | Tests, CI, deploy, custom food, USDA | pytest, GitHub Actions, Streamlit Cloud, label-entry, USDA data |
-| **4 — Ship + Pitch** | Live app + 2–3 min demo | Polish, export, demo video |
+| **3 — Build to Last** | Tests, CI, public deploy, USDA | pytest, GitHub Actions, dev/runtime dependency split, Streamlit Cloud (done 2026-07-23), USDA SR Legacy supplement |
+| **4 — Ship + Pitch** | Live app + write-up | Polish from RD pilot feedback, validation appendix, AI-assist features (label-photo extraction, PDF → formulas), possible JSON save/load |
+
+> **One definition of Week 3.** This row, `BUSINESS_CASE.md` §12, and
+> `HANDOFF.md` Phase 2 previously disagreed about whether the AI-assist
+> features belonged to Week 3. Settled 2026-07-30: **they are Week 4.**
+> Week 3 is durability plus the USDA supplement. Custom food entry from a
+> nutrition-facts label (typed by hand) already shipped in Week 2 — it is
+> the *photo* extraction that moved.
 
 ### Learning project phases (original — for reference)
 
@@ -350,13 +357,49 @@ author can compare their fixes or unblock themselves if stuck for too long.
 
 - [x] Week 1 — Plan It — COMPLETE (`BUSINESS_CASE.md` posted; `CONTEXT.md`
   merged and aligned with it as of this repo audit)
-- [x] Week 2 — Core Feature — effectively COMPLETE (calculator, measures,
-  targets/report, and the Streamlit UI are all built and backend-verified;
-  see the phase-level record below for detail)
-- [ ] Week 3 — Build to Last — NOT STARTED (pytest suite, CI, Streamlit
-  Cloud deploy, and the USDA SR Legacy supplement are not started; custom
-  food entry from a label is already built in Week 2's Streamlit UI)
-- [ ] Week 4 — Ship + Pitch — NOT STARTED (polish, export, demo video)
+- [x] Week 2 — Core Feature — **COMPLETE** (2026-07-30). Calculator,
+  measures, targets/report, and the Streamlit UI are all built and
+  backend-verified; the app is deployed and live at
+  <https://btfcalc.streamlit.app>; the Week 2 write-up was submitted as
+  written paragraphs (no demo video was required, so the video script in
+  `drafts/WEEK2_POST.md` is moot and describes a superseded example day).
+  See the phase-level record below for detail. **The UI is PINNED at the
+  author's request** — see the pinned-issues list below before touching
+  layout.
+- [ ] Week 3 — Build to Last — IN PROGRESS (2026-07-30). Sub-items:
+  - [x] **Streamlit Community Cloud deploy — DONE 2026-07-23.** Live at
+    <https://btfcalc.streamlit.app>, auto-deploying from `main`. See the
+    deploy entry in this section and §11 for the version-skew gotchas.
+  - [ ] **pytest suite** — `tests/` is still empty. The four
+    `scripts/*.py` checkers are real coverage but nothing runs them
+    automatically; see the broken-checker item in the pinned list below
+    for what that costs.
+  - [ ] **GitHub Actions CI** — no `.github/` directory yet. The CNF
+    CSVs **are** committed (13 tracked files, whole repo history ~14 MB),
+    so a runner can execute `verify_backend.py` — it is just slow
+    (565k-row CSV parse), which argues for a separate job rather than
+    skipping it.
+  - [ ] **Split runtime vs dev dependencies** — `requirements.txt` ships
+    jupyter/pytest/black/ruff to production, so Cloud installs ~130
+    packages it never uses and rebuilds are slow. See §11's deploy
+    gotchas.
+  - [ ] **Fix `scripts/check_tab_restructure.py`** — failing on `main`
+    since 2026-07-23; see the pinned list below.
+  - [ ] **Formula rows don't contribute `nutrient_coverage`** — known
+    limitation recorded 2026-07-23 and not yet fixed; see the pinned
+    list below.
+  - [ ] **`thinning_liquids.csv` pack-awareness** — the last loader with
+    a hardcoded `canada` path. Ride-along with the USDA pack work.
+  - [ ] **USDA SR Legacy supplement** — the substantive feature work of
+    Week 3, and the one an RD would notice. Design proposal first, author
+    sign-off, then implementation — see `HANDOFF.md` Phase 2 item 4.
+- [ ] Week 4 — Ship + Pitch — NOT STARTED (polish from RD pilot feedback,
+  validation appendix, and the AI-assist features moved here from Week 3:
+  label-photo extraction and PDF → formulas extraction. Saving/loading a
+  blend or a day (JSON persistence) is the other strong Week 4 candidate —
+  closing the browser tab currently loses everything, which is the most
+  likely first complaint from an RD pilot; it needs a design pass against
+  the no-PHI-by-design commitment before anything is built.)
 
 **Phase-level record (module breakdown, kept for detail):**
 
@@ -371,9 +414,39 @@ author can compare their fixes or unblock themselves if stuck for too long.
 
 **Pinned issues (to revisit after user testing):**
 
-- **App not matching expectations** — author noted "it's not quite what
-  I expected." Specific feedback pending after hands-on testing. Week 2
-  iteration will address.
+- **THE UI IS PINNED (2026-07-30, author's explicit instruction).** The
+  author is satisfied with the current layout and typography and expects
+  to revise them again *as new features land*. Until she says otherwise:
+  do not restructure tabs, retheme, resize type, or reorder sections —
+  and do not start the three parked UI items below unasked. "Pinned"
+  means deliberately settled, not abandoned.
+  - Parked, not cancelled: the volume-needed planning aid in the Daily
+    Intake Record; the two-section chart note (summary + breakdown); the
+    Excel export usefulness review.
+- **`scripts/check_tab_restructure.py` is FAILING on `main`** (open bug,
+  found 2026-07-30). It asserts at line 115 that `Nepro` appears under
+  the Abbott company filter, parsing formula labels with
+  `o.split(" — ", 1)[-1]`. Commit 1f3af36 changed those labels to
+  feed-name-first, so the parse now yields the brand rather than the feed
+  name and the assertion fails. **It has been broken since 2026-07-23 and
+  nobody noticed, because nothing runs it automatically — this is the
+  single clearest argument for the Week 3 CI work.** Fix the assertion
+  (the app is fine; the checker is stale).
+- **Formula rows don't contribute `nutrient_coverage`** (known limitation,
+  recorded 2026-07-23, still open). `aggregate_intake()`'s `formula`
+  branch sums every disclosed per-mL nutrient into the daily totals
+  correctly, but does not add to the per-nutrient coverage counts. On a
+  *mixed* day (a blend row and a formula row both supplying, say, sodium)
+  the adequacy table's "N/M ingredients" provenance note reflects only
+  the food/CNF side. **Summed values are unaffected and a formula-only
+  day is unaffected** — the defect is in the note that tells an RD how
+  complete the row's data is, which in a clinical table is the part that
+  sets trust. Small fix, Week 3 scope.
+- ~~App not matching expectations~~ — **RESOLVED.** The author's original
+  "it's not quite what I expected" was addressed across the 2026-07-20
+  three-tab restructure and UI feedback rounds 1–8, the 2026-07-23
+  pre-deploy pass, and the example-day rewrite. Superseded by the UI pin
+  above.
 - **Reference data now in CSVs** — every Canadian reference file
   (nutrient registry, commercial formulas, thinning liquids) lives
   under `data/packs/canada/` (one "data pack" per country — see
@@ -756,15 +829,28 @@ that fixed it; do not re-litigate either.
   (repo root) — still the authoritative record of the model and every
   resolved design question (section 6), kept for reference; it is a
   completed plan now, not an in-progress one.
-- **Next milestone (author-approved 2026-07-17, unchanged by this
-  rework):** the **label-photo → custom food** feature plus **public
-  deployment** (Streamlit Community Cloud, API key in app secrets, no
-  PHI by design) so practicing RDs can pilot-test the whole tool. The AI
-  roadmap and its governing principle ("the agent is in the workflow,
-  not in the math"), the cooked-preparations design constraint for
-  future recipe matching, and the explicit rejection of AI-written ADIME
-  notes are all recorded in `BUSINESS_CASE.md` §7 ("Where AI belongs in
-  a clinical calculator").
+- **Next milestone (author-approved 2026-07-17):** the **label-photo →
+  custom food** feature plus **public deployment** (Streamlit Community
+  Cloud, API key in app secrets, no PHI by design) so practicing RDs can
+  pilot-test the whole tool. The AI roadmap and its governing principle
+  ("the agent is in the workflow, not in the math"), the
+  cooked-preparations design constraint for future recipe matching, and
+  the explicit rejection of AI-written ADIME notes are all recorded in
+  `BUSINESS_CASE.md` §7 ("Where AI belongs in a clinical calculator").
+  - **Status update 2026-07-30:** the deployment half is **done**
+    (2026-07-23, <https://btfcalc.streamlit.app>). The label-photo half
+    is **scheduled for Week 4**, not Week 3. Note the specific phrase
+    "API key in app secrets" above — that is precisely the arrangement
+    that makes the **spend cap non-negotiable**, because a key in the
+    secrets of a *public* app means every call any visitor makes is
+    billed to the author personally. Read §11's "HARD RULES for
+    paid-API features" before writing a line of that feature. Cost
+    estimate for sizing the cap: a nutrition-label extraction on
+    Claude Haiku 4.5 runs roughly US$0.0035 per photo (~1,600 image
+    tokens + ~400 prompt tokens in, ~300 structured-output tokens back,
+    at $1/$5 per million) — about 285 labels per dollar. Cheap per
+    photo is exactly why an uncapped loop is dangerous rather than
+    reassuring.
 
 **Intake Record rework (2026-07-18/19, this session) — implements
 `FEED_LOG_REWORK.md` in full, including the scope-expansion to oral
@@ -1312,6 +1398,41 @@ this is deliberate, see §11 and `src/nutrients.py`.
 
 ## 11. Conventions & gotchas
 
+### HARD RULES for paid-API features (set 2026-07-30, before any were built)
+
+These two rules were agreed *before* the label-photo extraction feature
+exists, precisely so they are not negotiated under deadline pressure later.
+They are not suggestions.
+
+- **Any feature that calls a paid API ships with a spend cap in the SAME
+  COMMIT.** Not a follow-up task, not a TODO, not "we'll add it before
+  launch." The app is deployed publicly at <https://btfcalc.streamlit.app>
+  with the API key in Streamlit secrets, which means **every call any
+  visitor makes is billed to the author's personal account.** An uncapped
+  image-extraction endpoint on a public URL is an open invitation to drain
+  it. All three of the following are required:
+  1. A per-session call limit enforced in `st.session_state`.
+  2. A spend limit set on the API key itself in the provider console — so
+     that a bug in (1) cannot run away. **This is the one that actually
+     protects the author**, because it holds even when the app code is
+     wrong.
+  3. A visible per-use notice, so an RD knows each photo costs the author
+     money.
+
+  If any of the three is missing, the feature does not ship. An agent that
+  implements the API call and leaves the cap for later has not completed
+  the task.
+
+- **A label photo fills the form; it never writes a value straight into a
+  blend.** Extraction output lands in the existing "custom food from
+  label" NFt form fields as **editable drafts**. The RD reads every field
+  and confirms before anything commits to a recipe. Rationale: a misread
+  digit in sodium or protein flows into a patient's daily total. The AI is
+  a typing shortcut, not a data source — and **the interface must say so**,
+  not just this document.
+
+### General conventions & gotchas
+
 - The author's existing projects use `SEED = 42` and a single `run.py`
   entry point — this project uses `app/streamlit_app.py` as entry instead.
 - macOS `.DS_Store` must be gitignored globally.
@@ -1365,3 +1486,30 @@ this is deliberate, see §11 and `src/nutrients.py`.
   `nutrients.csv` would silently render the Canadian panel instead of
   failing loudly). Do not "fix" this by adding a fallback — see the
   comment at the top of `_load_registry_cached()` in `src/nutrients.py`.
+
+### Streamlit Community Cloud deploy gotchas (learned 2026-07-23)
+
+Recorded here because all three cost real debugging time on the first
+deploy, and the third is open Week 3 work.
+
+- **Cloud resolves NEWER package versions than the local `.venv`.** With
+  `streamlit>=1.58`, Cloud installed **streamlit 1.60.0** while local ran
+  1.58.0. 1.60's tab DOM differs from 1.58's, so tab-label CSS that worked
+  locally silently missed on the deploy. The symptom is the nasty one:
+  **local looked right, deployed didn't, from identical code.** Two-part
+  fix landed it — target the ARIA `button[role="tab"]` selector (stable
+  across versions) with `!important` in the injected `<style>`, and pin
+  `streamlit==1.58.0` in `requirements.txt`. Cloud's environment is Python
+  3.14.6, uv-installed, and pulls newer pandas/numpy/pyarrow too.
+- **"Reboot app" restarts the process but does NOT reliably reinstall
+  dependencies.** Only a `requirements.txt` change dependably triggers the
+  uv dependency rebuild. A code push redeploys the Python (so labels and
+  logic update) while the runtime version stays put — which is exactly how
+  the tab bug stayed hidden while a formula-label change went live in the
+  same push. Logs live under "Manage app" (bottom-right of the running app
+  while logged in as owner); the line that matters on a rebuild is
+  `Installing streamlit==...` / `Found Streamlit version X`.
+- **`requirements.txt` ships dev tooling to production.** jupyter, pytest,
+  black, and ruff are all in it, so Cloud installs ~130 packages the app
+  never imports and rebuilds are slow. **Splitting runtime from dev
+  dependencies is open Week 3 work** — see §9.
