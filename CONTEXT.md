@@ -421,17 +421,65 @@ author can compare their fixes or unblock themselves if stuck for too long.
     1f3af36 moved the feed name to *before* the separator. Assertion
     strength unchanged. Now prints `=== TAB RESTRUCTURE APPTTEST
     PASSED ===`.
-  - [ ] **Formula rows don't contribute `nutrient_coverage`** — known
-    limitation recorded 2026-07-23 and not yet fixed; see the pinned
-    list below.
-  - [ ] **`thinning_liquids.csv` pack-awareness** — the last loader with
-    a hardcoded `canada` path. Ride-along with the USDA pack work.
-  - [ ] **USDA SR Legacy supplement** — the substantive feature work of
-    Week 3, and the one an RD would notice. **Design proposal written and
-    awaiting the author's sign-off: `USDA_SUPPLEMENT.md`** (2026-07-30,
-    commit 4d50166). No code, no data artifact built — five questions in
-    its §10 need her ruling first. Two findings from it belong here
-    because they change the decision, not just the implementation:
+  - [x] **Formula rows contribute `nutrient_coverage` — DONE**
+    (2026-07-30, commit e00320f). A formula now counts as one product
+    instance per tracked nutrient: `(1,1)` when its `formulas.csv` row
+    discloses it, `(0,1)` when it doesn't — never `(0,0)` (which would
+    make the gap invisible) and never a fabricated 0. **Behaviour change
+    worth knowing:** on a formula-only day, a nutrient the product
+    doesn't disclose (fibre, for Resource 2.0) is now hidden from the
+    adequacy table and **named in the footnote**, where before it stayed
+    visible with nothing behind it. Verified against a real 1000 mL
+    Resource 2.0 day. **Open follow-up:** `report.py::_coverage_text`
+    renders "N/M **ingredients**", but a formula adds 1 to the
+    denominator regardless of how many ingredients are in the product —
+    "sources" is now the accurate word. Left for the author.
+  - [x] **`thinning_liquids.csv` pack-awareness — DONE** (2026-07-30,
+    commit c4da8a1). `_load_thinning_liquids(pack=...)` via a new
+    `_thinning_csv_path()`; the last loader reading a hardcoded `canada`
+    path. Inert until a second pack exists.
+  - [x] **Recipe record — DONE** (2026-07-30, commits a011cfb, 59d00f8).
+    Save a blend — ingredients, measured volume and flow test — as a
+    two-sheet `.xlsx` you keep; load one back. Author's framing: *the
+    calculator computes, the record remembers.* See the entry below.
+  - [x] **Water ledger — DONE** (2026-07-30, commit 232dc8c). Every
+    water source on its own line. See the entry below.
+  - [x] **Dilution What-If narrowed to water — DONE** (2026-07-30,
+    commit c4da8a1). See the entry below.
+  - [ ] **USDA SR Legacy supplement — RECOMMENDED AGAINST; author's
+    decision pending.** Two documents: `USDA_SUPPLEMENT.md` (4d50166,
+    the design, should it be built anyway) and **`USDA_CANDIDATES.md` +
+    `data/usda_candidates.csv` (8210d52, the evidence — read this one
+    first)**.
+    - **The estimate collapsed from 1,628 genuinely-new foods to ~12**
+      once two method faults were fixed. (a) Substring matching against
+      CNF descriptions invents gaps, because CNF inverts and prefixes its
+      names — searching "wild rice" returns zero while CNF holds it as
+      "Grains, rice, wild, dry". (b) A join bug: CNF's `USDA_NDB_Code` is
+      inconsistently zero-padded, so string comparison found only 3,333
+      links to SR Legacy where int-normalising recovers 4,448. Both
+      faults *understated* CNF's existing coverage.
+    - Of the 1,568 that survive mechanically, 73% are fine-grained
+      butchery cuts and most of the rest are branded products or foods
+      CNF already carries under other wording.
+    - **The real shortlist is ~12 foods**, led by four Mexican cheeses
+      CNF genuinely lacks (queso fresco, blanco, seco, cotija — verified:
+      CNF has exactly three, anejo/asadero/chihuahua, out of 328 cheese
+      entries).
+    - **Recommendation: hand-enter those 12 through the existing
+      custom-food-from-label form (~1 hour)** rather than build a
+      two-database architecture, an `Ingredient.source` field, a nutrient
+      mapping table and five provenance surfaces (3–5 days).
+    - **The author's reframing settles the strategy:** a US version needs
+      USDA foods *and* a US commercial-formula list, so USDA work is the
+      opening move of a separate US product built on this foundation —
+      not an upgrade to the Canadian app. Revisit after Week 4.
+    - Author's rulings recorded 2026-07-30: **provenance should NOT be
+      shown per food** — clinical RDs don't want to know — but a global
+      disclaimer saying values come from CNF with USDA filling gaps would
+      be helpful. Indigenous foods were to be examined rather than
+      excluded (they were — see below).
+    - Superseded finding, kept because it was reported to the author:
     - **CNF's own `Food_Name.csv` has a `USDA_NDB_Code` column, 80%
       populated**, matching SR Legacy's `NDB_number` for ~96% of rows.
       Deduplicating CNF against USDA is a real key join, not fuzzy
@@ -448,8 +496,19 @@ author can compare their fixes or unblock themselves if stuck for too long.
       USDA butchery cuts** irrelevant to a blended feed. The supplement
       still has value — a long tail of USDA-specific whole foods, plus
       redundancy — but "fixes the ethnic-food gap" is not that value.
-      **Author to decide** whether to reframe §8, narrow the scope to a
-      hand-curated list, or deprioritise the item.
+      **Superseded 2026-07-30 by `USDA_CANDIDATES.md`:** the direction of
+      that finding was right but the magnitude was understated — the gap
+      is far smaller than even this said.
+    - **Indigenous foods — checked, at the author's explicit request.**
+      All 94 unlinked rows in USDA's "American Indian/Alaska Native
+      Foods" category were reviewed. **Zero made the shortlist.** CNF's
+      own "Game meat, Indigenous" series is richer for shared species —
+      caribou 20 entries, seal 24, moose 15, walrus 12, plus beluga,
+      narwhal, muktuk, arctic char and cloudberry/bakeapple that USDA
+      doesn't emphasise. USDA's genuinely novel rows are US tribal dishes
+      (Navajo, Hopi, Apache, Klamath) with no Canadian equivalent. The
+      author's instinct to check was correct; the answer is that Health
+      Canada already did this work, better, for Canada.
 - [ ] Week 4 — Ship + Pitch — NOT STARTED (polish from RD pilot feedback,
   validation appendix, and the AI-assist features moved here from Week 3:
   label-photo extraction and PDF → formulas extraction. Saving/loading a
@@ -471,6 +530,52 @@ author can compare their fixes or unblock themselves if stuck for too long.
 
 **Pinned issues (to revisit after user testing):**
 
+- **Free water vs. water flushes — the author's clinical ruling
+  (2026-07-30).** Recorded because it was nearly "fixed" the wrong way.
+  **Free water is water that arrived as part of something fed** — and
+  that INCLUDES tap water blended into a recipe, because once it's in the
+  recipe it *is* the recipe, exactly like the moisture in a banana. Do
+  **not** split "added water" back out of a blend's `water_g`; the
+  `Recipe.added_water_mL` field exists but is deliberately unused (see
+  `BUSINESS_CASE.md` A3). **Only a flush is water given as water**, which
+  is why flushes are excluded from `free_water_mL` and counted separately
+  — that exclusion is correct, not a bug. Total daily water = free water
+  + flushes, which is what the water ledger now shows.
+- **Water ledger (2026-07-30, commit 232dc8c).** `IntakeTotals` gained
+  `water_sources`, populated in the same single pass. Renders as "Where
+  the Water Came From" on the Daily Intake Record tab and as its own
+  Excel sheet: one line per source, then a total, **deliberately with no
+  intermediate "free water subtotal"** (author's call — she wants the
+  sources visible, then the total). For the example day: blend 850,
+  formula 491, oral 76, flushes 1032, total 2448. **No calculation
+  changed** — those numbers were always computed, just summed away before
+  anyone could see them.
+- **Recipe record (2026-07-30, commits a011cfb, 59d00f8).** The flow test
+  now belongs to a blend rather than floating on the page, so the chart
+  note can name which recipe passed the syringe test. Everything else in
+  a recipe recomputes from the ingredient list; the flow test is the one
+  thing that exists only in the RD's hands, which is what makes a saved
+  recipe worth having. File format: one `.xlsx`, two sheets, both food
+  code and description in every ingredient row — code so the app's own
+  files reload exactly, description so a human can read and type one.
+  **An uploaded recipe lands as a draft** for the RD to confirm, per the
+  §11 rule: "chicken, broiler, breast" is three CNF foods with three
+  different protein figures, so ambiguous rows show candidates rather
+  than a silent pick. Files download to the RD's own machine — the
+  deployed app is a shared public server with no per-user storage.
+  Verified by `scripts/check_recipe_record.py` (AppTest).
+- **Blank vs 0 in the forms (author observation, 2026-07-30 — no change
+  made).** `st.number_input` has no empty state, so captions promising
+  "Blank = no target" describe something the widget can't do. The app
+  resolves it by treating 0 as "not provided" (`if val > 0` filters the
+  custom-food label form). Consequence: **a genuine zero can't be
+  recorded** — a label stating "Sodium 0 mg" is indistinguishable from a
+  label that omits sodium. Totals are unaffected (zero adds zero); only
+  the coverage/confidence note shifts, and it errs toward understating
+  what's known, which is the safe direction for a clinical tool. Open
+  option: reword the captions to "0 = no target" so they match what's
+  possible. A per-nutrient "not on this label" toggle would make the
+  distinction real but is UI churn on a pinned layout for a small gain.
 - **THE UI IS PINNED (2026-07-30, author's explicit instruction).** The
   author is satisfied with the current layout and typography and expects
   to revise them again *as new features land*. Until she says otherwise:
@@ -489,9 +594,22 @@ author can compare their fixes or unblock themselves if stuck for too long.
   nobody noticed, because nothing runs it automatically — this is the
   single clearest argument for the Week 3 CI work.** Fix the assertion
   (the app is fine; the checker is stale).
-- **`dilute()` models only kcal/protein/water from the added liquid**
-  (documented scope boundary, surfaced by the 2026-07-30 test work — not
-  a bug today, but a live trap for whoever extends that panel).
+- ~~**`dilute()` models only kcal/protein/water from the added liquid**~~
+  — **RESOLVED 2026-07-30 (commit c4da8a1)** by narrowing the Dilution
+  What-If to water rather than by extending `dilute()`. The reasoning is
+  worth keeping: for plain water, three terms ARE the complete picture,
+  so the preview is exact; for broth/juice/milk it is not, and adding
+  200 mL of broth to a blend **is a recipe change**, which the recipe
+  editor already computes correctly through the full CNF row — every
+  nutrient, not three. So for anything nutritive the preview was strictly
+  the worse of two tools the app already had. Presets are now filtered to
+  liquids contributing no kcal and no protein (the CSV stays the
+  RD-editable source — add "Sterile water" and it appears); the "Custom"
+  free-entry option is gone for the same reason. The rule, now in the
+  caption: **thinning with water is a preview; thinning with anything
+  nutritive is a recipe edit.** This continues the 2026-07-17 round-2
+  ruling that live recipe adjustment is the core interaction and the
+  editor itself is the what-if. Original finding, kept for context:
   `src/calculator.py:337-343` takes `liquid_kcal`, `liquid_protein_g` and
   `liquid_water_g` and nothing else, and `thinning_liquids.csv` has
   matching columns — so the **"Broth (chicken)" preset contributes no
