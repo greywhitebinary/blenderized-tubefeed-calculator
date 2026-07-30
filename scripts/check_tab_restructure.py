@@ -106,14 +106,15 @@ def main() -> None:
     company_radio = next(r for r in at.radio if r.label == "Company")
     company_radio.set_value("Abbott Nutrition").run()
     ms = next(m for m in at.multiselect if m.key == "comparator_formula_select")
-    # AppTest's ms.options returns the FORMATTED labels ("Abbott Nutrition —
-    # Nepro"); the value itself must be the raw formula name.
+    # AppTest's ms.options returns the FORMATTED labels ("Nepro — Abbott
+    # Nutrition", feed-name-first since commit 1f3af36); the value itself
+    # must be the raw formula name.
     abbott_pick = next(
         n for n, f in COMMERCIAL_FORMULAS.items()
         if "Nepro" in n and f.get("brand") == "Abbott Nutrition"
     )
     assert abbott_pick in [
-        o.split(" — ", 1)[-1] for o in ms.options
+        o.split(" — ", 1)[0] for o in ms.options
     ], f"{abbott_pick} not offered under Abbott filter"
     ms.set_value([abbott_pick]).run()
     company_radio = next(r for r in at.radio if r.label == "Company")

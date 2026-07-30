@@ -1,0 +1,22 @@
+# Dev/test tooling. Installs the runtime deps too, so one command sets up
+# a dev machine:  pip install -r requirements-dev.txt
+-r requirements.txt
+
+pytest>=8.0
+black>=24.0
+ruff>=0.4
+jupyter>=1.0
+
+# pyarrow - DELIBERATELY dev-only, not in requirements.txt. Reasoning:
+# src/data_loader.py prefers a pre-built Parquet cache under data/processed/
+# and falls back to CSV, but data/processed/ is gitignored (see .gitignore
+# and CONTEXT.md §4) and contains no tracked files - a fresh clone (which is
+# exactly what Streamlit Community Cloud deploys from) never has the cache,
+# so the deployed app has always taken the CSV fallback and never actually
+# imports pyarrow at runtime. pyarrow is needed only for the local dev
+# workflow of running src/build_parquet.py to build/read that cache for
+# faster local iteration (~20x per CONTEXT.md §3) - a dev convenience, not
+# something Cloud's production runtime touches today. If the Parquet cache
+# is ever committed/shipped to change that, pyarrow must move back to
+# requirements.txt as a deliberate, documented decision - not silently.
+pyarrow>=15.0

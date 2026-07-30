@@ -1,0 +1,28 @@
+[tool.pytest.ini_options]
+# Week 3: tests/ is being populated by other agents in parallel with this
+# config, so this must not error on an empty/near-empty test tree.
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.black]
+# Local venv is Python 3.14 (.venv/bin/python --version) and Streamlit
+# Community Cloud runs 3.14.6 (see CONTEXT.md §11) - both covered by py314.
+target-version = ["py314"]
+# Existing code (src/, app/, scripts/) has 184 lines over black's default 88
+# but only 41 over 100 - 100 tracks what the codebase actually does, not an
+# arbitrary preference. Configured here for when the author approves the
+# reformat; NOT applied to src/, app/, or scripts/ by this change (see the
+# Week 3 tooling report for the black --check --diff summary).
+line-length = 100
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+# Conservative on purpose: pycodestyle errors/warnings + pyflakes only.
+# No import-sorting (I), no docstring (D), no complexity/bugbear (C90/B),
+# etc. - those are a separate, later decision, not bundled into Week 3
+# tooling setup. See the Week 3 tooling report for the current
+# ruff check --statistics breakdown against this exact selection.
+select = ["E", "F", "W"]
