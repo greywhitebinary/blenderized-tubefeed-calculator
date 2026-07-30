@@ -253,7 +253,7 @@ def test_sodium_reports_ul_wording_through_the_full_adequacy_report():
 
 
 # ---------------------------------------------------------------------------
-# Zero-coverage hiding and the "N/M ingredients" provenance note
+# Zero-coverage hiding and the "N/M sources" provenance note
 # ---------------------------------------------------------------------------
 
 
@@ -273,13 +273,13 @@ def test_zero_coverage_helper_flags_only_the_zero_of_n_case():
 
 
 def test_coverage_text_helper_shows_n_of_m_only_when_incomplete():
-    """_coverage_text() should render "n/m ingredients" only when
+    """_coverage_text() should render "n/m sources" only when
     coverage is INCOMPLETE (fewer ingredients supplied a value than the
     recipe has); full coverage renders "—" -- the same "nothing to flag"
     convention used elsewhere in this table (Target/% Target also show
     "—" when there's nothing to report).
     """
-    assert _coverage_text("x", {"x": (1, 2)}) == "1/2 ingredients"
+    assert _coverage_text("x", {"x": (1, 2)}) == "1/2 sources"
     assert _coverage_text("x", {"x": (2, 2)}) == "—"
     assert _coverage_text("x", {"x": (0, 0)}) == "—"
     assert _coverage_text("missing", {}) == "—"
@@ -310,7 +310,7 @@ def test_zero_coverage_row_is_hidden_and_named_in_the_footnote_list(label_defs):
         assert d.label in set(df["Nutrient"])
 
 
-def test_partial_coverage_shows_n_of_m_ingredients_note_in_the_real_table(label_defs):
+def test_partial_coverage_shows_n_of_m_sources_note_in_the_real_table(label_defs):
     """Same idea as the helper-level test above, but through the real
     generate_adequacy_report() DataFrame, checking the actual "Coverage"
     column text an RD would see.
@@ -327,7 +327,7 @@ def test_partial_coverage_shows_n_of_m_ingredients_note_in_the_real_table(label_
     partial_row = df[df["Nutrient"] == partial_def.label].iloc[0]
     full_row = df[df["Nutrient"] == full_def.label].iloc[0]
 
-    assert partial_row["Coverage"] == "1/2 ingredients"
+    assert partial_row["Coverage"] == "1/2 sources"
     assert full_row["Coverage"] == "—"
     assert partial_def.label not in hidden  # incomplete, not zero -- still shown
 

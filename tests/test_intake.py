@@ -428,7 +428,7 @@ class TestMixedDay:
 # aggregate_intake()'s formula branch documented this as a known
 # limitation: formula rows summed their disclosed nutrients into the
 # daily totals correctly but left row_coverage == {}, so on a mixed day
-# the adequacy table's "N/M ingredients" note reflected only the
+# the adequacy table's "N/M sources" note reflected only the
 # food/CNF side. A commercial formula is one product, not a CNF
 # ingredient list, so it counts as ONE instance per tracked nutrient --
 # (1, 1) for what its CSV row discloses (kcal/protein always, since
@@ -527,7 +527,7 @@ class TestFormulaCoverage:
         all) gives an intentionally partial sodium_mg coverage of
         (1, 2) from the blend alone. Before the fix, that (1, 2) was ALL
         a mixed day would ever show for sodium, because the formula row
-        contributed nothing -- the adequacy table's "N/M ingredients"
+        contributed nothing -- the adequacy table's "N/M sources"
         note reflected only the food/CNF side even though the formula
         (which also discloses sodium_per_mL) was part of the day. After
         the fix, the formula's own (1, 1) folds in via _add_coverage to

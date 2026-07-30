@@ -394,7 +394,7 @@ def main() -> int:
     # no longer appears in the main adequacy table at all — its coverage is
     # still tracked in the backend dict (asserted above) and exported (see
     # calculate_daily_totals via profile.nutrient_totals); the *report*-
-    # level partial-coverage flag ("N/M ingredients") is instead checked
+    # level partial-coverage flag ("N/M sources") is instead checked
     # here on Vitamin D within the clinical screen, since Vitamin D *is*
     # displayed there (tier=clinical, show_in_report=yes) and is the other
     # nutrient this fixture recipe deliberately leaves partially covered.
@@ -411,7 +411,7 @@ def main() -> int:
         coverage_daily, targets, nutrient_coverage=coverage_profile.nutrient_coverage
     )
     vit_d_row = coverage_clinical[coverage_clinical["Nutrient"] == "Vitamin D"].iloc[0]
-    assert vit_d_row["Coverage"] == "1/2 ingredients", vit_d_row["Coverage"]
+    assert vit_d_row["Coverage"] == "1/2 sources", vit_d_row["Coverage"]
 
     # Strictly additive (P2's core constraint): the SAME recipe's
     # already-verified totals (stage 3's chicken/rice/oil recipe) must be

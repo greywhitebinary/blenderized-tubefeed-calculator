@@ -391,7 +391,7 @@ def aggregate_intake(
             # fields) -- is "not disclosed": n_total still gets this row
             # (that's the "we don't know" signal an RD needs), n_supplying
             # doesn't. Never fabricate a 0. On a mixed day this makes the
-            # formula's contribution show up in the "N/M ingredients"
+            # formula's contribution show up in the "N/M sources"
             # note alongside the food/CNF side, fixing the limitation
             # this branch used to carry a comment about.
             disclosed = {"energy_kcal", "protein_g"}

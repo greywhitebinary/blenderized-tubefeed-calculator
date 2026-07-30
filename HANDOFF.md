@@ -309,16 +309,46 @@ This is **Week 3 — "Build to Last"** of a 4-week build plan
    switched, never blended. Evidence lives in git history at 8210d52
    (`USDA_CANDIDATES.md`, `data/usda_candidates.csv`) and 4d50166
    (`USDA_SUPPLEMENT.md`), all removed from the working tree.
-8. **Assumed zeros are still counted as measurements** — CNF flags
-   65,887 values (11.7%) as `Nutrient_Source_Code` 12, "Nutrient value
-   is an assumed zero." `_scale_ingredients()` in `src/calculator.py`
-   never reads that column, so an assumed zero is summed with the same
-   confidence as a lab measurement. Within the tracked nutrients this
-   hits **fibre in 25.2% of foods** and sugars in 26.7% — and fibre is
-   the nutrient BTF is most often chosen for. The fix is contained: join
-   on `Nutrient_Source_Code`, treat 12 as *not measured*, and let it
-   flow into the `nutrient_coverage` machinery that already exists.
-   Raised with the author 2026-07-30; not yet approved.
+8. **Assumed zeros — INVESTIGATED 2026-07-30, NOT A DEFECT. Do not
+   "fix" this.** Recorded because the raw numbers look alarming and
+   someone will rediscover them and file it as a bug.
+
+   The observation is real: CNF flags 65,887 values (11.7%) as
+   `Nutrient_Source_Code` 12, "Nutrient value is an assumed zero", and
+   `_scale_ingredients()` in `src/calculator.py` does not read that
+   column — so an assumed zero is summed with the same confidence as a
+   lab measurement. Within the tracked set that is fibre in 25.2% of
+   foods and sugars in 26.7%.
+
+   **The inference from it was wrong.** Those assumed zeros are not
+   scattered across the database; they sit almost entirely on foods
+   that genuinely contain none of the nutrient:
+
+   | Food group | Fibre assumed zero |
+   |---|---|
+   | Lamb, Veal and Game | 331 of 353 (94%) |
+   | Finfish and Shellfish | 287 of 317 (91%) |
+   | Pork Products | 172 of 208 (83%) |
+   | Poultry Products | 328 of 419 (78%) |
+   | **Vegetables** | **0 of 717 (0%)** |
+   | **Fruits and juices** | **0 of 317 (0%)** |
+   | **Cereals, Grains, Pasta** | **0 of 143 (0%)** |
+   | **Legumes** | **0 of 206 (0%)** |
+   | **Nuts and Seeds** | **0 of 103 (0%)** |
+
+   Zero in *every* plant food group; same pattern for sugars. Health
+   Canada didn't measure fibre in lamb because lamb has no fibre, and
+   they recorded that they made that call. In the real example blend the
+   two assumed-zero-fibre ingredients are **canola oil and municipal
+   water** — both correctly zero.
+
+   So treating code 12 as "not measured" would flag every meat, fish and
+   oil ingredient in a blend as unknown-fibre, and would never fire
+   where a missing fibre value would actually matter. **In a clinical
+   tool a warning that cries wolf is worse than no warning**: it teaches
+   the RD to click past the coverage note, and then it fails silently on
+   the day it is real. The coverage machinery is reserved for genuine
+   absence (a food with no CNF row, an undisclosed formula nutrient).
 
 **Note on scope:** the AI-assist features (label-photo extraction,
 PDF → formulas) were **moved to Week 4** on 2026-07-30. `BUSINESS_CASE.md`

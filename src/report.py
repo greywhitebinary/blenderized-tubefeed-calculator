@@ -136,7 +136,20 @@ def _coverage_text(name: str, coverage: dict[str, tuple[int, int]]) -> str:
     """
     n_supplying, n_total = coverage.get(name, (0, 0))
     if n_total > 0 and n_supplying < n_total:
-        return f"{n_supplying}/{n_total} ingredients"
+        # "sources", not "ingredients" (author's ruling 2026-07-30). On a
+        # whole day this counts three different kinds of thing, and only
+        # one of them is an ingredient: a blend contributes one per
+        # ingredient PER FEED, a commercial formula contributes exactly
+        # one (it is a finished product, not an ingredient list), and an
+        # oral food contributes one. The real example day reads 36/40 --
+        # 4 blend feeds x 9 ingredients, + 3 formula feeds, + 1 banana --
+        # for a day involving only 11 distinct foods.
+        #
+        # The NUMBER is deliberately left as-is: counting a blend once
+        # per feed weights the note by how much each thing actually
+        # contributed to the day, which is the question an RD is asking.
+        # Only the noun was wrong.
+        return f"{n_supplying}/{n_total} sources"
     return "—"
 
 

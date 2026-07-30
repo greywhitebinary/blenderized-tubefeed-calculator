@@ -553,6 +553,36 @@ author can compare their fixes or unblock themselves if stuck for too long.
       real box against real CNF — the module being correct and the app
       being *wired* to it are separate claims, and the old search was a
       perfectly correct substring match).
+  - [x] **Three author decisions — CLOSED 2026-07-30.**
+    - **Assumed zeros: investigated, NOT a defect — do not "fix" it.**
+      Reversal of a recommendation I had given her the previous message,
+      on measurement. CNF's 65,887 "assumed zero" values sit almost
+      entirely on foods that genuinely contain none of the nutrient:
+      fibre is assumed-zero in 94% of Lamb/Veal/Game, 91% of Finfish,
+      78% of Poultry — and in **0%** of Vegetables, Fruits, Grains,
+      Legumes and Nuts. In the real example blend the two assumed-zero
+      fibre ingredients are canola oil and municipal water. Treating
+      code 12 as "unknown" would flag every meat/fish/oil ingredient and
+      never fire where it matters — a warning that cries wolf teaches
+      the RD to ignore the coverage note, so it then fails silently on
+      the day it is real. Full evidence: `HANDOFF.md` item 8.
+    - **`"N/M ingredients"` → `"N/M sources"`** in
+      `report.py::_coverage_text`. The denominator counts three
+      different kinds of thing and only one is an ingredient: the real
+      example day reads **36/40** — 4 blend feeds × 9 ingredients, + 3
+      formula feeds, + 1 banana — for a day involving 11 distinct foods.
+      **The number is deliberately unchanged**; counting a blend once
+      per feed weights the note by actual contribution, which is the
+      question being asked. Only the noun was wrong.
+    - **Excel export blend sheets are prefixed `BTF `.** The tab was
+      named only after the blend, sat between "Intake Record" and
+      "Adequacy", and did not announce itself — the author opened her
+      own export, saw the macro sheets, and concluded the ingredients
+      weren't in the file. Her suggested `BTF:` **would have crashed the
+      export**: Excel rejects `: \ / ? * [ ]` in a sheet title outright
+      (openpyxl raises `ValueError`), so the space form is used instead.
+      31-character cap still applies, with the blend name keeping the
+      budget.
 - [ ] Week 4 — Ship + Pitch — NOT STARTED (polish from RD pilot feedback,
   validation appendix, and the AI-assist features moved here from Week 3:
   label-photo extraction and PDF → formulas extraction. Saving/loading a

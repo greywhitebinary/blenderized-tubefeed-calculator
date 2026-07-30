@@ -2505,8 +2505,25 @@ with record_tab:
             ).to_excel(writer, sheet_name="Intake Record", index=False)
 
         # One sheet per blend: ingredient list + measured volume.
+        #
+        # Prefixed "BTF " since 2026-07-30. Without it the tab was named
+        # only after the blend ("Whole-food blend"), which sits between
+        # "Intake Record" and "Adequacy" and does not announce itself as
+        # an ingredient list -- the author opened her own export looking
+        # for ingredients, saw the macro sheets, and concluded they
+        # weren't in the file. They were, one tab over.
+        #
+        # "BTF " and not "BTF: " -- Excel rejects : \ / ? * [ ] in a
+        # sheet title outright (openpyxl raises ValueError), so a colon
+        # here would crash the whole export, not just look wrong.
+        # sanitize_filename() already strips those from the blend name;
+        # the prefix has to obey the same rule.
+        #
+        # Excel also caps a sheet title at 31 characters. The prefix is
+        # the least meaningful part, so the BLEND NAME keeps the budget
+        # and the truncation lands after the prefix is applied.
         for _bid, _blend in st.session_state.blends.items():
-            _sheet_name = sanitize_filename(_blend["name"], fallback=f"Blend {_bid}")[:31]
+            _sheet_name = f"BTF {sanitize_filename(_blend['name'], fallback=f'Blend {_bid}')}"[:31]
             if _blend["ingredients"]:
                 _ing_df = pd.DataFrame(_blend["ingredients"])[
                     ["food_description", "grams", "unit", "counts_as_fluid"]
