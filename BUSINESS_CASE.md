@@ -147,7 +147,7 @@ clinical instruments.
 | Mental math across feeds, batches, flushes, and oral intake | A day-level Intake Record that records and sums exactly what the client actually received |
 | Errors are silent | Validated inputs, consistent math, every calculation visible |
 | Hard to share or audit | Exportable recipe + methodology for chart documentation |
-| Curated food list or no database | ~6,000 CNF foods + USDA supplement + custom foods from labels |
+| Curated food list or no database | 5,993 CNF foods, findable by the words RDs actually use, + custom foods from labels |
 
 ---
 
@@ -198,8 +198,8 @@ the RD is always the final authority.
 
 ## 7. Core features
 
-1. **Recipe builder.** Search CNF 2026 (~5,993 foods) or USDA supplement
-   (~7,000 whole foods) or add a custom food from a nutrition facts
+1. **Recipe builder.** Search CNF 2026 (5,993 foods) by lay name, or add
+   a custom food from a nutrition facts
    label. Enter grams (or mL, for a liquid custom food) per ingredient
    and measured final blend volume. There is no separate "added water"
    field — water is an ordinary ingredient like anything else (CNF
@@ -371,8 +371,10 @@ Planned, in priority order (sequenced after the core build, Week 3+):
    matcher must never silently select raw meat/egg entries; raw variants
    (e.g., sushi-grade fish) are surfaced only as an explicit, flagged
    choice. Search assist only — never calculation.
-4. **USDA SR Legacy supplement** — the multi-source data story,
-   specified in §8 and Appendix C.
+4. **Semantic food search** — matching intent rather than words
+   ("something to thicken a blend"). Requires an embedding model, so it
+   is a paid-API feature under the §11 hard rules. The three
+   non-AI search layers in §8.1 ship first and may make it unnecessary.
 
 **Explicitly rejected — AI-written chart notes (ADIME).** An LLM cannot
 write an assessment note without the patient's medical picture, which
@@ -393,49 +395,105 @@ where the patient context lives.
 
 ---
 
-## 8. Data — CNF + USDA supplement
+## 8. Data — CNF, plus custom entry from labels
 
-### The problem with CNF alone
+### One database, not two
 
-CNF 2026 has ~5,993 foods. That's good for Canadian packaged foods and
-common whole foods, but it's limited. If someone searches for plantain,
-cassava flour, or specific ethnic foods, CNF may not have them.
+CNF 2026 has 5,993 foods and 565,409 nutrient values. An earlier version
+of this document proposed supplementing it with USDA SR Legacy for foods
+CNF "doesn't have." **That proposal was investigated and rejected on
+2026-07-30.** The reasoning is worth keeping, because it is the reason
+this tool is simpler than it might have been.
 
-### The solution: dual database
+**CNF is already a merged database.** Every value in `Nutrient_Amount.csv`
+carries a `Nutrient_Source_Code` saying where it came from:
 
-**Whole foods are whole foods.** A raw plantain from CNF and a raw
-plantain from USDA have essentially the same nutrient profile. Cooked
-lentils are cooked lentils. The biology doesn't change at the border.
+| Share | Source |
+|---|---|
+| 55.4% | No change from USDA — copied verbatim |
+| 13.5% | Analyzed in a Canadian government lab |
+| 11.7% | **Assumed zero** (see "Absence vs. zero" below) |
+| 2.6% | Calculated from USDA data |
+| 2.1% | Imputed from a similar USDA food |
 
-**Packaged foods are different.** Canadian yogurt has different
-fortification than US yogurt. Canadian bread has different folic acid
-levels. Canadian milk has different vitamin D fortification. For
-packaged foods, using the wrong country's database gives wrong numbers.
+Over half of CNF *is* USDA. Health Canada already did the merge, kept
+what transfers across the border, and replaced what doesn't
+(fortification, enrichment, Canadian formulations). Bolting USDA on a
+second time would re-do that work worse.
 
-| Data source | Used for | Why |
-|---|---|---|
-| **CNF 2026** (primary) | Canadian packaged foods, common foods | Right fortification, Canadian-specific |
-| **USDA SR Legacy** (supplement) | Whole foods CNF doesn't have | Whole foods are interchangeable across countries |
-| **Custom label entry** | Specific branded products | Always the most accurate for packaged foods |
+**The gap was mostly a search problem, not a data problem.** The
+estimate that CNF was missing ~1,600 foods collapsed to roughly a dozen
+once two faults were fixed: CNF's inverted naming defeats substring
+search ("wild rice" is filed as "Grains, rice, wild, dry"), and CNF's
+`USDA_NDB_Code` is inconsistently zero-padded, which broke the join.
+The answer was to fix the search — see §8.1 — not to add a database.
 
-The search function checks CNF first, then USDA for foods not found. The
-user sees one unified search — they don't need to know which database it
-came from.
+**Merging two nutrient databases is expensive and quietly dangerous.**
+Values that look compatible often aren't: vitamin A as RAE vs. RE vs. IU
+differ by 3–12×; folate as DFE vs. food folate; niacin as NE vs.
+preformed; vitamin E as α-tocopherol vs. α-TE. A missing value is
+visible. A silently mismatched unit is not.
+
+| Data source | Used for |
+|---|---|
+| **CNF 2026** | Every food in the database — Canadian fortification, and the USDA values Health Canada already vetted |
+| **Custom label entry** | Branded products, and the handful of foods CNF genuinely lacks |
+
+A future US edition is a **separate data pack** (Appendix C), selected
+whole. Packs are switched, never blended: mixing sources *within* one
+food produces a number no RD can defend and no one can trace.
+
+### 8.1 Finding the food that is already there
+
+CNF's descriptions are inverted and comma-prefixed. An RD types the way
+people speak; CNF is filed the way a librarian would file it. So search
+runs in three layers:
+
+1. **All words, any order** — "wild rice" matches "Grains, rice, wild,
+   dry". Also searches CNF's own `Alternate_Description_EN` column,
+   which carries lay and brand terms for 1,384 foods.
+2. **Typo tolerance** — "brocolli" → broccoli, "yoghurt" → yogourt.
+   Matched per word against CNF's vocabulary, using the Python standard
+   library; no additional dependency and no API call.
+3. **A curated synonym table** — for regional terms CNF has neither
+   spelling of: courgette → zucchini, prawns → shrimp, soy milk → soy
+   beverage.
+
+Search **ranks; it never auto-selects.** The RD sees the full CNF
+description and chooses. A search that silently picks the wrong food is
+worse than one that finds nothing, because nothing is visible and wrong
+is not.
+
+### 8.2 Absence vs. zero
+
+11.7% of CNF's values (65,887) are flagged "assumed zero" — not
+measured, presumed absent. Within the nutrients this tool tracks, that
+includes **fibre in 25.2% of foods** and sugars in 26.7%. Fibre is not
+an incidental nutrient here: bowel management is the single most common
+problem in tube feeding.
+
+A tool that adds an assumed zero to a measured value and reports the sum
+with equal confidence is telling the RD something it does not know.
+So a nutrient total always travels with its coverage — how many
+contributing sources actually had a value — and an incomplete total is
+marked rather than quietly rounded into fact. **"This feed is low in
+fibre" and "we don't know this feed's fibre" are different clinical
+statements, and only one of them is a reason to change the feed.**
 
 ### Cultural foods
 
-This isn't a separate feature — it's a natural consequence of having a
-large database + custom entry. But it matters. Most BTF tools have a
+This isn't a separate feature — it's a natural consequence of a large
+database plus custom entry. But it matters. Most BTF tools have a
 curated food list (Compleat has ~40 foods). If your family eats dal,
 roti, and okra — or jollof rice, plantains, and egusi — or congee, pork
 floss, and bok choy — those foods aren't on a 40-food list. BTF is about
 real food, family food. If the tool can't handle your family's food,
 it's not really "real food."
 
-With CNF + USDA supplement + custom entry, you can use **your** kitchen,
-**your** food, **your** culture. That's a real benefit, not a
-breakthrough — just a consequence of not restricting people to a
-curated list.
+With CNF, a search that can actually find what's in it, and custom entry
+for what isn't, you can use **your** kitchen, **your** food, **your**
+culture. That's a real benefit, not a breakthrough — just a consequence
+of not restricting people to a curated list.
 
 ---
 
@@ -476,7 +534,7 @@ Our differentiators, honestly stated:
 - **Calculator not food guide** — enter what's in your blender, not pick
   from a curated list
 - **Actual grams, not fixed servings** — enter what you really used
-- **Large database + custom entry** — CNF + USDA + labels = use what's
+- **Large database + custom entry** — CNF + labels = use what's
   in your kitchen
 - **Per-mL density lens** — kcal/mL as primary metric
 - **Sweet spot awareness** — shows density while RD checks flow
@@ -562,8 +620,7 @@ unvalidated spreadsheet.**
 | Tests | pytest | Standard, simple |
 | Deployment | Streamlit Community Cloud | Free, public URL, auto-deploys from GitHub |
 
-**Data:** CNF 2026 (primary) + USDA SR Legacy (supplement). Both public,
-both ship with the repo. No API keys needed for the core — the
+**Data:** CNF 2026. Public, and ships with the repo. No API keys needed for the core — the
 deterministic calculator runs entirely on local data. The AI-assist
 edges (§7 roadmap: label photo, PDF extraction) use a vision-model API
 key held in deployment secrets, never in the repo.
@@ -576,14 +633,15 @@ key held in deployment secrets, never in the repo.
 |---|---|---|
 | **1 — Plan It** | This document posted publicly | Concept, market, requirements, methodology — including the Intake Record model (§7.3), the per-country nutrient registry (Appendix C), and the AI roadmap (§7) |
 | **2 — Core Feature** | Working Streamlit app | Data layer (CNF load, registry); calculator (blends → densities); Intake Record → daily totals; two-tier adequacy + fluids ledger; comparator; NFt-lookalike custom-food entry; chart note; export |
-| **3 — Build to Last** | Tests, CI, public deploy, USDA | pytest suite, GitHub Actions, runtime/dev dependency split, Streamlit Cloud deploy for RD pilot testing (**done 2026-07-23** — live at <https://btfcalc.streamlit.app>), USDA supplement |
+| **3 — Build to Last** | Tests, CI, public deploy, USDA | pytest suite, GitHub Actions, runtime/dev dependency split, Streamlit Cloud deploy for RD pilot testing (**done 2026-07-23** — live at <https://btfcalc.streamlit.app>), recipe record, water ledger, three-layer food search |
 | **4 — Ship + Pitch** | Live app + write-up | Polish from pilot feedback, validation appendix, AI-assist edges (label-photo extraction, PDF → formulas extraction), possible JSON save/load |
 
 > **Scope reconciled 2026-07-30.** The AI-assist features were originally
 > listed under Week 3 here while `HANDOFF.md` Phase 2 omitted them —
 > three documents, three definitions of Week 3. Settled: **they are Week
-> 4.** Week 3 is durability (tests, CI, dependency hygiene) plus the USDA
-> supplement. Custom food entry from a nutrition-facts label typed by hand
+> 4.** Week 3 is durability (tests, CI, dependency hygiene) plus the
+> recipe record and the food-search rework (the USDA supplement was
+> investigated in Week 3 and rejected — §8). Custom food entry from a nutrition-facts label typed by hand
 > already shipped in Week 2; it is the *photo* extraction that moved.
 >
 > **Before building any paid-API feature, read the hard rules in
@@ -611,9 +669,8 @@ key held in deployment secrets, never in the repo.
 > So I'm building it. Open-source. Free. Every calculation visible, every
 > assumption documented. No black boxes.
 >
-> It uses Canadian data (CNF 2026) with USDA as a supplement for foods
-> CNF doesn't have — because whole foods are whole foods, but packaged
-> foods differ across borders. You can also enter custom foods from
+> It uses Canadian data (CNF 2026) — which already incorporates the USDA
+> values Health Canada vetted for Canadian use. You can also enter custom foods from
 > nutrition facts labels. The result: you use what's in your kitchen, at
 > the amounts you actually used.
 >
@@ -632,8 +689,7 @@ key held in deployment secrets, never in the repo.
 
 ### A1. Data source
 
-CNF 2026: ~5,993 foods × ~173 nutrients, all per 100 g of edible food.
-USDA SR Legacy: ~7,000 whole foods as supplement.
+CNF 2026: 5,993 foods × ~173 nutrients, all per 100 g of edible food.
 Custom foods: entered from nutrition facts labels, converted to per-100 g.
 
 ### A2. Core calculation
@@ -864,8 +920,9 @@ The tool does NOT calculate:
 
 ### A11. Key assumptions
 
-1. CNF/USDA values are accurate for the foods used (custom entry covers
-   specific products)
+1. CNF values are accurate for the foods used (custom entry covers
+   specific products), and values CNF flags as an assumed zero are
+   reported as unknown rather than as measured zeros
 2. Measured final volume is accurate (user reads it from a container)
 3. 1 g water ≈ 1 mL (standard clinical approximation)
 4. No nutrient loss from blending (known limitation)
@@ -1064,7 +1121,9 @@ Canadian default with a data-shaped facade.
 ## References
 
 1. Canadian Nutrient File (CNF) 2026. Health Canada.
-2. USDA FoodData Central, SR Legacy subset. US Department of Agriculture.
+2. USDA FoodData Central. US Department of Agriculture. *Not used
+   directly* — cited because 55.4% of CNF's nutrient values originate
+   there, per CNF's own `Nutrient_Source_Code`.
 3. Alberta Health Services. *Home Blended Food for Tube Feeding: Caregiver
    Handbook.* April 2021.
 4. Brown T, et al. "Knowledge and clinical practice of ASPEN registered

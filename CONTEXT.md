@@ -18,9 +18,9 @@ to it. The full business case, market analysis, and methodology are in
 **App flow — "start with the blender":**
 
 1. **Feed Recipes tab — blends** — a blend selector (new/rename/delete) over
-   an open-ended list of recipe formulations; search CNF or USDA
-   supplement or add a custom food from a nutrition facts label (g or
-   mL basis); enter grams (or mL) per ingredient and measured final
+   an open-ended list of recipe formulations; search CNF (three-layer
+   search: all-words, typo-tolerant, synonyms) or add a custom food
+   from a nutrition facts label (g or mL basis); enter grams (or mL) per ingredient and measured final
    volume for the selected blend. No separate "added water" field —
    water is an ordinary ingredient, flagged "counts as fluid" like any
    other liquid. A blend is scale-free (a *formulation*) — it doesn't
@@ -105,7 +105,8 @@ equations.
 **Internationalization — "built for Canada, designed for the world":**
 The calculator engine is country-agnostic. Each country is a "data pack"
 (nutrient database + targets + formula profiles + units config). Canada
-first (CNF 2026 + USDA SR Legacy supplement), then US, UK, Australia.
+first (CNF 2026), then US, UK, Australia. Packs are selected whole,
+never blended together — see §9's USDA entry for why.
 See `BUSINESS_CASE.md` Appendix C for the data pack specification.
 
 **Out of scope, permanently (fixed caution notes, never computed):**
@@ -115,10 +116,10 @@ safety. **Identity from day one: "for RD use, estimates only."**
 
 **Data:** Built on the **Canadian Nutrient File (CNF) 2026 edition** —
 a public Government of Canada dataset of ~5,993 foods × ~173 nutrients,
-all values expressed **per 100 g of edible food** — supplemented by
-**USDA SR Legacy** (~7,000 whole foods) for foods CNF doesn't have.
-Whole foods are interchangeable across databases; packaged foods are
-not (different fortification by country). Custom food entry from
+all values expressed **per 100 g of edible food**. CNF is itself a
+merged database — 55.4% of its values come verbatim from USDA, already
+vetted and localised by Health Canada (see §9, 2026-07-30). A separate
+USDA supplement was investigated and rejected. Custom food entry from
 nutrition facts labels covers specific branded products.
 
 ---
@@ -253,13 +254,14 @@ column name becomes `﻿Nutrient_Code` and merges silently fail.
 |---|---|---|
 | **1 — Plan It** | `BUSINESS_CASE.md` posted publicly | Concept, market, requirements, methodology |
 | **2 — Core Feature** | Working Streamlit app | Build calculator, measures, targets/report, Streamlit UI |
-| **3 — Build to Last** | Tests, CI, public deploy, USDA | pytest, GitHub Actions, dev/runtime dependency split, Streamlit Cloud (done 2026-07-23), USDA SR Legacy supplement |
+| **3 — Build to Last** | Tests, CI, public deploy | pytest, GitHub Actions, dev/runtime dependency split, Streamlit Cloud (done 2026-07-23), recipe record, water ledger, three-layer food search |
 | **4 — Ship + Pitch** | Live app + write-up | Polish from RD pilot feedback, validation appendix, AI-assist features (label-photo extraction, PDF → formulas), possible JSON save/load |
 
 > **One definition of Week 3.** This row, `BUSINESS_CASE.md` §12, and
 > `HANDOFF.md` Phase 2 previously disagreed about whether the AI-assist
 > features belonged to Week 3. Settled 2026-07-30: **they are Week 4.**
-> Week 3 is durability plus the USDA supplement. Custom food entry from a
+> Week 3 is durability plus the recipe record and the food-search
+> rework. Custom food entry from a
 > nutrition-facts label (typed by hand) already shipped in Week 2 — it is
 > the *photo* extraction that moved.
 
@@ -446,59 +448,39 @@ author can compare their fixes or unblock themselves if stuck for too long.
     water source on its own line. See the entry below.
   - [x] **Dilution What-If narrowed to water — DONE** (2026-07-30,
     commit c4da8a1). See the entry below.
-  - [ ] **USDA SR Legacy supplement — RECOMMENDED AGAINST; author's
-    decision pending.** Two documents: `USDA_SUPPLEMENT.md` (4d50166,
-    the design, should it be built anyway) and **`USDA_CANDIDATES.md` +
-    `data/usda_candidates.csv` (8210d52, the evidence — read this one
-    first)**.
-    - **The estimate collapsed from 1,628 genuinely-new foods to ~12**
+  - [x] **USDA SR Legacy supplement — CLOSED. Author rejected it
+    2026-07-30: "shall we remove USDA entirely... it seems like combining
+    this database is more trouble than it's worth."** Both proposal
+    documents and the candidate CSV were deleted from the working tree;
+    they remain in git history at 4d50166 (`USDA_SUPPLEMENT.md`) and
+    8210d52 (`USDA_CANDIDATES.md`, `data/usda_candidates.csv`). **Do not
+    re-open without the author's say-so** — it looks like an obvious idea
+    and will be proposed again. Three findings closed it:
+    - **CNF already IS a merged database.** Every row of
+      `Nutrient_Amount.csv` carries a `Nutrient_Source_Code`. Of 565,409
+      values: **55.4% are "No change from USDA" (code 0)**, 13.5%
+      analyzed in a Canadian government lab, 2.6% calculated from USDA,
+      2.1% imputed from a similar USDA food. Health Canada already did
+      this merge and localised the fortification. Doing it again, from
+      outside, would do it worse.
+    - **The gap was a search bug, not a data gap. 1,628 → ~12 foods**
       once two method faults were fixed. (a) Substring matching against
       CNF descriptions invents gaps, because CNF inverts and prefixes its
       names — searching "wild rice" returns zero while CNF holds it as
-      "Grains, rice, wild, dry". (b) A join bug: CNF's `USDA_NDB_Code` is
-      inconsistently zero-padded, so string comparison found only 3,333
-      links to SR Legacy where int-normalising recovers 4,448. Both
-      faults *understated* CNF's existing coverage.
-    - Of the 1,568 that survive mechanically, 73% are fine-grained
-      butchery cuts and most of the rest are branded products or foods
-      CNF already carries under other wording.
-    - **The real shortlist is ~12 foods**, led by four Mexican cheeses
-      CNF genuinely lacks (queso fresco, blanco, seco, cotija — verified:
-      CNF has exactly three, anejo/asadero/chihuahua, out of 328 cheese
-      entries).
-    - **Recommendation: hand-enter those 12 through the existing
-      custom-food-from-label form (~1 hour)** rather than build a
-      two-database architecture, an `Ingredient.source` field, a nutrient
-      mapping table and five provenance surfaces (3–5 days).
-    - **The author's reframing settles the strategy:** a US version needs
-      USDA foods *and* a US commercial-formula list, so USDA work is the
-      opening move of a separate US product built on this foundation —
-      not an upgrade to the Canadian app. Revisit after Week 4.
-    - Author's rulings recorded 2026-07-30: **provenance should NOT be
-      shown per food** — clinical RDs don't want to know — but a global
-      disclaimer saying values come from CNF with USDA filling gaps would
-      be helpful. Indigenous foods were to be examined rather than
-      excluded (they were — see below).
-    - Superseded finding, kept because it was reported to the author:
-    - **CNF's own `Food_Name.csv` has a `USDA_NDB_Code` column, 80%
-      populated**, matching SR Legacy's `NDB_number` for ~96% of rows.
-      Deduplicating CNF against USDA is a real key join, not fuzzy
-      description matching. This makes the build far more trustworthy
-      than expected.
-    - **The premise in `BUSINESS_CASE.md` §8 is weaker than written.**
-      Its motivating cultural-food examples are *already in CNF 2026* —
-      verified directly against `Food_Name.csv`: plantain 6 entries,
-      cassava 2, okra 6, yam 7, taro 13, breadfruit 4, jackfruit 2. Bok
-      choy is absent from USDA and present in CNF (the opposite of the
-      assumed direction); egusi and dal are in neither, so only custom
-      food entry addresses those. After filtering, 7,793 SR Legacy foods
-      reduce to 1,628 genuinely new rows, **66% of which are fine-grained
-      USDA butchery cuts** irrelevant to a blended feed. The supplement
-      still has value — a long tail of USDA-specific whole foods, plus
-      redundancy — but "fixes the ethnic-food gap" is not that value.
-      **Superseded 2026-07-30 by `USDA_CANDIDATES.md`:** the direction of
-      that finding was right but the magnitude was understated — the gap
-      is far smaller than even this said.
+      "Grains, rice, wild, dry". (b) A join bug: CNF's `USDA_NDB_Code`
+      is inconsistently zero-padded, so string comparison found only
+      3,333 links to SR Legacy where int-normalising recovers 4,448.
+      Both faults *understated* CNF's existing coverage. Of the 1,568
+      surviving mechanically, 73% are fine-grained butchery cuts. The
+      real shortlist is ~12, led by four Mexican cheeses CNF genuinely
+      lacks (queso fresco/blanco/seco/cotija — verified: CNF has exactly
+      three, anejo/asadero/chihuahua, of 328 cheese entries). These are
+      handled by the existing custom-food-from-label form.
+    - **Merging nutrient databases hides unit mismatches.** Vitamin A as
+      RAE vs RE vs IU (3–12× apart), folate as DFE vs food folate,
+      niacin as NE vs preformed, vitamin E as α-tocopherol vs α-TE. A
+      missing value is visible in the UI; a silently mismatched unit is
+      not. This is the clinical argument, and it is the strongest one.
     - **Indigenous foods — checked, at the author's explicit request.**
       All 94 unlinked rows in USDA's "American Indian/Alaska Native
       Foods" category were reviewed. **Zero made the shortlist.** CNF's
@@ -509,6 +491,16 @@ author can compare their fixes or unblock themselves if stuck for too long.
       (Navajo, Hopi, Apache, Klamath) with no Canadian equivalent. The
       author's instinct to check was correct; the answer is that Health
       Canada already did this work, better, for Canada.
+    - **Consequence for the roadmap:** a US edition is a **separate data
+      pack selected whole** (Appendix C), never a blend. Packs are
+      switched, not merged: mixing sources *within* one food produces a
+      number no RD can defend and no one can trace. Revisit after Week 4.
+    - `data/raw/usda/` (69 MB, gitignored) is a local download only. It
+      never reached the repo or Streamlit Cloud, and nothing reads it.
+      Left on disk for the author to delete at her convenience.
+  - [x] **Food search rework — DONE** (2026-07-30). The direct
+    consequence of the USDA finding: the fix for "the food isn't in
+    there" is search, not more data. See the entry below.
 - [ ] Week 4 — Ship + Pitch — NOT STARTED (polish from RD pilot feedback,
   validation appendix, and the AI-assist features moved here from Week 3:
   label-photo extraction and PDF → formulas extraction. Saving/loading a

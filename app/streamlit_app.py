@@ -1511,10 +1511,14 @@ with targets_tab:
     _kg_note = (
         f" = {patient_weight_kg:.1f} kg" if _weight_unit == "lbs" and _weight_entered > 0 else ""
     )
-    st.caption(f"Blank/0 = not provided. Display only — not a target.{_kg_note}")
+    # "0", not "blank": this is a number_input seeded to 0.0 with
+    # min_value=0.0, so an empty box is not a state the RD can reach --
+    # clearing it snaps back to 0. Saying "blank" described something the
+    # form cannot do (author feedback 2026-07-30).
+    st.caption(f"0 = not provided. Display only — not a target.{_kg_note}")
 
     st.subheader("Targets (optional)")
-    st.caption("Blank = no target; enter patient-specific values.")
+    st.caption("0 = no target; enter patient-specific values.")
     targets = empty_targets()
     tc1, tc2 = st.columns(2)
     cols = (tc1, tc2)

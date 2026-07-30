@@ -269,42 +269,56 @@ This is **Week 3 — "Build to Last"** of a 4-week build plan
    reinstall dependencies. **Remaining sub-item:** `requirements.txt` still
    ships jupyter/pytest/black/ruff to production, so Cloud installs ~130
    unused packages — split runtime from dev dependencies.
-4. **Fix `scripts/check_tab_restructure.py`** — failing on `main` since
+4. ~~**Fix `scripts/check_tab_restructure.py`**~~ — **DONE 2026-07-30**
+   (e9b4f33). Kept below because the *cause* is instructive. Was failing
+   on `main` since
    2026-07-23 at line 115 (`AssertionError: Nepro not offered under Abbott
    filter`). The app is fine; the checker is stale. It parses formula
    labels with `o.split(" — ", 1)[-1]`, and commit 1f3af36 changed those
    labels to feed-name-first, so the parse now yields the brand instead of
    the feed name. It went unnoticed for a week because nothing runs it —
    which is the argument for item 2.
-5. **Formula rows don't contribute `nutrient_coverage`** — known limitation
-   recorded 2026-07-23. `aggregate_intake()`'s `formula` branch sums every
+5. ~~**Formula rows don't contribute `nutrient_coverage`**~~ — **DONE
+   2026-07-30** (e00320f). A disclosed formula nutrient now counts
+   (1,1) and an undisclosed one (0,1); never a fabricated 0. Was recorded
+   2026-07-23 as: `aggregate_intake()`'s `formula` branch sums every
    disclosed per-mL nutrient into daily totals correctly but adds nothing
    to the coverage counts, so on a *mixed* day the adequacy table's "N/M
    ingredients" note reflects only the food/CNF side. Summed values are
    unaffected; a formula-only day is unaffected. Small fix — but that note
    is what tells an RD how complete a row's data is.
-6. **`thinning_liquids.csv` pack-awareness** — `_load_thinning_liquids()`
-   in `app/streamlit_app.py` still loads from a hardcoded `canada` path,
-   the last loader that does. Inert until a second pack exists, so fold it
-   into the USDA pack work rather than doing it as a separate errand.
-7. **USDA SR Legacy supplement** (see `BUSINESS_CASE.md` §8) — CNF-first
-   search, USDA fallback for foods CNF lacks. **Design it as a data pack
-   concern**, consistent with Appendix C. Whole foods are interchangeable
-   across databases; packaged foods are not. Propose the design and get my
-   sign-off *before* implementing — this is the biggest change in Week 3.
-   Three decisions the proposal must settle, because they are expensive to
-   reverse in a clinical tool: (a) **where the derived table lives** — the
-   raw USDA download under `data/raw/usda/` is gitignored and ~1 GB, and
-   Cloud only has what's committed, so runtime cannot read it; something
-   small and pre-built has to be committed instead, and whether that is a
-   supplement *inside* the Canada pack or a shared source each pack opts
-   into is the author's call; (b) **nutrient-code mapping** — CNF keys on
-   numeric `Nutrient_Code` (307 = sodium, deliberately; see §11's `"NA"`
-   gotcha) and USDA has its own ids, so a mapping table is required and is
-   exactly where a wrong value would hide silently; (c) **provenance in the
-   report** — `report.py::_source_text` and the "N/M ingredients" note
-   should show which database a value came from, because an RD needs to
-   know.
+6. ~~**`thinning_liquids.csv` pack-awareness**~~ — **DONE 2026-07-30**
+   (c4da8a1). `_load_thinning_liquids()` now takes a `pack=` argument
+   like every other loader.
+7. **USDA SR Legacy supplement — CLOSED, REJECTED 2026-07-30 by the
+   author.** Do not re-open it without her say-so. It is recorded here
+   because it looks like an obvious idea and someone will propose it
+   again. Three findings killed it: (a) **CNF already is a merged
+   database** — 55.4% of its 565,409 values are USDA verbatim
+   (`Nutrient_Source_Code` 0), plus 4.7% calculated or imputed from
+   USDA, so Health Canada has already done this merge and localised the
+   fortification; (b) **the gap was a search bug** — the "~1,600 missing
+   foods" estimate collapsed to about a dozen once substring matching
+   against CNF's inverted names and a zero-padded-join bug were fixed;
+   (c) **merging nutrient databases hides unit mismatches** — vitamin A
+   as RAE/RE/IU, folate as DFE vs food folate, niacin as NE vs
+   preformed. A missing value is visible; a mismatched unit is not.
+   The ~12 genuinely-absent foods (led by queso fresco/blanco/seco/
+   cotija) are handled by the existing custom-food form. A US edition,
+   if it ever happens, is a **separate pack selected whole** — packs are
+   switched, never blended. Evidence lives in git history at 8210d52
+   (`USDA_CANDIDATES.md`, `data/usda_candidates.csv`) and 4d50166
+   (`USDA_SUPPLEMENT.md`), all removed from the working tree.
+8. **Assumed zeros are still counted as measurements** — CNF flags
+   65,887 values (11.7%) as `Nutrient_Source_Code` 12, "Nutrient value
+   is an assumed zero." `_scale_ingredients()` in `src/calculator.py`
+   never reads that column, so an assumed zero is summed with the same
+   confidence as a lab measurement. Within the tracked nutrients this
+   hits **fibre in 25.2% of foods** and sugars in 26.7% — and fibre is
+   the nutrient BTF is most often chosen for. The fix is contained: join
+   on `Nutrient_Source_Code`, treat 12 as *not measured*, and let it
+   flow into the `nutrient_coverage` machinery that already exists.
+   Raised with the author 2026-07-30; not yet approved.
 
 **Note on scope:** the AI-assist features (label-photo extraction,
 PDF → formulas) were **moved to Week 4** on 2026-07-30. `BUSINESS_CASE.md`
