@@ -71,9 +71,10 @@ from src.recipe_io import (
     UNMATCHED,
     RecipeFileError,
     recipe_to_workbook_bytes,
+    recipes_to_workbook_bytes,
     resolve_ingredients,
     suggested_filename,
-    workbook_bytes_to_recipe,
+    workbook_bytes_to_recipes,
 )
 from src.targets import empty_targets
 from src.report import (
@@ -258,8 +259,12 @@ def default_counts_as_fluid(food_desc: str, group_code) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _confirm_recipe_import(parsed, resolved) -> None:
-    """Show an uploaded recipe as a DRAFT for the RD to confirm.
+def _confirm_recipe_import(entries) -> None:
+    """Show uploaded recipes as DRAFTS for the RD to confirm.
+
+    `entries` is a list of (ParsedRecipe, [ResolvedIngredient]) pairs --
+    a file may hold several blends since format v2 (see src/recipe_io.py),
+    and every one of them is shown before anything is written.
 
     Nothing here writes to a blend until the confirm button is pressed.
     That is deliberate and matches the rule in CONTEXT.md §11: a file the
@@ -269,96 +274,128 @@ def _confirm_recipe_import(parsed, resolved) -> None:
     different protein figures. Picking one silently would put a plausible
     wrong number into a clinical calculation, so every row that wasn't
     matched by code is shown for a human to settle.
+
+    Every widget key carries the recipe's position as well as the row's.
+    Two recipes in one file can hold the same ingredient at the same
+    index, and a shared key would make Streamlit treat them as one
+    widget -- picking a food for one would silently change the other.
     """
+
+    def _clear() -> None:
+        st.session_state.pop("_pending_recipe", None)
+        st.session_state.pop("_last_recipe_upload", None)
+
     st.markdown("---")
-    st.markdown(f"**Loading recipe: {parsed.name or 'unnamed'}**")
+    total_rows = sum(len(resolved) for _, resolved in entries)
+    if len(entries) > 1:
+        st.markdown(f"**Loading {len(entries)} recipes from that file**")
+    else:
+        st.markdown(f"**Loading recipe: {entries[0][0].name or 'unnamed'}**")
 
-    for warning in parsed.row_warnings:
-        _note(warning)
-
-    if not resolved:
+    if total_rows == 0:
         _note("No usable ingredient rows were found in that file.")
         if st.button("Cancel", key="recipe_import_cancel_empty"):
-            st.session_state.pop("_pending_recipe", None)
-            st.session_state.pop("_last_recipe_upload", None)
+            _clear()
             st.rerun()
         return
 
-    needs_review = [r for r in resolved if r.status != MATCH_BY_CODE]
+    needs_review = sum(1 for _, resolved in entries for r in resolved if r.status != MATCH_BY_CODE)
     if needs_review:
         st.caption(
-            f"{len(needs_review)} of {len(resolved)} rows need you to confirm which "
+            f"{needs_review} of {total_rows} rows need you to confirm which "
             "CNF food is meant. Nothing is added until you press Add."
         )
     else:
-        st.caption(f"All {len(resolved)} rows matched by food code. Check them and press Add.")
+        st.caption(f"All {total_rows} rows matched by food code. Check them and press Add.")
 
-    choices: list[int | None] = []
-    for index, row in enumerate(resolved):
-        amount_label = f"{row.grams:g} {row.unit}"
-        if row.status == MATCH_BY_CODE:
-            st.write(f"✅ **{row.food_description}** — {amount_label}")
-            choices.append(row.food_code)
-        elif row.status == AMBIGUOUS:
-            picked = st.selectbox(
-                f'"{row.source_text}" — {amount_label}: which food?',
-                options=[None] + [c[0] for c in row.candidates],
-                format_func=lambda code, _row=row: (
-                    "— choose one —"
-                    if code is None
-                    else next(d for c, d in _row.candidates if c == code)
-                ),
-                key=f"recipe_pick_{index}",
-            )
-            choices.append(picked)
-        elif row.status == UNMATCHED:
-            st.write(f'❌ "{row.source_text}" — {amount_label}: no CNF match, will be skipped.')
-            choices.append(None)
-        else:  # matched on description — likely right, still confirm
-            keep = st.checkbox(
-                f'"{row.source_text}" → **{row.food_description}** — {amount_label}',
-                value=True,
-                key=f"recipe_keep_{index}",
-            )
-            choices.append(row.food_code if keep else None)
+    # choices_by_recipe[i][j] is the CNF code to use for recipe i's row j,
+    # or None to skip that row.
+    choices_by_recipe: list[list[int | None]] = []
 
-    usable = sum(1 for c in choices if c is not None)
+    for r_index, (parsed, resolved) in enumerate(entries):
+        if len(entries) > 1:
+            st.markdown(f"**{r_index + 1}. {parsed.name or 'unnamed'}**")
+
+        for warning in parsed.row_warnings:
+            _note(warning)
+
+        choices: list[int | None] = []
+        for index, row in enumerate(resolved):
+            amount_label = f"{row.grams:g} {row.unit}"
+            if row.status == MATCH_BY_CODE:
+                st.write(f"✅ **{row.food_description}** — {amount_label}")
+                choices.append(row.food_code)
+            elif row.status == AMBIGUOUS:
+                picked = st.selectbox(
+                    f'"{row.source_text}" — {amount_label}: which food?',
+                    options=[None] + [c[0] for c in row.candidates],
+                    format_func=lambda code, _row=row: (
+                        "— choose one —"
+                        if code is None
+                        else next(d for c, d in _row.candidates if c == code)
+                    ),
+                    key=f"recipe_pick_{r_index}_{index}",
+                )
+                choices.append(picked)
+            elif row.status == UNMATCHED:
+                st.write(f'❌ "{row.source_text}" — {amount_label}: no CNF match, will be skipped.')
+                choices.append(None)
+            else:  # matched on description — likely right, still confirm
+                keep = st.checkbox(
+                    f'"{row.source_text}" → **{row.food_description}** — {amount_label}',
+                    value=True,
+                    key=f"recipe_keep_{r_index}_{index}",
+                )
+                choices.append(row.food_code if keep else None)
+        choices_by_recipe.append(choices)
+
+    usable = sum(1 for choices in choices_by_recipe for c in choices if c is not None)
+    # A recipe whose every row was skipped is not created at all -- an
+    # empty blend appearing in the selector would look like the import
+    # half-worked.
+    blends_to_add = sum(1 for choices in choices_by_recipe if any(c is not None for c in choices))
+    if blends_to_add > 1:
+        button_label = f"Add as {blends_to_add} new blends ({usable} ingredients)"
+    else:
+        button_label = f"Add as a new blend ({usable} ingredient{'s' if usable != 1 else ''})"
+
     c1, c2 = st.columns(2)
     if c1.button(
-        f"Add as a new blend ({usable} ingredient{'s' if usable != 1 else ''})",
+        button_label,
         disabled=usable == 0,
         key="recipe_import_confirm",
         width="stretch",
     ):
-        new_id = _new_blend(parsed.name or "Loaded recipe")
-        blend = st.session_state.blends[new_id]
-        blend["measured_volume_mL"] = parsed.measured_volume_mL
-        blend["flow_test"] = {
-            "date": parsed.flow_test_date,
-            "result": parsed.flow_test_result or "Not done",
-            "notes": parsed.flow_test_notes,
-        }
-        for row, code in zip(resolved, choices):
-            if code is None:
+        for (parsed, resolved), choices in zip(entries, choices_by_recipe):
+            if not any(c is not None for c in choices):
                 continue
-            st.session_state.next_ingr_id += 1
-            blend["ingredients"].append(
-                {
-                    "id": st.session_state.next_ingr_id,
-                    "food_code": int(code),
-                    "food_description": row.food_description,
-                    "grams": row.grams,
-                    "unit": row.unit,
-                    "counts_as_fluid": row.counts_as_fluid,
-                }
-            )
-        st.session_state.pop("_pending_recipe", None)
-        st.session_state.pop("_last_recipe_upload", None)
+            new_id = _new_blend(parsed.name or "Loaded recipe")
+            blend = st.session_state.blends[new_id]
+            blend["measured_volume_mL"] = parsed.measured_volume_mL
+            blend["flow_test"] = {
+                "date": parsed.flow_test_date,
+                "result": parsed.flow_test_result or "Not done",
+                "notes": parsed.flow_test_notes,
+            }
+            for row, code in zip(resolved, choices):
+                if code is None:
+                    continue
+                st.session_state.next_ingr_id += 1
+                blend["ingredients"].append(
+                    {
+                        "id": st.session_state.next_ingr_id,
+                        "food_code": int(code),
+                        "food_description": row.food_description,
+                        "grams": row.grams,
+                        "unit": row.unit,
+                        "counts_as_fluid": row.counts_as_fluid,
+                    }
+                )
+        _clear()
         st.rerun()
 
     if c2.button("Cancel", key="recipe_import_cancel", width="stretch"):
-        st.session_state.pop("_pending_recipe", None)
-        st.session_state.pop("_last_recipe_upload", None)
+        _clear()
         st.rerun()
 
 
@@ -2286,22 +2323,48 @@ with recipes_tab:
     # safe to keep recipes server-side (and nothing patient-identifying
     # ever leaves the browser this way).
     st.subheader("Recipe Record")
+    # Saves EVERY blend that has ingredients, not just the selected one
+    # (author, 2026-07-30: the app can hold several BTFs, so the file
+    # should too). With one blend this is exactly the old behaviour.
+    _savable = [
+        (_b, _b.get("flow_test"))
+        for _bid, _b in sorted(st.session_state.blends.items())
+        if _b["ingredients"]
+    ]
+    _n_savable = len(_savable)
     st.caption(
-        "Save this blend — ingredients, measured volume and flow test — as a "
+        "Save your blends — ingredients, measured volume and flow test — as a "
+        "spreadsheet you keep. Re-open it here later, or edit it in Excel."
+        if _n_savable != 1
+        else "Save this blend — ingredients, measured volume and flow test — as a "
         "spreadsheet you keep. Re-open it here later, or edit it in Excel."
     )
     rr1, rr2 = st.columns(2)
     with rr1:
         st.download_button(
-            "💾 Save recipe",
-            data=recipe_to_workbook_bytes(selected_blend, _ft_state),
-            file_name=suggested_filename(selected_blend.get("name", "")),
+            "💾 Save recipe" if _n_savable <= 1 else f"💾 Save all {_n_savable} recipes",
+            # Falls back to the selected blend purely so the disabled
+            # button still has valid bytes to hold.
+            data=(
+                recipes_to_workbook_bytes(_savable)
+                if _savable
+                else recipe_to_workbook_bytes(selected_blend, _ft_state)
+            ),
+            file_name=(
+                suggested_filename(_savable[0][0].get("name", ""))
+                if _n_savable == 1
+                else suggested_filename(f"{_n_savable} blends", count=_n_savable)
+            ),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            disabled=not selected_blend["ingredients"],
+            disabled=not _savable,
             help=(
-                "Add at least one ingredient first."
-                if not selected_blend["ingredients"]
-                else "Downloads to your computer."
+                "Add at least one ingredient to a blend first."
+                if not _savable
+                else (
+                    "Downloads to your computer."
+                    if _n_savable == 1
+                    else f"One file containing all {_n_savable} blends that have ingredients."
+                )
             ),
             width="stretch",
         )
@@ -2310,24 +2373,24 @@ with recipes_tab:
             "📂 Load a recipe",
             type=["xlsx"],
             key=f"recipe_upload_{selected_blend_id}",
-            help="Loads into a NEW blend — it never overwrites this one.",
+            help="Loads into NEW blends — it never overwrites what you have.",
         )
 
     if _uploaded is not None and st.session_state.get("_last_recipe_upload") != _uploaded.name:
         try:
-            _parsed = workbook_bytes_to_recipe(_uploaded.getvalue())
+            _parsed_list = workbook_bytes_to_recipes(_uploaded.getvalue())
         except RecipeFileError as exc:
             _note(str(exc))
         else:
-            _resolved = resolve_ingredients(_parsed, fn)
-            st.session_state["_pending_recipe"] = (_parsed, _resolved)
+            st.session_state["_pending_recipe"] = [
+                (_p, resolve_ingredients(_p, fn)) for _p in _parsed_list
+            ]
             st.session_state["_last_recipe_upload"] = _uploaded.name
             st.rerun()
 
     _pending = st.session_state.get("_pending_recipe")
     if _pending is not None:
-        _parsed, _resolved = _pending
-        _confirm_recipe_import(_parsed, _resolved)
+        _confirm_recipe_import(_pending)
 
     # --- Commercial formula comparator (operates on the selected blend,
     # at a manually-chosen comparison volume -- independent of the actual

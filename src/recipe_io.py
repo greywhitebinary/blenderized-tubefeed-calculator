@@ -14,14 +14,43 @@ THE FILE
 One .xlsx workbook, two sheets — chosen so a single file serves both
 readers without a conversion step:
 
-  Sheet "Recipe"       one row: recipe name, measured volume, flow-test
-                       date/result/notes, plus a format version.
-  Sheet "Ingredients"  one row per ingredient: food code, description,
-                       amount, unit, counts-as-fluid.
+  Sheet "Recipe"       one row PER BLEND: recipe id, name, measured
+                       volume, flow-test date/result/notes, format
+                       version.
+  Sheet "Ingredients"  one row per ingredient, each tagged with the
+                       recipe id and name it belongs to, then food code,
+                       description, amount, unit, counts-as-fluid.
 
 A recipe is not a flat table — it has one set of facts about the batch
 and a repeating list of ingredients — so two sheets is simply how a
 person would lay it out anyway.
+
+WHY EVERY INGREDIENT ROW REPEATS THE RECIPE NAME
+------------------------------------------------
+The app holds several blends at once, so a file has to be able to as
+well (author, 2026-07-30: "if there is an option to add multiple BTFs...
+the output should be able to provide all of these recipes"). The moment
+a file holds more than one recipe, a flat ingredient list is ambiguous —
+twenty rows and no way to tell which blend each belongs to.
+
+The fix is the ordinary one for header/detail data: every ingredient row
+names its parent. That makes the link explicit for the reader here, and
+lets an RD sort or filter the Ingredients sheet by recipe in Excel
+without needing anything from us.
+
+Rows are matched on the numeric "Recipe id", not the name, because blend
+names are free text and two blends can share one. If a multi-recipe file
+somehow arrives with no usable link column at all, this module REFUSES
+to load it rather than pooling the rows — silently merging two patients'
+recipes into one blend is precisely the class of error this project
+treats as unacceptable (FEED_LOG_REWORK.md §6.2).
+
+FORMAT VERSIONS
+---------------
+v1 files (single recipe, no id columns) still load: a v1 file has one
+recipe row and unlabelled ingredients, which is unambiguous, so every
+ingredient is assigned to that one recipe. Nothing an RD has already
+saved is orphaned by the v2 layout.
 
 Every ingredient row carries BOTH the CNF food code and the description.
 The code is what lets a file the app wrote reload with identical numbers.
@@ -51,15 +80,24 @@ import pandas as pd
 
 # Bumped only on a breaking change to the sheet layout. Written into every
 # file so a future reader can tell what it's looking at.
-RECIPE_FORMAT_VERSION = 1
+#   v1  single recipe per file; no id columns.
+#   v2  many recipes per file; "Recipe id"/"Recipe name" link the sheets.
+RECIPE_FORMAT_VERSION = 2
 
 RECIPE_SHEET = "Recipe"
 INGREDIENTS_SHEET = "Ingredients"
 
+# The columns that tie an ingredient row to its recipe. Named here rather
+# than inline because the reader has to test for their presence to tell a
+# v2 file from a v1 one.
+RECIPE_ID_COLUMN = "Recipe id"
+RECIPE_NAME_COLUMN = "Recipe name"
+
 # Column headers. Human-facing (they're what an RD sees in Excel), so they
 # read as words rather than field names.
 _RECIPE_COLUMNS = [
-    "Recipe name",
+    RECIPE_ID_COLUMN,
+    RECIPE_NAME_COLUMN,
     "Measured final volume (mL)",
     "Flow test date",
     "Flow test result",
@@ -67,6 +105,10 @@ _RECIPE_COLUMNS = [
     "Format version",
 ]
 _INGREDIENT_COLUMNS = [
+    # The link columns lead, so the grouping is the first thing an RD sees
+    # when the sheet opens.
+    RECIPE_ID_COLUMN,
+    RECIPE_NAME_COLUMN,
     "CNF food code",
     "Food description",
     "Amount",
@@ -149,50 +191,63 @@ class ParsedRecipe:
 # ---------------------------------------------------------------------------
 
 
-def recipe_to_workbook_bytes(
-    blend: dict[str, Any],
-    flow_test: dict[str, Any] | None = None,
+def recipes_to_workbook_bytes(
+    entries: list[tuple[dict[str, Any], dict[str, Any] | None]],
 ) -> bytes:
-    """Serialise one blend (plus its flow test) to .xlsx bytes.
+    """Serialise any number of blends (each with its flow test) to .xlsx.
 
     Args:
-        blend: A session-state blend dict — {"name", "ingredients",
-            "measured_volume_mL"}, where each ingredient is
-            {"food_code", "food_description", "grams", "unit",
-            "counts_as_fluid"}.
-        flow_test: Optional {"date", "result", "notes"}.
+        entries: (blend, flow_test) pairs. A blend is a session-state dict
+            — {"name", "ingredients", "measured_volume_mL"} — where each
+            ingredient is {"food_code", "food_description", "grams",
+            "unit", "counts_as_fluid"}. flow_test is optional
+            {"date", "result", "notes"}.
 
     Returns:
         Raw .xlsx bytes, ready to hand to st.download_button.
-    """
-    ft = flow_test or {}
 
-    recipe_df = pd.DataFrame(
-        [
+    Recipe ids are assigned here, 1..n by position, and are only
+    meaningful within this one file. They are deliberately NOT the app's
+    session blend ids: those restart at 1 every session, so writing them
+    would produce files whose ids look authoritative and collide across
+    downloads.
+    """
+    recipe_rows: list[dict[str, Any]] = []
+    ingredient_rows: list[dict[str, Any]] = []
+
+    for recipe_id, (blend, flow_test) in enumerate(entries, start=1):
+        ft = flow_test or {}
+        name = blend.get("name", "") or ""
+        recipe_rows.append(
             {
-                "Recipe name": blend.get("name", "") or "",
+                RECIPE_ID_COLUMN: recipe_id,
+                RECIPE_NAME_COLUMN: name,
                 "Measured final volume (mL)": float(blend.get("measured_volume_mL", 0.0) or 0.0),
                 "Flow test date": ft.get("date") or "",
                 "Flow test result": ft.get("result", "") or "",
                 "Flow test notes": ft.get("notes", "") or "",
                 "Format version": RECIPE_FORMAT_VERSION,
             }
-        ],
-        columns=_RECIPE_COLUMNS,
-    )
+        )
+        for ing in blend.get("ingredients", []):
+            ingredient_rows.append(
+                {
+                    # Repeated on every row so the sheet stands alone: an
+                    # RD can sort or filter by recipe in Excel without
+                    # cross-referencing the other sheet.
+                    RECIPE_ID_COLUMN: recipe_id,
+                    RECIPE_NAME_COLUMN: name,
+                    "CNF food code": ing.get("food_code"),
+                    "Food description": ing.get("food_description", "") or "",
+                    "Amount": float(ing.get("grams", 0.0) or 0.0),
+                    "Unit": ing.get("unit", "g") or "g",
+                    # Written as Yes/No rather than TRUE/FALSE: this file is
+                    # meant to be read and edited by a person in Excel.
+                    "Counts as fluid": "Yes" if ing.get("counts_as_fluid") else "No",
+                }
+            )
 
-    ingredient_rows = [
-        {
-            "CNF food code": ing.get("food_code"),
-            "Food description": ing.get("food_description", "") or "",
-            "Amount": float(ing.get("grams", 0.0) or 0.0),
-            "Unit": ing.get("unit", "g") or "g",
-            # Written as Yes/No rather than TRUE/FALSE: this file is meant
-            # to be read and edited by a person in Excel.
-            "Counts as fluid": "Yes" if ing.get("counts_as_fluid") else "No",
-        }
-        for ing in blend.get("ingredients", [])
-    ]
+    recipe_df = pd.DataFrame(recipe_rows, columns=_RECIPE_COLUMNS)
     ingredients_df = pd.DataFrame(ingredient_rows, columns=_INGREDIENT_COLUMNS)
 
     buffer = BytesIO()
@@ -202,18 +257,35 @@ def recipe_to_workbook_bytes(
     return buffer.getvalue()
 
 
-def suggested_filename(blend_name: str) -> str:
-    """A safe, readable download filename for a blend.
+def recipe_to_workbook_bytes(
+    blend: dict[str, Any],
+    flow_test: dict[str, Any] | None = None,
+) -> bytes:
+    """Serialise a single blend. Thin wrapper over recipes_to_workbook_bytes().
+
+    Kept because saving one blend is still the common case and reads
+    better at the call site than wrapping it in a list.
+    """
+    return recipes_to_workbook_bytes([(blend, flow_test)])
+
+
+def suggested_filename(blend_name: str, count: int = 1) -> str:
+    """A safe, readable download filename for a saved recipe file.
 
     Mirrors the sanitising the Excel export already does — an RD's blend
     name can contain anything, and it has to survive being a filename on
     Windows and macOS alike.
+
+    `count` only changes the "recipe"/"recipes" stem, so a file holding
+    several blends is recognisable as such in a downloads folder without
+    opening it.
     """
     cleaned = "".join(
         ch if (ch.isalnum() or ch in " -_") else "-" for ch in (blend_name or "")
     ).strip()
     cleaned = "-".join(cleaned.split()) or "recipe"
-    return f"btf-recipe_{cleaned}.xlsx"
+    stem = "btf-recipe" if count == 1 else "btf-recipes"
+    return f"{stem}_{cleaned}.xlsx"
 
 
 # ---------------------------------------------------------------------------
@@ -259,8 +331,44 @@ def _coerce_bool(value: Any) -> bool:
     return _coerce_str(value).lower() in {"yes", "y", "true", "1"}
 
 
-def workbook_bytes_to_recipe(data: bytes | BytesIO) -> ParsedRecipe:
-    """Read a recipe workbook back into a ParsedRecipe.
+def _coerce_date(value: Any) -> date | None:
+    """Read a flow-test date cell, treating an empty cell as None.
+
+    The NaT guard is load-bearing and only started mattering with
+    multi-recipe files. When one recipe in a file has a flow-test date
+    and another doesn't, pandas types the whole column as datetime and
+    fills the blank with `pd.NaT`. NaT subclasses `datetime`, so a plain
+    `isinstance(value, date)` test accepts it and a "no flow test"
+    recipe comes back carrying a date-shaped object that isn't a date.
+
+    Same shape of trap as blank cells reading back as the literal string
+    "nan" (see _coerce_str) and as CNF's sodium row in §11: a missing
+    value that arrives disguised as a real one.
+    """
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, pd.Timestamp):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _recipe_key(row: Any, use_id: bool) -> str:
+    """The value tying a row to its recipe, as a comparable string."""
+    if use_id:
+        value = _coerce_float(row.get(RECIPE_ID_COLUMN))
+        return "" if value is None else str(int(value))
+    return _coerce_str(row.get(RECIPE_NAME_COLUMN))
+
+
+def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
+    """Read a recipe workbook back into one ParsedRecipe per recipe.
+
+    Handles both format versions:
+      v2  many recipes, ingredients tagged with "Recipe id"/"Recipe name".
+      v1  one recipe, untagged ingredients — unambiguous, so they all
+          belong to it.
 
     Structural problems raise RecipeFileError (wrong kind of file). Bad
     individual rows are skipped with a warning, so one mistyped line
@@ -282,13 +390,60 @@ def workbook_bytes_to_recipe(data: bytes | BytesIO) -> ParsedRecipe:
             "'Ingredients' sheet."
         )
 
-    parsed = ParsedRecipe()
+    ingredients_df = sheets[INGREDIENTS_SHEET]
+    for column in ("Food description", "Amount"):
+        if column not in ingredients_df.columns:
+            raise RecipeFileError(
+                f"The '{INGREDIENTS_SHEET}' sheet has no '{column}' column. "
+                "It needs at least 'Food description' and 'Amount'."
+            )
 
     # --- Recipe sheet (optional: a hand-built file may only have ingredients)
     recipe_df = sheets.get(RECIPE_SHEET)
-    if recipe_df is not None and not recipe_df.empty:
-        row = recipe_df.iloc[0]
-        parsed.name = _coerce_str(row.get("Recipe name"))
+    recipe_rows = (
+        [row for _, row in recipe_df.iterrows()]
+        if recipe_df is not None and not recipe_df.empty
+        else []
+    )
+
+    # Which column links the two sheets? Prefer the id -- blend names are
+    # free text and two blends can legitimately share one.
+    link_by_id = RECIPE_ID_COLUMN in ingredients_df.columns and any(
+        RECIPE_ID_COLUMN in r.index for r in recipe_rows
+    )
+    link_by_name = RECIPE_NAME_COLUMN in ingredients_df.columns
+    has_link = link_by_id or link_by_name
+
+    # A file holding several recipes with no way to tell the ingredients
+    # apart is NOT loaded as one merged blend. Pooling two recipes would
+    # silently invent a feed nobody wrote, with plausible-looking numbers
+    # -- the same failure mode as the batch-extrapolation bug in
+    # FEED_LOG_REWORK.md 6.2. Refuse, and say what's missing.
+    if len(recipe_rows) > 1 and not has_link:
+        raise RecipeFileError(
+            f"This file lists {len(recipe_rows)} recipes, but the "
+            f"'{INGREDIENTS_SHEET}' sheet has no '{RECIPE_NAME_COLUMN}' column "
+            "saying which recipe each ingredient belongs to. Add that column "
+            "(one recipe name per ingredient row) and upload it again — "
+            "guessing would risk mixing two recipes together."
+        )
+
+    parsed_by_key: dict[str, ParsedRecipe] = {}
+    order: list[str] = []
+
+    def _slot(key: str) -> ParsedRecipe:
+        if key not in parsed_by_key:
+            parsed_by_key[key] = ParsedRecipe()
+            order.append(key)
+        return parsed_by_key[key]
+
+    # --- Header rows
+    for position, row in enumerate(recipe_rows, start=1):
+        key = _recipe_key(row, link_by_id) if has_link else ""
+        if not key:
+            key = str(position)
+        parsed = _slot(key)
+        parsed.name = _coerce_str(row.get(RECIPE_NAME_COLUMN))
         volume = _coerce_float(row.get("Measured final volume (mL)"))
         if volume is None:
             parsed.row_warnings.append(
@@ -297,27 +452,16 @@ def workbook_bytes_to_recipe(data: bytes | BytesIO) -> ParsedRecipe:
             )
         else:
             parsed.measured_volume_mL = volume
-        raw_date = row.get("Flow test date")
-        if isinstance(raw_date, pd.Timestamp):
-            parsed.flow_test_date = raw_date.date()
-        elif isinstance(raw_date, date):
-            parsed.flow_test_date = raw_date
+        parsed.flow_test_date = _coerce_date(row.get("Flow test date"))
         parsed.flow_test_result = _coerce_str(row.get("Flow test result"))
         parsed.flow_test_notes = _coerce_str(row.get("Flow test notes"))
         version = _coerce_float(row.get("Format version"))
         if version is not None:
             parsed.format_version = int(version)
 
-    # --- Ingredients sheet
-    ingredients_df = sheets[INGREDIENTS_SHEET]
-    for column in ("Food description", "Amount"):
-        if column not in ingredients_df.columns:
-            raise RecipeFileError(
-                f"The '{INGREDIENTS_SHEET}' sheet has no '{column}' column. "
-                f"It needs at least '{_INGREDIENT_COLUMNS[1]}' and "
-                f"'{_INGREDIENT_COLUMNS[2]}'."
-            )
+    single_key = order[0] if len(order) == 1 else None
 
+    # --- Ingredient rows
     for position, row in ingredients_df.iterrows():
         description = _coerce_str(row.get("Food description"))
         code = _coerce_float(row.get("CNF food code"))
@@ -326,6 +470,14 @@ def workbook_bytes_to_recipe(data: bytes | BytesIO) -> ParsedRecipe:
 
         if not description and code is None:
             continue  # a genuinely blank row — silently skipped
+
+        # With exactly one recipe in the file there is nothing to be
+        # ambiguous about, so untagged rows (every v1 file) belong to it.
+        key = _recipe_key(row, link_by_id) if has_link else ""
+        if not key:
+            key = single_key if single_key is not None else "1"
+
+        parsed = _slot(key)
 
         if amount is None or amount <= 0:
             parsed.row_warnings.append(
@@ -342,6 +494,9 @@ def workbook_bytes_to_recipe(data: bytes | BytesIO) -> ParsedRecipe:
             )
             unit = "g"
 
+        if not parsed.name:
+            parsed.name = _coerce_str(row.get(RECIPE_NAME_COLUMN))
+
         parsed.ingredients.append(
             {
                 "food_code": int(code) if code is not None else None,
@@ -352,7 +507,23 @@ def workbook_bytes_to_recipe(data: bytes | BytesIO) -> ParsedRecipe:
             }
         )
 
-    return parsed
+    return [parsed_by_key[key] for key in order] or [ParsedRecipe()]
+
+
+def workbook_bytes_to_recipe(data: bytes | BytesIO) -> ParsedRecipe:
+    """Read a workbook expected to hold exactly one recipe.
+
+    Kept for callers that genuinely want one. Raises RecipeFileError on a
+    multi-recipe file rather than quietly returning the first, so nobody
+    loses recipes to a convenience default.
+    """
+    recipes = workbook_bytes_to_recipes(data)
+    if len(recipes) > 1:
+        raise RecipeFileError(
+            f"This file holds {len(recipes)} recipes; use "
+            "workbook_bytes_to_recipes() to read them all."
+        )
+    return recipes[0]
 
 
 # ---------------------------------------------------------------------------

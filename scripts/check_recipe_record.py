@@ -67,7 +67,9 @@ print("OK: a blend not fed today stays out of the day's chart note")
 # 5. Round-trip the REAL example blend through the recipe file: save it,
 # read it back, resolve it against real CNF, and confirm every ingredient
 # survives with its own code, grams, unit and fluid flag intact.
-from src.recipe_io import (  # noqa: E402
+from src.recipe_io import (
+    recipes_to_workbook_bytes,
+    workbook_bytes_to_recipes,  # noqa: E402
     MATCH_BY_CODE,
     recipe_to_workbook_bytes,
     resolve_ingredients,
@@ -100,5 +102,66 @@ print(
     f"OK: round-tripped the real example blend -- {len(parsed.ingredients)} ingredients, "
     f"{parsed.measured_volume_mL:g} mL, all matched by code against real CNF"
 )
+
+# --- 6. A file holding SEVERAL blends, straight out of the app ---------
+# The app can hold several BTFs at once, so its export has to as well
+# (author, 2026-07-30). The risk being pinned here is not "does it save"
+# -- it is that two recipes could be pooled into one blend on the way
+# back in, inventing a feed nobody wrote whose kcal/mL looks plausible.
+second_id = _new_second_blend = at.session_state["next_blend_id"]
+at.session_state["blends"][second_id] = {
+    "name": "Evening blend",
+    "ingredients": [
+        dict(real_blend["ingredients"][0], id=901),
+        dict(real_blend["ingredients"][1], id=902),
+    ],
+    "measured_volume_mL": 640.0,
+    "flow_test": {"date": None, "result": "Too thick", "notes": "clogged the 14 Fr"},
+}
+at.session_state["next_blend_id"] = second_id + 1
+at.run()
+assert not at.exception, at.exception
+
+savable = [
+    (b, b.get("flow_test"))
+    for _bid, b in sorted(at.session_state["blends"].items())
+    if b["ingredients"]
+]
+assert len(savable) == 2, f"expected 2 savable blends, got {len(savable)}"
+
+multi = recipes_to_workbook_bytes(savable)
+recipes = workbook_bytes_to_recipes(multi)
+assert len(recipes) == 2, f"2 blends saved -> {len(recipes)} read back"
+
+by_name = {r.name: r for r in recipes}
+assert set(by_name) == {"Whole-food blend", "Evening blend"}, list(by_name)
+assert len(by_name["Whole-food blend"].ingredients) == len(real_blend["ingredients"])
+assert len(by_name["Evening blend"].ingredients) == 2
+assert by_name["Evening blend"].measured_volume_mL == 640.0
+
+# Each blend keeps its OWN flow test -- the mixed case (one dated, one
+# not) is where a blank date used to come back as pandas NaT.
+assert by_name["Whole-food blend"].flow_test_result == "Passed"
+assert by_name["Whole-food blend"].flow_test_date == date(2026, 7, 30)
+assert by_name["Evening blend"].flow_test_result == "Too thick"
+assert by_name["Evening blend"].flow_test_date is None, by_name["Evening blend"].flow_test_date
+
+# Every ingredient of both blends still resolves against real CNF.
+fn_df = load_food_name()
+for name, recipe in by_name.items():
+    statuses = [r.status for r in resolve_ingredients(recipe, fn_df)]
+    assert all(s == MATCH_BY_CODE for s in statuses), (name, statuses)
+
+print(
+    f"OK: 2 blends -> one file -> 2 blends back "
+    f"({len(by_name['Whole-food blend'].ingredients)} + "
+    f"{len(by_name['Evening blend'].ingredients)} ingredients), "
+    "each with its own flow test, all matched by code"
+)
+
+# A v1 file (single recipe, no link columns) must still open.
+v1 = recipe_to_workbook_bytes(real_blend, {"date": None, "result": "Passed", "notes": ""})
+assert len(workbook_bytes_to_recipes(v1)) == 1
+print("OK: a single-recipe file still reads as exactly one recipe")
 
 print("\n=== RECIPE RECORD APPTEST PASSED ===")

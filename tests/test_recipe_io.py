@@ -33,10 +33,71 @@ from src.recipe_io import (
     ParsedRecipe,
     RecipeFileError,
     recipe_to_workbook_bytes,
+    recipes_to_workbook_bytes,
     resolve_ingredients,
     suggested_filename,
     workbook_bytes_to_recipe,
+    workbook_bytes_to_recipes,
 )
+from io import BytesIO
+
+from src.recipe_io import INGREDIENTS_SHEET, RECIPE_SHEET
+
+
+def _write_v1_workbook(blend) -> bytes:
+    """Build a format-v1 file: one recipe, no id/name link columns.
+
+    Written by hand rather than by calling an old version of the writer,
+    so the v1 layout stays pinned here even after the writer has moved
+    on. This is what every recipe an RD saved before 2026-07-30 looks
+    like, and those files have to keep opening.
+    """
+    recipe_df = pd.DataFrame(
+        [
+            {
+                "Recipe name": blend["name"],
+                "Measured final volume (mL)": blend["measured_volume_mL"],
+                "Flow test date": "",
+                "Flow test result": "",
+                "Flow test notes": "",
+                "Format version": 1,
+            }
+        ]
+    )
+    ingredients_df = pd.DataFrame(
+        [
+            {
+                "CNF food code": i["food_code"],
+                "Food description": i["food_description"],
+                "Amount": i["grams"],
+                "Unit": i["unit"],
+                "Counts as fluid": "Yes" if i["counts_as_fluid"] else "No",
+            }
+            for i in blend["ingredients"]
+        ]
+    )
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        recipe_df.to_excel(writer, sheet_name=RECIPE_SHEET, index=False)
+        ingredients_df.to_excel(writer, sheet_name=INGREDIENTS_SHEET, index=False)
+    return buffer.getvalue()
+
+
+def _strip_link_columns(data: bytes) -> bytes:
+    """Remove the columns tying ingredients to recipes.
+
+    Simulates someone deleting them in Excel -- the case where guessing
+    would merge two recipes together.
+    """
+    sheets = pd.read_excel(BytesIO(data), sheet_name=None, engine="openpyxl")
+    sheets[INGREDIENTS_SHEET] = sheets[INGREDIENTS_SHEET].drop(
+        columns=["Recipe id", "Recipe name"], errors="ignore"
+    )
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for name, frame in sheets.items():
+            frame.to_excel(writer, sheet_name=name, index=False)
+    return buffer.getvalue()
 
 
 @pytest.fixture
@@ -327,3 +388,137 @@ def _ingredients_only_bytes(rows: list[dict]) -> bytes:
     """A hand-built file with only an Ingredients sheet -- what someone
     typing a recipe from scratch in Excel would plausibly produce."""
     return _single_sheet_bytes(pd.DataFrame(rows), "Ingredients")
+
+
+# ---------------------------------------------------------------------------
+# Multi-recipe files (format v2)
+#
+# The app holds several blends at once, so a file has to as well. The risk
+# this class exists to pin is not "does it save" -- it is that two recipes
+# in one file could be pooled into one blend, inventing a feed nobody
+# wrote, with numbers that look entirely plausible. Same family of failure
+# as the batch-extrapolation bug in FEED_LOG_REWORK.md 6.2.
+# ---------------------------------------------------------------------------
+
+
+class TestMultipleRecipes:
+    @staticmethod
+    def _blend(name, volume, foods):
+        return {
+            "name": name,
+            "measured_volume_mL": volume,
+            "ingredients": [
+                {
+                    "food_code": code,
+                    "food_description": desc,
+                    "grams": grams,
+                    "unit": "g",
+                    "counts_as_fluid": False,
+                }
+                for code, desc, grams in foods
+            ],
+        }
+
+    def test_three_recipes_round_trip_separately(self):
+        entries = [
+            (self._blend("Morning blend", 1000.0, [(1704, "Banana, raw", 100.0)]), None),
+            (
+                self._blend(
+                    "Evening blend",
+                    800.0,
+                    [(1463, "Rolled oats", 80.0), (451, "Canola oil", 14.0)],
+                ),
+                None,
+            ),
+            (self._blend("Weekend blend", 950.0, [(113, "Whole milk", 257.0)]), None),
+        ]
+        recipes = workbook_bytes_to_recipes(recipes_to_workbook_bytes(entries))
+
+        assert [r.name for r in recipes] == [
+            "Morning blend",
+            "Evening blend",
+            "Weekend blend",
+        ]
+        assert [len(r.ingredients) for r in recipes] == [1, 2, 1]
+        assert [r.measured_volume_mL for r in recipes] == [1000.0, 800.0, 950.0]
+
+    def test_two_blends_with_the_same_name_stay_separate(self):
+        """Blend names are free text, so two can collide.
+
+        The link is the numeric recipe id precisely for this: matching on
+        name would merge these two into one six-ingredient blend that
+        never existed.
+        """
+        entries = [
+            (self._blend("Morning blend", 1000.0, [(1704, "Banana, raw", 100.0)]), None),
+            (self._blend("Morning blend", 500.0, [(451, "Canola oil", 14.0)]), None),
+        ]
+        recipes = workbook_bytes_to_recipes(recipes_to_workbook_bytes(entries))
+
+        assert len(recipes) == 2
+        assert [r.measured_volume_mL for r in recipes] == [1000.0, 500.0]
+        assert [len(r.ingredients) for r in recipes] == [1, 1]
+
+    def test_each_recipe_keeps_its_own_flow_test(self):
+        entries = [
+            (
+                self._blend("Passed one", 1000.0, [(1704, "Banana, raw", 100.0)]),
+                {"date": date(2026, 7, 30), "result": "Passed", "notes": "60 mL syringe"},
+            ),
+            (
+                self._blend("Failed one", 800.0, [(451, "Canola oil", 14.0)]),
+                {"date": None, "result": "Too thick", "notes": "clogged"},
+            ),
+        ]
+        recipes = workbook_bytes_to_recipes(recipes_to_workbook_bytes(entries))
+
+        assert recipes[0].flow_test_result == "Passed"
+        assert recipes[0].flow_test_date == date(2026, 7, 30)
+        assert recipes[1].flow_test_result == "Too thick"
+        assert recipes[1].flow_test_date is None
+
+    def test_a_v1_single_recipe_file_still_loads(self, blend):
+        """Files RDs have already saved must not be orphaned.
+
+        A v1 file has one recipe row and untagged ingredients. That is
+        unambiguous, so every ingredient belongs to the one recipe -- no
+        guessing involved.
+        """
+        v1 = _write_v1_workbook(blend)
+        recipes = workbook_bytes_to_recipes(v1)
+
+        assert len(recipes) == 1
+        assert recipes[0].name == "Morning blend"
+        assert len(recipes[0].ingredients) == 2
+        assert recipes[0].format_version == 1
+
+    def test_multi_recipe_file_with_no_link_column_is_REFUSED(self):
+        """The important one.
+
+        Several recipes and no column saying which ingredient belongs to
+        which is not recoverable by guessing. Loading them pooled would
+        produce a blend nobody wrote whose kcal/mL looks perfectly
+        reasonable, so the module refuses and says what is missing.
+        """
+        entries = [
+            (self._blend("Morning blend", 1000.0, [(1704, "Banana, raw", 100.0)]), None),
+            (self._blend("Evening blend", 800.0, [(451, "Canola oil", 14.0)]), None),
+        ]
+        stripped = _strip_link_columns(recipes_to_workbook_bytes(entries))
+
+        with pytest.raises(RecipeFileError) as excinfo:
+            workbook_bytes_to_recipes(stripped)
+        assert "which recipe" in str(excinfo.value).lower()
+
+    def test_single_recipe_helper_refuses_a_multi_recipe_file(self):
+        """Rather than silently returning the first and losing the rest."""
+        entries = [
+            (self._blend("A", 1000.0, [(1704, "Banana, raw", 100.0)]), None),
+            (self._blend("B", 800.0, [(451, "Canola oil", 14.0)]), None),
+        ]
+        with pytest.raises(RecipeFileError):
+            workbook_bytes_to_recipe(recipes_to_workbook_bytes(entries))
+
+    def test_filename_says_when_a_file_holds_several(self):
+        assert suggested_filename("Morning blend") == "btf-recipe_Morning-blend.xlsx"
+        assert suggested_filename("3 blends", count=3) == "btf-recipes_3-blends.xlsx"
