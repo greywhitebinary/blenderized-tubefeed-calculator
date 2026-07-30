@@ -101,13 +101,13 @@ def main() -> int:
     # ---- [2] Nutrient_Amount, filtered ----------------------------------
     tracked = list(NUTRIENT_CODES.values())
     na_filtered = na[na["Nutrient_Code"].isin(tracked)]
-    print(f"\n[2] NUTRIENT_AMOUNT FILTER")
+    print("\n[2] NUTRIENT_AMOUNT FILTER")
     print(f"    Full table: {len(na):,} rows (every food x every nutrient CNF measured)")
     print(
         f"    After keeping only the {len(tracked)} tracked nutrient codes: "
         f"{len(na_filtered):,} rows"
     )
-    print(f"    Every value is PER 100 g of edible food — the CNF convention.")
+    print("    Every value is PER 100 g of edible food — the CNF convention.")
 
     # ---- [3] The merge ---------------------------------------------------
     merged = ingr_df.merge(
@@ -118,44 +118,43 @@ def main() -> int:
     merged["nutrient"] = merged["Nutrient_Code"].map(_CODE_TO_NAME)
     n_ingr = len(recipe.ingredients)
     max_rows = n_ingr * len(tracked)
-    print(f"\n[3] MERGE ingredients x nutrient amounts ON Food_Code (inner join)")
+    print("\n[3] MERGE ingredients x nutrient amounts ON Food_Code (inner join)")
     print(
         f"    {n_ingr} ingredients x up to {len(tracked)} tracked nutrients "
         f"= up to {max_rows} rows; got {len(merged)}."
     )
     print(f"    (Fewer than {max_rows} means some food LACKS a CNF row for some")
-    print(f"     nutrient — see the missing-data audit at the end.)")
+    print("     nutrient — see the missing-data audit at the end.)")
 
     # ---- [4] Scaling -----------------------------------------------------
     merged["scaled_amount"] = merged["grams"] * (merged["Nutrient_Amount"] / 100.0)
-    print(f"\n[4] SCALE: scaled_amount = grams x (per-100g value / 100)")
-    print(f"    e.g. chicken energy: 200 g x (120 kcal per 100 g / 100)")
-    print(f"         = 200 x 1.20 = 240 kcal   <- check this by hand!")
+    print("\n[4] SCALE: scaled_amount = grams x (per-100g value / 100)")
+    print("    e.g. chicken energy: 200 g x (120 kcal per 100 g / 100)")
+    print("         = 200 x 1.20 = 240 kcal   <- check this by hand!")
     show = merged[["food", "grams", "nutrient", "Nutrient_Amount", "scaled_amount"]]
     print(show.sort_values(["food", "nutrient"]).to_string(index=False))
 
     # ---- [5] Group + sum -------------------------------------------------
     totals = merged.groupby("nutrient")["scaled_amount"].sum().reindex(NUTRIENT_CODES.keys())
-    print(f"\n[5] RECIPE TOTALS: sum scaled_amount across ingredients, per nutrient")
-    print(f"    (This is the column-sum of table [4], grouped by nutrient.)")
+    print("\n[5] RECIPE TOTALS: sum scaled_amount across ingredients, per nutrient")
+    print("    (This is the column-sum of table [4], grouped by nutrient.)")
     print(totals.to_string())
 
     # ---- [6] Densities — via the real calculator ------------------------
     profile = calculate_profile(recipe, na)
     v = recipe.measured_final_volume_mL
     print(f"\n[6] DENSITIES: divide totals by the MEASURED volume ({v:.0f} mL)")
-    print(f"    Measured, not computed — blending air and rinse water make")
-    print(f"    volume incalculable from weights; you read it off the container.")
+    print("    Measured, not computed — blending air and rinse water make")
+    print("    volume incalculable from weights; you read it off the container.")
     print(f"    kcal/mL      = {profile.total_kcal:,.1f} / {v:.0f} = {profile.kcal_per_mL:.4f}")
     print(
         f"    protein g/mL = {profile.total_protein_g:,.1f} / {v:.0f} = {profile.protein_per_mL:.4f}"
     )
-    fw = profile.total_water_g + recipe.added_water_mL
     print(
         f"    free water   = (food water {profile.total_water_g:,.1f} g "
         f"+ added {recipe.added_water_mL:.0f} mL) / {v:.0f} = {profile.free_water_fraction:.4f}"
     )
-    print(f"    (1 g water ~ 1 mL — standard clinical approximation)")
+    print("    (1 g water ~ 1 mL — standard clinical approximation)")
 
     # Cross-check: trace totals must equal the calculator's totals exactly.
     for name, traced in totals.items():

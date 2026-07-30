@@ -49,7 +49,6 @@ try:
     from src.calculator import (
         calculate_profile,
         calculate_daily_totals,
-        compute_nutrient_totals,
         compute_nutrient_totals_and_coverage,
         COMMERCIAL_FORMULAS,
         NUTRIENT_CODES,
@@ -59,7 +58,6 @@ except ImportError:
     from calculator import (
         calculate_profile,
         calculate_daily_totals,
-        compute_nutrient_totals,
         compute_nutrient_totals_and_coverage,
         COMMERCIAL_FORMULAS,
         NUTRIENT_CODES,

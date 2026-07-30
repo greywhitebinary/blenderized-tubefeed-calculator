@@ -38,7 +38,6 @@ from src.nutrients import load_registry, defs_for_tier, DEFAULT_PACK
 from src.intake import (
     aggregate_intake,
     resolve_blend_profile,
-    blend_fluid_fraction,
     InvalidBlendError,
     sorted_intake_log,
 )
@@ -288,9 +287,9 @@ def main() -> int:
     assert non_sodium_types == {
         ""
     }, f"only sodium should carry a target_type; found others: {non_sodium_types}"
-    print(f"    9 displayed label nutrients == 9 offer_target nutrients — OK")
+    print("    9 displayed label nutrients == 9 offer_target nutrients — OK")
     print(f"    Hidden (tracked, not displayed): {sorted(d.name for d in hidden_label)}")
-    print(f"    Only sodium is target_type=UL — OK")
+    print("    Only sodium is target_type=UL — OK")
 
     # Main adequacy table: only tier="label"+show_in_report nutrients + the
     # two fluid rows. No vitamin D / B12 / zinc (tier=clinical) and no

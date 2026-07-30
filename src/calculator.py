@@ -25,7 +25,7 @@ import pandas as pd
 from pathlib import Path
 
 try:
-    from src.models import Ingredient, Recipe, NutrientProfile, Delivery, DeliveryMethod
+    from src.models import Ingredient, Recipe, NutrientProfile, Delivery
     from src.nutrients import NUTRIENT_CODES, NUTRIENT_LABELS, DEFAULT_PACK
 except ImportError:
     # Allow running as a script (python src/calculator.py) without the
@@ -35,7 +35,6 @@ except ImportError:
         Recipe,
         NutrientProfile,
         Delivery,
-        DeliveryMethod,
     )
     from nutrients import NUTRIENT_CODES, NUTRIENT_LABELS, DEFAULT_PACK
 
@@ -687,20 +686,20 @@ if __name__ == "__main__":
     print("\nCalculating profile...")
     profile = calculate_profile(recipe, na)
 
-    print(f"\n--- Nutrient totals (per recipe) ---")
+    print("\n--- Nutrient totals (per recipe) ---")
     for name in NUTRIENT_CODES:
         val = profile.nutrient_totals.get(name, 0.0)
         label = NUTRIENT_LABELS[name]
         print(f"  {label:<25} {val:>10.1f}")
 
-    print(f"\n--- Densities (primary outputs) ---")
+    print("\n--- Densities (primary outputs) ---")
     print(f"  kcal/mL:         {profile.kcal_per_mL:.3f}")
     print(f"  protein g/mL:    {profile.protein_per_mL:.3f}")
     print(f"  free water frac: {profile.free_water_fraction:.3f}")
 
     # Daily totals at 1200 mL/day
     daily = calculate_daily_totals(profile, 1200)
-    print(f"\n--- Daily totals at 1200 mL/day ---")
+    print("\n--- Daily totals at 1200 mL/day ---")
     for name in ["energy_kcal", "protein_g", "fibre_g", "sodium_mg", "potassium_mg"]:
         val = daily.get(name, 0.0)
         label = NUTRIENT_LABELS[name]
@@ -708,7 +707,7 @@ if __name__ == "__main__":
 
     # Dilution what-if: add 100 mL water
     diluted = dilute(profile, added_liquid_mL=100, liquid_water_g=100)
-    print(f"\n--- After adding 100 mL water ---")
+    print("\n--- After adding 100 mL water ---")
     print(f"  New volume:      {diluted.measured_final_volume_mL:.0f} mL")
     print(f"  kcal/mL:         {diluted.kcal_per_mL:.3f} (was {profile.kcal_per_mL:.3f})")
     print(f"  protein g/mL:    {diluted.protein_per_mL:.3f} (was {profile.protein_per_mL:.3f})")
@@ -718,12 +717,12 @@ if __name__ == "__main__":
 
     # Required volume to meet 1800 kcal, 75g protein
     req_vol = required_daily_volume(profile, target_kcal=1800, target_protein_g=75)
-    print(f"\n--- Required daily volume for 1800 kcal + 75g protein ---")
+    print("\n--- Required daily volume for 1800 kcal + 75g protein ---")
     print(f"  {req_vol:.0f} mL")
 
     # Formula comparison
     comparison = compare_with_formula(profile, "Peptamen 1.5", 1200)
-    print(f"\n--- BTF vs Peptamen 1.5 at 1200 mL/day ---")
+    print("\n--- BTF vs Peptamen 1.5 at 1200 mL/day ---")
     print(
         f"  BTF:     {comparison['btf']['kcal']:.0f} kcal, {comparison['btf']['protein_g']:.1f} g protein"
     )

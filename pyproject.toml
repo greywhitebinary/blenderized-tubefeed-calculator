@@ -18,6 +18,9 @@ line-length = 100
 [tool.ruff]
 target-version = "py314"
 line-length = 100
+# Notebooks are learning material, not shipped code -- they are written to
+# be read a cell at a time, so top-of-file import rules don't apply.
+extend-exclude = ["notebooks"]
 
 [tool.ruff.lint]
 # Conservative on purpose: pycodestyle errors/warnings + pyflakes only.
@@ -26,3 +29,26 @@ line-length = 100
 # tooling setup. See the Week 3 tooling report for the current
 # ruff check --statistics breakdown against this exact selection.
 select = ["E", "F", "W"]
+# E501 (line too long) is black's job, not ruff's. Running both means the
+# two disagree about the cases black deliberately leaves alone -- long
+# string literals, URLs, and trailing comments it cannot split. black is
+# the formatter of record here (line-length 100, above), so ruff defers.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# E402 = "module level import not at top of file". Every file listed here
+# has to put code above its imports for a real reason, not out of
+# sloppiness:
+#
+#   app/streamlit_app.py  st.set_page_config() must be the first Streamlit
+#                         call in the script, and the file inserts the
+#                         project root into sys.path so `from src...`
+#                         resolves when Streamlit runs it directly.
+#   scripts/*, conftest   same sys.path insert, so the checks and the test
+#                         suite run from any working directory.
+#
+# Scoped per-file rather than switched off globally: if a NEW file starts
+# doing this, it should have to justify itself here first.
+"app/streamlit_app.py" = ["E402"]
+"scripts/*.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
