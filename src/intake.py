@@ -70,6 +70,15 @@ except ImportError:
 TUBE_FEED_SOURCE_TYPES = ("blend", "formula", "flush")
 FOOD_DRINK_SOURCE_TYPES = ("oral",)
 
+# Water-source labels for IntakeTotals.water_sources. "Free water" here
+# means water that arrived as part of something fed (a blend, a formula,
+# a food) -- tap water stirred into a blend included, because in the
+# recipe it IS the recipe. A flush is the only water given as water.
+WATER_BLEND_LABEL = "BTF blend — free water"
+WATER_FORMULA_LABEL = "Commercial formula — free water"
+WATER_ORAL_LABEL = "Oral food & drink — free water"
+WATER_FLUSH_LABEL = "Water flushes"
+
 TUBE_FEED_LABEL = "Tube Feed"
 FOOD_DRINK_LABEL = "Food & Drink"
 TOTAL_LABEL = "Total"
@@ -190,6 +199,19 @@ class IntakeTotals:
     fluid_provided_mL: float = 0.0
     subtotals: dict[str, dict] = field(default_factory=dict)
     nutrient_coverage: dict[str, tuple[int, int]] = field(default_factory=dict)
+    # Every water source the day drew on, kept apart so the ledger can
+    # show them as separate lines rather than two figures that don't
+    # obviously relate (author, 2026-07-30).
+    #
+    # The distinction being preserved is clinical, not arithmetic:
+    # water that is PART OF SOMETHING FED is free water -- including tap
+    # water poured into a blend, because once it's in the recipe it is
+    # part of that recipe, exactly like the moisture in a banana. Only a
+    # flush is water given AS water. Nothing here is a new calculation:
+    # these are the same per-row numbers that already feed
+    # nutrient_totals and fluid_provided_mL, retained by source instead
+    # of being summed away.
+    water_sources: dict[str, float] = field(default_factory=dict)
 
     @property
     def free_water_mL(self) -> float:
@@ -284,6 +306,8 @@ def aggregate_intake(
             _blend_cache[blend_id] = (profile, fluid_frac, coverage)
         return _blend_cache[blend_id]
 
+    water_sources: dict[str, float] = {}
+
     for row in intake_log:
         source_type = row.get("source_type")
         amount = float(row.get("amount", 0.0) or 0.0)
@@ -353,6 +377,22 @@ def aggregate_intake(
         fam["fluid_provided_mL"] += row_fluid
         _add_coverage(fam["nutrient_coverage"], row_coverage)
 
+        # Keep this row's water under its own source. Same numbers as
+        # above, retained rather than summed away -- a flush contributes
+        # its full volume as water-given-as-water; every other row
+        # contributes whatever water_g it already computed.
+        if source_type == "flush":
+            water_sources[WATER_FLUSH_LABEL] = water_sources.get(WATER_FLUSH_LABEL, 0.0) + amount
+        else:
+            row_water = row_nutrients.get("water_g", 0.0)
+            if row_water:
+                label = {
+                    "blend": WATER_BLEND_LABEL,
+                    "formula": WATER_FORMULA_LABEL,
+                    "oral": WATER_ORAL_LABEL,
+                }[source_type]
+                water_sources[label] = water_sources.get(label, 0.0) + row_water
+
     total_nutrients: dict[str, float] = {}
     total_fluid = 0.0
     total_coverage: dict[str, tuple[int, int]] = {}
@@ -374,6 +414,7 @@ def aggregate_intake(
         fluid_provided_mL=total_fluid,
         subtotals=subtotals,
         nutrient_coverage=total_coverage,
+        water_sources=water_sources,
     )
 
 

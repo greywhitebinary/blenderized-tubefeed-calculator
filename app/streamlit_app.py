@@ -81,6 +81,7 @@ from src.report import (
     generate_comparator_table,
     generate_density_summary,
     generate_source_breakdown,
+    generate_water_ledger,
 )
 from src.nutrients import defs_for_tier, registry_by_name, DEFAULT_PACK
 from src.intake import (
@@ -1983,6 +1984,18 @@ with record_tab:
         )
         st.dataframe(generate_source_breakdown(intake_totals), width="stretch", hide_index=True)
 
+        # --- Water ledger: every source on its own line (author, 2026-07-30) ---
+        _water_ledger = generate_water_ledger(intake_totals.water_sources)
+        if not _water_ledger.empty:
+            st.subheader("Where the Water Came From")
+            st.caption(
+                "Free water is water that arrived as part of something fed — "
+                "including tap water blended into a recipe, since in the recipe "
+                "it *is* the recipe. Water flushes are water given as water, so "
+                "they sit on their own and add on top."
+            )
+            st.dataframe(_water_ledger, width="stretch", hide_index=True)
+
         st.subheader("Daily Totals & Adequacy")
         st.caption(
             "A direct sum over the Intake Record (above) — never "
@@ -2441,6 +2454,11 @@ with record_tab:
             generate_source_breakdown(intake_totals).to_excel(
                 writer, sheet_name="Per-Source Breakdown", index=False
             )
+
+        # Water ledger -- every source on its own line
+        _wl = generate_water_ledger(intake_totals.water_sources)
+        if not _wl.empty:
+            _wl.to_excel(writer, sheet_name="Water Sources", index=False)
 
         # Flow test documentation -- one row per blend, named, since each
         # blend now carries its own (2026-07-30). Every blend is listed

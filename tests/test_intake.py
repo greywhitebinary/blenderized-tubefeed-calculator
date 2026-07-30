@@ -20,6 +20,8 @@ from datetime import time as dtime
 import pytest
 
 from src.intake import (
+    WATER_BLEND_LABEL,
+    WATER_FLUSH_LABEL,
     aggregate_intake,
     resolve_blend_profile,
     sorted_intake_log,
@@ -235,7 +237,21 @@ class TestNoOverDrawFlag:
         assert totals.nutrient_totals["energy_kcal"] == pytest.approx(1.05 * 600.0)
         assert totals.fluid_provided_mL == pytest.approx(0.3 * 600.0)
         # No over-draw / batch-mismatch field exists anywhere on the
-        # result -- IntakeTotals only ever carries these four attributes.
+        # result -- IntakeTotals carries exactly these attributes and no
+        # "over_drawn"/"batch_mismatch"/"excess" field of any kind.
+        #
+        # This set is deliberately exact rather than a substring check, so
+        # that ADDING a field is a decision someone has to make on purpose
+        # here. If you are reading this because the assertion just failed:
+        # confirm your new field is a legitimate one and add it below --
+        # but if it compares "how much was logged" against "how much the
+        # batch made", stop, and read FEED_LOG_REWORK.md section 6.2. That
+        # comparison is the bug this whole module was rewritten to remove.
+        #
+        # water_sources added 2026-07-30: splits the day's water by where
+        # it came from (blend/formula/oral free water vs flushes) for the
+        # ledger. It records provenance of water actually given -- it does
+        # not compare anything against a batch volume.
         from dataclasses import fields
 
         field_names = {f.name for f in fields(totals)}
@@ -244,6 +260,7 @@ class TestNoOverDrawFlag:
             "fluid_provided_mL",
             "subtotals",
             "nutrient_coverage",
+            "water_sources",
         }
 
 
@@ -402,3 +419,97 @@ class TestMixedDay:
             ].get(key, 0.0)
             assert total["nutrient_totals"].get(key, 0.0) == pytest.approx(expected)
             assert totals.nutrient_totals.get(key, 0.0) == pytest.approx(expected)
+
+
+class TestWaterSources:
+    """Every water source kept on its own line (author, 2026-07-30).
+
+    The clinical rule being encoded: water that arrived as PART OF
+    SOMETHING FED is free water -- tap water stirred into a blend
+    included, because once it's in the recipe it is the recipe, exactly
+    like the moisture in a banana. Only a flush is water given as water.
+    """
+
+    def test_tap_water_in_a_blend_stays_blend_free_water(self, blends, nutrient_amount_df):
+        """Water poured into the blender is NOT broken out separately --
+        it's part of the recipe, so it belongs to the blend's free water."""
+        intake_log = [
+            {
+                "id": 1,
+                "time": dtime(8, 0),
+                "source_type": "blend",
+                "source_id": 1,
+                "amount": 500.0,
+                "unit": "mL",
+            }
+        ]
+        totals = aggregate_intake(intake_log, blends, nutrient_amount_df)
+
+        assert WATER_BLEND_LABEL in totals.water_sources
+        assert WATER_FLUSH_LABEL not in totals.water_sources
+        # The blend's free water equals its water_g -- one number, not
+        # split into "food moisture" and "added water".
+        assert totals.water_sources[WATER_BLEND_LABEL] == pytest.approx(
+            totals.nutrient_totals["water_g"]
+        )
+
+    def test_a_flush_is_its_own_source_at_full_volume(self, blends, nutrient_amount_df):
+        """A flush is water given as water: its own line, full volume, and
+        it stays OUT of the free-water figure."""
+        intake_log = [
+            {
+                "id": 1,
+                "time": dtime(9, 0),
+                "source_type": "flush",
+                "source_id": None,
+                "amount": 200.0,
+                "unit": "mL",
+            }
+        ]
+        totals = aggregate_intake(intake_log, blends, nutrient_amount_df)
+
+        assert totals.water_sources == {WATER_FLUSH_LABEL: 200.0}
+        # Deliberately absent from free water -- see IntakeTotals.free_water_mL
+        assert totals.free_water_mL == 0.0
+
+    def test_sources_are_listed_separately_and_sum_to_all_water(self, blends, nutrient_amount_df):
+        """A mixed day: each source on its own line, and free water plus
+        flushes accounts for every drop."""
+        intake_log = [
+            {
+                "id": 1,
+                "time": dtime(8, 0),
+                "source_type": "blend",
+                "source_id": 1,
+                "amount": 500.0,
+                "unit": "mL",
+            },
+            {
+                "id": 2,
+                "time": dtime(9, 0),
+                "source_type": "flush",
+                "source_id": None,
+                "amount": 200.0,
+                "unit": "mL",
+            },
+            {
+                "id": 3,
+                "time": dtime(10, 0),
+                "source_type": "flush",
+                "source_id": None,
+                "amount": 150.0,
+                "unit": "mL",
+            },
+        ]
+        totals = aggregate_intake(intake_log, blends, nutrient_amount_df)
+
+        # Flushes accumulate onto one line rather than one line each.
+        assert totals.water_sources[WATER_FLUSH_LABEL] == pytest.approx(350.0)
+        assert set(totals.water_sources) == {WATER_BLEND_LABEL, WATER_FLUSH_LABEL}
+        # Total water = free water (in the feeds) + flushes.
+        assert sum(totals.water_sources.values()) == pytest.approx(totals.free_water_mL + 350.0)
+
+    def test_a_day_with_no_water_reports_no_sources(self, blends, nutrient_amount_df):
+        """An empty ledger shows nothing rather than a row of zeroes."""
+        totals = aggregate_intake([], blends, nutrient_amount_df)
+        assert totals.water_sources == {}

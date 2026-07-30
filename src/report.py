@@ -546,3 +546,30 @@ def generate_source_breakdown(
         row["Fluid provided (mL)"] = round(sub["fluid_provided_mL"], 0)
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def generate_water_ledger(water_sources: dict[str, float]) -> pd.DataFrame:
+    """Every water source the day drew on, one row each, plus a total.
+
+    The clinical distinction this preserves (author, 2026-07-30): water
+    that arrived as PART OF SOMETHING FED is free water -- tap water
+    stirred into a blend included, because in the recipe it IS the
+    recipe, exactly like the moisture in a banana. Only a flush is water
+    given as water, so it gets its own line and is added on top.
+
+    Deliberately NO intermediate "free water subtotal" row: the author
+    wants the sources themselves visible, then the total. Nothing here is
+    recomputed -- these are aggregate_intake()'s own per-source numbers.
+
+    Returns an empty DataFrame when the day has no water at all, so the
+    caller can show nothing rather than a table of zeroes.
+    """
+    if not water_sources:
+        return pd.DataFrame(columns=["Water source", "mL/day"])
+
+    rows = [
+        {"Water source": label, "mL/day": round(value, 0)}
+        for label, value in sorted(water_sources.items())
+    ]
+    rows.append({"Water source": "Total water", "mL/day": round(sum(water_sources.values()), 0)})
+    return pd.DataFrame(rows)
