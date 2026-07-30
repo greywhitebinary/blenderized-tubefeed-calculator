@@ -498,9 +498,61 @@ author can compare their fixes or unblock themselves if stuck for too long.
     - `data/raw/usda/` (69 MB, gitignored) is a local download only. It
       never reached the repo or Streamlit Cloud, and nothing reads it.
       Left on disk for the author to delete at her convenience.
-  - [x] **Food search rework — DONE** (2026-07-30). The direct
-    consequence of the USDA finding: the fix for "the food isn't in
-    there" is search, not more data. See the entry below.
+  - [x] **Food search rework — DONE** (2026-07-30). `src/food_search.py`,
+    `data/packs/canada/food_synonyms.csv`, `tests/test_food_search.py`,
+    `scripts/check_food_search.py`. The direct consequence of the USDA
+    finding: the fix for "the food isn't in there" is search, not more
+    data. The old box was `str.contains(term, regex=False)` — a literal
+    substring, whole phrase, in order — which returned **zero results**
+    for "wild rice" and "greek yogurt", and found 2 of the 22 ground
+    beef entries. Three layers now, stopping at the first that hits:
+    - **Layer 1 — all words, any order, prefix-matched.** "wild rice" →
+      "Grains, rice, wild, dry". Also reads CNF's own
+      `Alternate_Description_EN` (populated for 1,384 foods), which the
+      old search ignored entirely — that column is why "hamburger" now
+      finds ground beef.
+    - **Layer 3 — curated synonyms**, runs *before* fuzzy: a human
+      statement about this database outranks a machine's spelling
+      hunch. 19 rows, every one verified against real CNF. Only for
+      terms CNF holds under neither spelling (courgette → zucchini,
+      prawns → shrimp, mangetout → peas edible-podded).
+    - **Layer 2 — typo tolerance**, per word, via stdlib `difflib`
+      against CNF's 2,510-word vocabulary. **No new dependency**: it was
+      measured at ~1.3 ms, so `rapidfuzz` was not worth the deploy risk
+      (§11 pin history). Whole-corpus difflib was both slower *and*
+      worse — token-level is what works.
+    - **`FUZZY_CUTOFF = 0.84` is measured, not guessed, and is a safety
+      setting.** At the 0.75 it started on, the search confidently
+      answered "skyr" with a **Skor chocolate bar**, "maize" with a
+      **Marie biscuit**, "rocket" with spiny lobster and "prawns" with
+      animal crackers. Scoring real typos (brocolli→broccoli 0.875,
+      yoghurt→yogourt 0.857, chikpeas→chickpeas 0.941; lowest wanted
+      0.857) against words CNF lacks (maize→marie 0.800, prawns→paws
+      0.800, skyr→skor 0.750; highest unwanted 0.800) leaves a clean
+      gap. **Do not lower it** — `test_words_cnf_lacks_return_nothing_
+      rather_than_nonsense` guards it.
+    - **Search ranks; it never auto-selects.** Same rule as AI label
+      extraction (§11): a substitution is allowed to be wrong only
+      because it is never silent. Every reinterpretation prints a
+      caption ("No exact match — showing results for …").
+    - **Two synonyms proposed from memory were wrong and measurement
+      caught both**: CNF writes "sweet potato" as two words (a
+      `sweetpotato` row would have found 0 foods instead of 23), and
+      "oatmeal" already finds 65 where "oats" finds 51 — the synonym
+      would have *discarded* results. A third, `peppers sweet`, failed
+      because CNF uses the singular "Pepper, sweet". Hence
+      `test_every_synonym_resolves`, which loads real CNF and asserts
+      every row still resolves. **A synonym table is data that rots
+      silently; that test is the only thing that notices.**
+    - The best argument for layer 3 is `bicarbonate of soda`: without
+      its row, layer 2 spell-corrects it to "carbonated soda" and
+      returns **club soda and cream soda** — a soft drink where the RD
+      asked for a leavening agent.
+    - Tests: 80 → **106**. Checks: 5 → **6** (new
+      `scripts/check_food_search.py`, an AppTest that types into the
+      real box against real CNF — the module being correct and the app
+      being *wired* to it are separate claims, and the old search was a
+      perfectly correct substring match).
 - [ ] Week 4 — Ship + Pitch — NOT STARTED (polish from RD pilot feedback,
   validation appendix, and the AI-assist features moved here from Week 3:
   label-photo extraction and PDF → formulas extraction. Saving/loading a
@@ -577,15 +629,15 @@ author can compare their fixes or unblock themselves if stuck for too long.
   - Parked, not cancelled: the volume-needed planning aid in the Daily
     Intake Record; the two-section chart note (summary + breakdown); the
     Excel export usefulness review.
-- **`scripts/check_tab_restructure.py` is FAILING on `main`** (open bug,
-  found 2026-07-30). It asserts at line 115 that `Nepro` appears under
-  the Abbott company filter, parsing formula labels with
-  `o.split(" — ", 1)[-1]`. Commit 1f3af36 changed those labels to
-  feed-name-first, so the parse now yields the brand rather than the feed
-  name and the assertion fails. **It has been broken since 2026-07-23 and
-  nobody noticed, because nothing runs it automatically — this is the
-  single clearest argument for the Week 3 CI work.** Fix the assertion
-  (the app is fine; the checker is stale).
+- ~~**`scripts/check_tab_restructure.py` is FAILING on `main`**~~ —
+  **RESOLVED 2026-07-30 (commit e9b4f33)**, a one-character fix
+  (`o.split(" — ", 1)[-1]` -> `[0]`). Kept because the *cause* is the
+  argument for CI: it asserted that `Nepro` appears under the Abbott
+  company filter, and commit 1f3af36 changed formula labels to
+  feed-name-first, so the parse yielded the brand instead of the feed
+  name. **It was broken for a week and nobody noticed, because nothing
+  ran it automatically.** The app was fine the whole time; only the
+  checker was stale.
 - ~~**`dilute()` models only kcal/protein/water from the added liquid**~~
   — **RESOLVED 2026-07-30 (commit c4da8a1)** by narrowing the Dilution
   What-If to water rather than by extending `dilute()`. The reasoning is

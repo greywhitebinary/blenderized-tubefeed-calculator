@@ -64,6 +64,7 @@ from src.calculator import (
     COMMERCIAL_FORMULAS,
 )
 from src.measures import load_measure_lookup, get_measures_for_food
+from src.food_search import MIN_QUERY_LEN, build_index, search_foods
 from src.recipe_io import (
     AMBIGUOUS,
     MATCH_BY_CODE,
@@ -566,17 +567,30 @@ def render_add_food_ui(
         calculated_grams = 0.0
         sel_group_code = None
 
-        search_pool = fn_df
-        if selected_group != "All":
-            search_pool = fn_df[fn_df["CNF_Food_Group_Code"] == group_code_by_desc[selected_group]]
+        # Three-layer search (src/food_search.py): all words in any order,
+        # then a curated synonym, then per-word typo tolerance. It replaced
+        # a literal substring match that returned NOTHING for "wild rice"
+        # or "greek yogurt", because CNF files those as "Grains, rice,
+        # wild, dry" and "Yogourt (yogurt), Greek style...". An RD who
+        # searches, sees nothing, and hand-enters a food that was already
+        # in CNF gets worse data than the database could have given her.
+        _group_code = None if selected_group == "All" else group_code_by_desc[selected_group]
 
-        if len(search_term) >= 2:
-            matches = search_pool[
-                search_pool["Food_Description_EN"].str.contains(
-                    search_term, case=False, na=False, regex=False
-                )
-            ]
-            matches = matches.sort_values("Food_Description_EN").head(50)
+        if len(search_term) >= MIN_QUERY_LEN:
+            _search = search_foods(search_term, _food_search_index(_group_code), limit=50)
+            # Deliberately NOT re-sorted alphabetically: search_foods()
+            # returns them ranked (description matches before
+            # alternate-name matches, whole words before prefixes,
+            # shorter CNF descriptions -- its basic foods -- first).
+            matches = _search.matches
+
+            # Say so whenever the query was reinterpreted. The RD has to
+            # be able to see that "brocolli" became broccoli, or that a
+            # synonym fired -- a substitution is allowed to be wrong only
+            # because it is never silent (CONTEXT.md §11, same rule as AI
+            # label extraction).
+            if _search.note:
+                st.caption(f"🔎 {_search.note}")
 
             if len(matches) > 0:
                 food_options = [
@@ -631,9 +645,16 @@ def render_add_food_ui(
                         key=f"{key_prefix}_grams_nomeasure",
                     )
             else:
-                _note("No foods found. Try another search.")
+                # Nothing found is an honest answer, and after three
+                # layers it usually means CNF really doesn't have it --
+                # so point at the way out rather than just saying no.
+                _note(
+                    "No foods found. Try fewer words, or switch to "
+                    "<strong>Enter a Nutrition Facts label</strong> above to add "
+                    "this food yourself."
+                )
         else:
-            st.caption("Type at least 2 characters to search.")
+            st.caption(f"Type at least {MIN_QUERY_LEN} characters to search.")
 
         if food_code is not None and calculated_grams > 0:
             default_fluid = default_counts_as_fluid(food_desc, sel_group_code)
@@ -950,6 +971,24 @@ fn = get_food_name()
 na = get_nutrient_amount()
 lookup = get_measure_lookup()
 fg = get_food_group()
+
+
+@st.cache_resource(show_spinner=False)
+def _food_search_index(group_code: int | None):
+    """Pre-tokenised CNF descriptions for the food search box.
+
+    Keyed by food group so the group filter narrows the *index*, not the
+    results -- filtering afterwards would let 50 unfiltered hits crowd
+    out the ones the RD asked for.
+
+    `cache_resource` rather than `cache_data`: a SearchIndex holds a
+    DataFrame plus ~6,000 frozensets and is only ever read, so there is
+    nothing to gain from copying it per session. Building one costs
+    ~16 ms; a search against it costs 3-10 ms, which is why this can run
+    on every keystroke.
+    """
+    pool = fn if group_code is None else fn[fn["CNF_Food_Group_Code"] == group_code]
+    return build_index(pool)
 
 
 # ===========================================================================

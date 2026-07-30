@@ -56,12 +56,19 @@
    "imports OK" alone does not prove a UI change works.
 
 4. Current work (2026-07-30): Week 2 is COMPLETE and the app is live
-   at https://btfcalc.streamlit.app. Week 3 ("Build to Last") is in
-   progress: pytest suite, GitHub Actions CI, runtime/dev dependency
-   split, the failing scripts/check_tab_restructure.py, formula-row
-   nutrient_coverage, thinning_liquids pack-awareness, and the USDA
-   SR Legacy supplement. The Streamlit Cloud deploy sub-item is
-   already DONE. The AI-assist features (label-photo extraction,
+   at https://btfcalc.streamlit.app. Week 3 ("Build to Last") is
+   essentially complete: pytest suite (106 tests), GitHub Actions CI,
+   runtime/dev dependency split, recipe record, water ledger,
+   formula-row nutrient_coverage, thinning_liquids pack-awareness, and
+   the three-layer food search.
+
+   **The USDA SR Legacy supplement was investigated and REJECTED by the
+   author on 2026-07-30. Do not re-open it, and do not add a second
+   nutrient database, without her explicit say-so.** CNF already is a
+   merged database (55.4% of its values are USDA verbatim), the
+   apparent food gap was a search bug, and merging databases silently
+   hides unit mismatches. Full reasoning: CONTEXT.md §9 and HANDOFF.md
+   item 7. The AI-assist features (label-photo extraction,
    PDF → formulas) were moved to Week 4. See CONTEXT.md §9 for the
    sub-item checklist, §1 for the app flow, FEED_LOG_REWORK.md for
    the Intake Record design rationale, and HANDOFF.md for a
