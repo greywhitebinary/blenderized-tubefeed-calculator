@@ -64,6 +64,16 @@ from src.calculator import (
     COMMERCIAL_FORMULAS,
 )
 from src.measures import load_measure_lookup, get_measures_for_food
+from src.recipe_io import (
+    AMBIGUOUS,
+    MATCH_BY_CODE,
+    UNMATCHED,
+    RecipeFileError,
+    recipe_to_workbook_bytes,
+    resolve_ingredients,
+    suggested_filename,
+    workbook_bytes_to_recipe,
+)
 from src.targets import empty_targets
 from src.report import (
     generate_adequacy_report,
@@ -207,6 +217,110 @@ def default_counts_as_fluid(food_desc: str, group_code) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _confirm_recipe_import(parsed, resolved) -> None:
+    """Show an uploaded recipe as a DRAFT for the RD to confirm.
+
+    Nothing here writes to a blend until the confirm button is pressed.
+    That is deliberate and matches the rule in CONTEXT.md §11: a file the
+    app wrote carries CNF food codes and resolves exactly, but a recipe
+    someone typed in Excel carries words, and words are ambiguous --
+    "chicken, broiler, breast" is three different CNF foods with three
+    different protein figures. Picking one silently would put a plausible
+    wrong number into a clinical calculation, so every row that wasn't
+    matched by code is shown for a human to settle.
+    """
+    st.markdown("---")
+    st.markdown(f"**Loading recipe: {parsed.name or 'unnamed'}**")
+
+    for warning in parsed.row_warnings:
+        _note(warning)
+
+    if not resolved:
+        _note("No usable ingredient rows were found in that file.")
+        if st.button("Cancel", key="recipe_import_cancel_empty"):
+            st.session_state.pop("_pending_recipe", None)
+            st.session_state.pop("_last_recipe_upload", None)
+            st.rerun()
+        return
+
+    needs_review = [r for r in resolved if r.status != MATCH_BY_CODE]
+    if needs_review:
+        st.caption(
+            f"{len(needs_review)} of {len(resolved)} rows need you to confirm which "
+            "CNF food is meant. Nothing is added until you press Add."
+        )
+    else:
+        st.caption(f"All {len(resolved)} rows matched by food code. Check them and press Add.")
+
+    choices: list[int | None] = []
+    for index, row in enumerate(resolved):
+        amount_label = f"{row.grams:g} {row.unit}"
+        if row.status == MATCH_BY_CODE:
+            st.write(f"✅ **{row.food_description}** — {amount_label}")
+            choices.append(row.food_code)
+        elif row.status == AMBIGUOUS:
+            picked = st.selectbox(
+                f'"{row.source_text}" — {amount_label}: which food?',
+                options=[None] + [c[0] for c in row.candidates],
+                format_func=lambda code, _row=row: (
+                    "— choose one —"
+                    if code is None
+                    else next(d for c, d in _row.candidates if c == code)
+                ),
+                key=f"recipe_pick_{index}",
+            )
+            choices.append(picked)
+        elif row.status == UNMATCHED:
+            st.write(f'❌ "{row.source_text}" — {amount_label}: no CNF match, will be skipped.')
+            choices.append(None)
+        else:  # matched on description — likely right, still confirm
+            keep = st.checkbox(
+                f'"{row.source_text}" → **{row.food_description}** — {amount_label}',
+                value=True,
+                key=f"recipe_keep_{index}",
+            )
+            choices.append(row.food_code if keep else None)
+
+    usable = sum(1 for c in choices if c is not None)
+    c1, c2 = st.columns(2)
+    if c1.button(
+        f"Add as a new blend ({usable} ingredient{'s' if usable != 1 else ''})",
+        disabled=usable == 0,
+        key="recipe_import_confirm",
+        width="stretch",
+    ):
+        new_id = _new_blend(parsed.name or "Loaded recipe")
+        blend = st.session_state.blends[new_id]
+        blend["measured_volume_mL"] = parsed.measured_volume_mL
+        blend["flow_test"] = {
+            "date": parsed.flow_test_date,
+            "result": parsed.flow_test_result or "Not done",
+            "notes": parsed.flow_test_notes,
+        }
+        for row, code in zip(resolved, choices):
+            if code is None:
+                continue
+            st.session_state.next_ingr_id += 1
+            blend["ingredients"].append(
+                {
+                    "id": st.session_state.next_ingr_id,
+                    "food_code": int(code),
+                    "food_description": row.food_description,
+                    "grams": row.grams,
+                    "unit": row.unit,
+                    "counts_as_fluid": row.counts_as_fluid,
+                }
+            )
+        st.session_state.pop("_pending_recipe", None)
+        st.session_state.pop("_last_recipe_upload", None)
+        st.rerun()
+
+    if c2.button("Cancel", key="recipe_import_cancel", width="stretch"):
+        st.session_state.pop("_pending_recipe", None)
+        st.session_state.pop("_last_recipe_upload", None)
+        st.rerun()
+
+
 def _new_blend(name: str) -> int:
     """Create a new empty blend, select it, and return its id."""
     new_id = st.session_state.next_blend_id
@@ -215,6 +329,13 @@ def _new_blend(name: str) -> int:
         "name": name,
         "ingredients": [],
         "measured_volume_mL": 0.0,
+        # The flow test belongs to THIS blend, not to the page. It is the
+        # one thing in a recipe the app can never recompute -- kcal/mL and
+        # protein/mL regenerate from the ingredient list any time, but
+        # whether the blend actually pulled through a 60 mL syringe lives
+        # only in the RD's hands. Storing it per blend is what lets the
+        # chart note say WHICH recipe passed (2026-07-30).
+        "flow_test": {"date": None, "result": "Not done", "notes": ""},
     }
     st.session_state.selected_blend_id = new_id
     # The "blend_selector" selectbox widget remembers its OWN prior value
@@ -2031,15 +2152,88 @@ with recipes_tab:
     st.subheader("Flow Test")
     st.caption(
         "Documentation only — the tool can't measure viscosity or tube "
-        "flow. Optional for established recipes; during recipe development "
-        "it pairs with the dilution what-if above."
+        "flow. This is the half of the sweet spot the app can't compute: "
+        "it records what your syringe told you, and it belongs to this "
+        "blend, so the chart note can say which recipe it refers to."
     )
+    # Keyed per blend: switching blends shows that blend's own flow test
+    # rather than leaving the previous one on screen describing a recipe
+    # it was never about.
+    _ft_state = selected_blend.setdefault(
+        "flow_test", {"date": None, "result": "Not done", "notes": ""}
+    )
+    _ft_results = ["Not done", "Passed", "Needs thinning"]
     ft1, ft2 = st.columns(2)
-    flow_test_date = ft1.date_input("Date", value=None)
-    flow_test_result = ft2.selectbox("Result", ["Not done", "Passed", "Needs thinning"])
-    flow_test_notes = st.text_area(
-        "Notes", "", placeholder="e.g., flowed through a 60 mL syringe without resistance"
+    flow_test_date = ft1.date_input(
+        "Date", value=_ft_state.get("date"), key=f"flow_date_{selected_blend_id}"
     )
+    flow_test_result = ft2.selectbox(
+        "Result",
+        _ft_results,
+        index=_ft_results.index(_ft_state.get("result") or "Not done"),
+        key=f"flow_result_{selected_blend_id}",
+    )
+    flow_test_notes = st.text_area(
+        "Notes",
+        value=_ft_state.get("notes", ""),
+        placeholder="e.g., flowed through a 60 mL syringe without resistance",
+        key=f"flow_notes_{selected_blend_id}",
+    )
+    _ft_state["date"] = flow_test_date
+    _ft_state["result"] = flow_test_result
+    _ft_state["notes"] = flow_test_notes
+
+    # --- Recipe record: save this blend to a file, or load one back ---
+    # The calculator computes; this remembers. Everything else in a blend
+    # can be recomputed from the ingredient list -- the flow test can't,
+    # so a saved recipe is the only place that judgment survives.
+    # Files download to the RD's own machine: the deployed app runs on a
+    # shared public server with no per-user storage, so there is nowhere
+    # safe to keep recipes server-side (and nothing patient-identifying
+    # ever leaves the browser this way).
+    st.subheader("Recipe Record")
+    st.caption(
+        "Save this blend — ingredients, measured volume and flow test — as a "
+        "spreadsheet you keep. Re-open it here later, or edit it in Excel."
+    )
+    rr1, rr2 = st.columns(2)
+    with rr1:
+        st.download_button(
+            "💾 Save recipe",
+            data=recipe_to_workbook_bytes(selected_blend, _ft_state),
+            file_name=suggested_filename(selected_blend.get("name", "")),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            disabled=not selected_blend["ingredients"],
+            help=(
+                "Add at least one ingredient first."
+                if not selected_blend["ingredients"]
+                else "Downloads to your computer."
+            ),
+            width="stretch",
+        )
+    with rr2:
+        _uploaded = st.file_uploader(
+            "📂 Load a recipe",
+            type=["xlsx"],
+            key=f"recipe_upload_{selected_blend_id}",
+            help="Loads into a NEW blend — it never overwrites this one.",
+        )
+
+    if _uploaded is not None and st.session_state.get("_last_recipe_upload") != _uploaded.name:
+        try:
+            _parsed = workbook_bytes_to_recipe(_uploaded.getvalue())
+        except RecipeFileError as exc:
+            _note(str(exc))
+        else:
+            _resolved = resolve_ingredients(_parsed, fn)
+            st.session_state["_pending_recipe"] = (_parsed, _resolved)
+            st.session_state["_last_recipe_upload"] = _uploaded.name
+            st.rerun()
+
+    _pending = st.session_state.get("_pending_recipe")
+    if _pending is not None:
+        _parsed, _resolved = _pending
+        _confirm_recipe_import(_parsed, _resolved)
 
     # --- Commercial formula comparator (operates on the selected blend,
     # at a manually-chosen comparison volume -- independent of the actual
@@ -2143,11 +2337,29 @@ with record_tab:
         _note_lines.append(f"Fluid provided: {intake_totals.fluid_provided_mL:.0f} mL/day.")
         _note_lines.append(f"Free water (estimated): ~{intake_totals.free_water_mL:.0f} mL/day.")
 
-        if flow_test_result in ("Passed", "Needs thinning"):
-            _result_word = "passed" if flow_test_result == "Passed" else "needs thinning"
-            _date_bit = f" {flow_test_date.isoformat()}" if flow_test_date else ""
-            _notes_bit = f" — {flow_test_notes}" if flow_test_notes else ""
-            _note_lines.append(f"Flow test:{_date_bit} {_result_word}{_notes_bit}.")
+        # Flow test, per blend that actually appears in today's Intake
+        # Record. Named, because "passed the syringe test" attached to the
+        # wrong recipe is worse than no note at all -- and a day can draw
+        # on more than one blend. Blends not fed today are omitted: this
+        # note documents the day, not the recipe library.
+        _blend_ids_fed = {
+            r["source_id"] for r in st.session_state.intake_log if r["source_type"] == "blend"
+        }
+        for _bid in sorted(_blend_ids_fed):
+            _fed_blend = st.session_state.blends.get(_bid)
+            if not _fed_blend:
+                continue
+            _ft = _fed_blend.get("flow_test") or {}
+            if _ft.get("result") not in ("Passed", "Needs thinning"):
+                continue
+            _result_word = "passed" if _ft["result"] == "Passed" else "needs thinning"
+            _blend_label = _fed_blend.get("name") or f"Blend {_bid}"
+            _ft_date = _ft.get("date")
+            _date_bit = f" {_ft_date.isoformat()}" if _ft_date else ""
+            _notes_bit = f" — {_ft.get('notes')}" if _ft.get("notes") else ""
+            _note_lines.append(
+                f"Flow test ({_blend_label}):{_date_bit} {_result_word}{_notes_bit}."
+            )
 
         _note_text = " ".join(_note_lines)
         st.code(_note_text, language=None)
@@ -2230,13 +2442,24 @@ with record_tab:
                 writer, sheet_name="Per-Source Breakdown", index=False
             )
 
-        # Flow test documentation
+        # Flow test documentation -- one row per blend, named, since each
+        # blend now carries its own (2026-07-30). Every blend is listed
+        # here, not just those fed today: the export is the working record
+        # of the recipes, where the chart note above is the day.
         pd.DataFrame(
-            {
-                "Date": [flow_test_date.isoformat() if flow_test_date else ""],
-                "Result": [flow_test_result],
-                "Notes": [flow_test_notes],
-            }
+            [
+                {
+                    "Blend": b.get("name") or f"Blend {bid}",
+                    "Date": (
+                        b.get("flow_test", {}).get("date").isoformat()
+                        if b.get("flow_test", {}).get("date")
+                        else ""
+                    ),
+                    "Result": b.get("flow_test", {}).get("result", "Not done"),
+                    "Notes": b.get("flow_test", {}).get("notes", ""),
+                }
+                for bid, b in sorted(st.session_state.blends.items())
+            ]
         ).to_excel(writer, sheet_name="Flow Test", index=False)
 
         # Chart note text
