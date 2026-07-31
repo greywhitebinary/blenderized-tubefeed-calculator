@@ -65,6 +65,12 @@ from src.calculator import (
 )
 from src.measures import load_measure_lookup, get_measures_for_food
 from src.food_search import MIN_QUERY_LEN, build_index, search_foods
+from src.day_io import (
+    DayFileError,
+    day_to_workbook_bytes,
+    suggested_day_filename,
+    workbook_bytes_to_day,
+)
 from src.recipe_io import (
     AMBIGUOUS,
     MATCH_BY_CODE,
@@ -1003,6 +1009,58 @@ st.markdown(
 
 init_state()
 
+
+def _apply_saved_day(parsed) -> None:
+    """Replace the whole working day with one read from a file.
+
+    Runs HERE, at the top of the script, and not where the file is
+    uploaded: it writes session_state keys that widgets own
+    ("recipe_name_input", "patient_weight_input", every "target_*"), and
+    setting those AFTER their widget has been instantiated in the same
+    run raises StreamlitAPIException -- the §11 widget-state gotcha. So
+    the upload handler stages the parsed day and reruns; this applies it
+    before any widget exists.
+
+    Replaces rather than merges. Opening a saved day means "go back to
+    that day"; merging two days would produce an intake record that never
+    happened. Recipes are the opposite and load alongside what you have.
+    """
+    st.session_state.blends = parsed.blends or {}
+    st.session_state.intake_log = parsed.intake_log
+    st.session_state.custom_foods = parsed.custom_foods
+
+    # Rebuild the id counters from what was actually loaded, so newly
+    # added rows can't collide with loaded ones.
+    st.session_state.next_blend_id = (max(parsed.blends) + 1) if parsed.blends else 0
+    st.session_state.next_intake_id = len(parsed.intake_log)
+    st.session_state.next_ingr_id = max(
+        (ing["id"] for b in parsed.blends.values() for ing in b["ingredients"]),
+        default=0,
+    )
+    # Custom food codes count DOWN from -1, so the next free one is below
+    # the lowest already in use.
+    st.session_state.next_custom_code = min(parsed.custom_foods) - 1 if parsed.custom_foods else -1
+
+    # A day saved with no blends would leave the blend selector with
+    # nothing to select; init_state()'s "always at least one" rule applies
+    # here too.
+    if not st.session_state.blends:
+        _new_blend("Blend 1")
+    st.session_state.selected_blend_id = min(st.session_state.blends)
+
+    st.session_state["recipe_name_input"] = parsed.label
+    st.session_state["patient_weight_input"] = float(parsed.patient_weight or 0.0)
+    st.session_state["weight_unit"] = (
+        parsed.weight_unit if parsed.weight_unit in ("kg", "lbs") else "kg"
+    )
+    for _name in empty_targets():
+        st.session_state[f"target_{_name}"] = float(parsed.targets.get(_name, 0.0))
+
+
+_staged_day = st.session_state.pop("_apply_day", None)
+if _staged_day is not None:
+    _apply_saved_day(_staged_day)
+
 # Load cached CNF data (runs once, then served from cache)
 fn = get_food_name()
 na = get_nutrient_amount()
@@ -1036,6 +1094,46 @@ top_l, top_r = st.columns([4, 1])
 with top_r:
     st.write("")  # vertical spacer so the button aligns with the text input
     load_example_clicked = st.button("📋 Load example day", width="stretch")
+    with st.popover("📂 Open a saved day", width="stretch"):
+        # In a popover so the top bar keeps its shape -- the UI is pinned
+        # (CONTEXT.md §9), and a file uploader is a tall control.
+        _day_file = st.file_uploader(
+            "Open a saved day",
+            type=["xlsx"],
+            key="day_upload",
+            label_visibility="collapsed",
+            help="A day file saved from this app. Recipes load from the Feed Recipes tab.",
+        )
+
+if _day_file is not None and st.session_state.get("_last_day_upload") != _day_file.name:
+    try:
+        st.session_state["_pending_day"] = workbook_bytes_to_day(_day_file.getvalue())
+    except DayFileError as _exc:
+        _note(str(_exc))
+    else:
+        st.session_state["_last_day_upload"] = _day_file.name
+        st.rerun()
+
+# Confirm before replacing. Opening a saved day overwrites the blends,
+# the intake record and the targets currently on screen, and an RD who
+# has been working for ten minutes should get to say no.
+_pending_day = st.session_state.get("_pending_day")
+if _pending_day is not None:
+    st.warning(
+        f"**Open this saved day?** {_pending_day.summary}. "
+        "This replaces the blends, intake record and targets currently on screen."
+    )
+    for _w in _pending_day.warnings:
+        _note(_w)
+    _dc1, _dc2, _dc3 = st.columns([1, 1, 3])
+    if _dc1.button("Open it", key="day_open_confirm", width="stretch"):
+        st.session_state["_apply_day"] = _pending_day
+        st.session_state.pop("_pending_day", None)
+        st.rerun()
+    if _dc2.button("Cancel", key="day_open_cancel", width="stretch"):
+        st.session_state.pop("_pending_day", None)
+        st.session_state.pop("_last_day_upload", None)
+        st.rerun()
 
 # NOTE: the button-click handler below is deliberately placed BEFORE the
 # "Patient / day label" text_input is instantiated (even though that input
@@ -2647,11 +2745,45 @@ with record_tab:
                 writer, sheet_name="Chart Note", index=False
             )
 
-    st.download_button(
+    _ex1, _ex2 = st.columns(2)
+    _ex1.download_button(
         label="📥 Export to Excel",
         data=output.getvalue(),
         file_name=f"{sanitize_filename(recipe_name)}_report.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+    )
+
+    # Save the whole day so it can be reopened. Lives here, at the bottom
+    # of the Intake tab, because `targets` is only in scope after the
+    # Nutrition Targets tab has run -- and because "here is your day,
+    # keep it" belongs next to the day's export.
+    #
+    # The Excel export above and this are different things: that one is a
+    # report to file in a chart, this one loads back into the app. The
+    # captions say so, because an RD downloading two spreadsheets from
+    # one screen has every right to be confused about which is which.
+    _ex2.download_button(
+        label="💾 Save this day",
+        data=day_to_workbook_bytes(
+            label=recipe_name,
+            patient_weight=st.session_state.get("patient_weight_input", 0.0),
+            weight_unit=st.session_state.get("weight_unit", "kg"),
+            targets=targets,
+            blends=st.session_state.blends,
+            intake_log=st.session_state.intake_log,
+            custom_foods=st.session_state.custom_foods,
+        ),
+        file_name=suggested_day_filename(recipe_name),
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Reopen it later with “Open a saved day” at the top of the page.",
+        width="stretch",
+    )
+    st.caption(
+        "**Export to Excel** is a report for the chart. **Save this day** keeps "
+        "your blends, intake record and targets so you can carry on later — "
+        "it downloads to your computer, and it holds whatever you typed in the "
+        "patient/day label."
     )
 
 
