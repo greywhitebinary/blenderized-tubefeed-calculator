@@ -1823,6 +1823,25 @@ They are not suggestions.
   failing loudly). Do not "fix" this by adding a fallback — see the
   comment at the top of `_load_registry_cached()` in `src/nutrients.py`.
 
+### Editing `src/` locally needs a FULL restart (learned 2026-07-31)
+
+Streamlit re-runs `app/streamlit_app.py` when it changes, and the
+"Rerun" button and a browser refresh both re-run the script. **None of
+them reload a module under `src/`.** Those are imported once and cached
+in `sys.modules` for the life of the process, so an edit to
+`src/label_extract.py`, `src/calculator.py` or any sibling is invisible
+until the server is stopped and started again.
+
+    Ctrl+C in the Terminal running the app, then launch it again.
+
+Cost the author a debugging round on 2026-07-31: three bugs in the
+label-photo request had just been fixed and committed, and the running
+app kept showing the *previous* error message word for word. The message
+text was what proved the process was stale -- the wording had changed in
+the fix, so seeing the old sentence meant old code, not a new failure.
+
+If an on-screen string doesn't match the source, suspect this first.
+
 ### Streamlit Community Cloud deploy gotchas (learned 2026-07-23)
 
 Recorded here because all three cost real debugging time on the first
