@@ -888,7 +888,7 @@ def render_add_food_ui(
                     )
                 else:
                     _photo = st.file_uploader(
-                        "Photo of the Nutrition Facts panel",
+                        "Photo of the Canada Nutrition Facts panel",
                         type=["jpg", "jpeg", "png", "webp"],
                         key=f"{key_prefix}_label_photo",
                         help="A straight-on, close photo of the panel reads best.",
@@ -996,6 +996,12 @@ def render_add_food_ui(
         label_col, _spacer = st.columns([2, 3])
         with label_col:
             with st.container(border=True, key=box_key):
+                # NOT "Canada Nutrition Facts". This heading is part of the
+                # visual replica of the printed panel, and a real Canadian
+                # package prints exactly "Nutrition Facts / Valeur
+                # nutritive". Relabelling it would make the lookalike wrong
+                # in the one place it is meant to be literal -- the RD holds
+                # the real label beside this box and compares.
                 st.markdown('<div class="nft-title">Nutrition Facts</div>', unsafe_allow_html=True)
                 cname = st.text_input("Food name", "", key=f"{key_prefix}_cname")
                 cserving = _nft_field(
