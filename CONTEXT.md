@@ -554,6 +554,43 @@ author can compare their fixes or unblock themselves if stuck for too long.
       real box against real CNF — the module being correct and the app
       being *wired* to it are separate claims, and the old search was a
       perfectly correct substring match).
+  - [x] **Multi-recipe files + the pipeline holes — DONE 2026-07-30.**
+    - **Recipe files now hold every blend** (format v2, commit 3cf3bd9).
+      Author: *"if there is an option to add multiple BTFs... the output
+      should be able to provide all of these recipes."* Correct — the app
+      always held several blends and the export wrote only the selected
+      one. The Recipe sheet gets one row per blend; every Ingredients row
+      is tagged with `Recipe id` + `Recipe name`. **Matched on the id,
+      not the name**, because blend names are free text and two can
+      collide. A multi-recipe file arriving with no link column is
+      **REFUSED, not merged** — pooling two recipes would invent a feed
+      nobody wrote with a plausible kcal/mL, the same failure family as
+      FEED_LOG_REWORK.md §6.2. v1 files still load, verified against a
+      real file saved from the deployed app before the change.
+    - **Bug the new tests caught:** with several recipes where one has a
+      flow-test date and another doesn't, pandas types the column as
+      datetime and fills the blank with `pd.NaT` — which subclasses
+      `datetime`, so the old `isinstance` check accepted it and a "no
+      flow test" recipe came back carrying a date-shaped non-date. Same
+      trap as blank cells reading back as the literal `"nan"`. Fixed with
+      `_coerce_date()`. **Impossible in a single-recipe file**, which is
+      why it surfaced only now.
+    - **All six checks now run in CI** (commit 61558e4). CI ran pytest
+      and nothing else, so the other five ran only when someone
+      remembered — *the exact failure this repo already suffered* when
+      `check_tab_restructure.py` sat broken for a week. The old workflow
+      parked `verify_backend.py` on a weekly schedule as "slow"; measured
+      from a cold checkout with no Parquet cache it is **0.53s**, and
+      every check is under two seconds. The weekly run is kept for a real
+      reason instead: `pandas` floats in requirements.txt, and a floating
+      dependency is how the Streamlit 1.60 deploy broke.
+    - **Lint now gates.** Both steps carried `continue-on-error`, so 61
+      findings never failed anything. 25 were fixed (f-strings without
+      placeholders, unused imports removed from *both* branches of the
+      try/except import fallbacks, one unused variable); the rest are
+      configured with the reason recorded — E501 defers to black, E402 is
+      per-file for the files that must put code above imports, notebooks
+      are excluded as learning material.
   - [x] **Three author decisions — CLOSED 2026-07-30.**
     - **Assumed zeros: investigated, NOT a defect — do not "fix" it.**
       Reversal of a recommendation I had given her the previous message,
