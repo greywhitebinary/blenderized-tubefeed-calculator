@@ -849,6 +849,31 @@ def render_add_food_ui(
                 "notes": _pending_photo.notes,
             }
 
+        # Rendered here, NOT inside the photo uploader above. It describes
+        # values already sitting in the form, so it must not vanish just
+        # because the API client is unavailable -- and gating it on the
+        # client made the whole thing untestable without a key, which is
+        # how CI found it.
+        _result = st.session_state.get(f"{key_prefix}_photo_result")
+        if _result:
+            _reg = registry_by_name(DEFAULT_PACK)
+            _missing_labels = [_reg[_m].label for _m in _result["missing"] if _m in _reg]
+            st.success(
+                f"Filled in {_result['found']} values from your photo. "
+                "**Check every one against the label before adding it.**"
+            )
+            if _missing_labels:
+                # Named, not silently left at 0: an absent line and a
+                # printed zero are different facts, and only the RD
+                # holding the label can tell which this is.
+                st.caption(
+                    "Not found on that label, so left alone: "
+                    + ", ".join(_missing_labels)
+                    + ". If the label really shows 0, enter 0 yourself."
+                )
+            if _result["notes"]:
+                st.caption(f"Note from the reader: {_result['notes']}")
+
         basis_choice = st.radio(
             "Label basis",
             ["Serving size in weight (g)", "Serving size in volume (mL)"],
@@ -919,29 +944,6 @@ def render_add_food_ui(
                                 # stays correct even if this block moves.
                                 st.session_state[_pending_photo_key] = _read
                                 st.rerun()
-
-                _result = st.session_state.get(f"{key_prefix}_photo_result")
-                if _result:
-                    _missing_labels = [
-                        registry_by_name(DEFAULT_PACK)[_m].label
-                        for _m in _result["missing"]
-                        if _m in registry_by_name(DEFAULT_PACK)
-                    ]
-                    st.success(
-                        f"Filled in {_result['found']} values. **Check every one against "
-                        "the label before adding it.**"
-                    )
-                    if _missing_labels:
-                        # Listed, not silently left at 0: an absent line and a
-                        # printed zero are different facts, and only the RD
-                        # holding the label can tell which this is.
-                        st.caption(
-                            "Not found on that label, so left alone: "
-                            + ", ".join(_missing_labels)
-                            + ". If the label really shows 0, enter 0 yourself."
-                        )
-                    if _result["notes"]:
-                        st.caption(f"Note from the reader: {_result['notes']}")
 
         _registry_map = registry_by_name(DEFAULT_PACK)
         cv: dict[str, float] = {}

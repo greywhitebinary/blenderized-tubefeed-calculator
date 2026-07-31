@@ -19,4 +19,18 @@ jupyter>=1.0
 # something Cloud's production runtime touches today. If the Parquet cache
 # is ever committed/shipped to change that, pyarrow must move back to
 # requirements.txt as a deliberate, documented decision - not silently.
-pyarrow>=15.0
+# UPPER BOUND IS LOAD-BEARING. pyarrow 25.0.0 SEGFAULTS (exit 139, no
+# traceback) inside libarrow's PoolBuffer::Reserve when Streamlit
+# converts a DataFrame to Arrow for display. It took CI down on
+# 2026-07-31: three AppTest checks died with no error message, while the
+# same commits passed locally purely because this laptop still had 24.0.0
+# and this line let a fresh machine resolve 25.
+#
+# Note the deployed app is NOT affected -- pyarrow is deliberately absent
+# from requirements.txt, so Streamlit Cloud never takes that code path.
+# This was a CI-only crash in a package production doesn't install.
+#
+# Before raising the bound: run the AppTest checks in a FRESH venv, not
+# this one. `pytest` alone will not catch it -- the crash is in
+# Streamlit's DataFrame rendering, which only the AppTests exercise.
+pyarrow>=15.0,<25.0
