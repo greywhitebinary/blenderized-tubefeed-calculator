@@ -107,4 +107,41 @@ print("OK: missing nutrients are named on screen rather than passed off as 0")
 assert f"{prefix}_photo_pending" not in at.session_state
 print("OK: staged drafts are consumed once, so RD edits are not overwritten")
 
+# --- A SECOND label must not inherit the first one's numbers ----------
+# The form used to keep everything after a food was added, so adding
+# Ensure and then Boost gave Boost whatever Ensure had in any field the
+# RD didn't overwrite -- silently, with nothing on screen to show it.
+serving = next(n for n in at.number_input if n.key == f"{prefix}_cv_serving")
+serving.set_value(235.0).run()
+name_box = next(x for x in at.text_input if x.key == f"{prefix}_cname")
+name_box.set_value("Ensure Plus Vanilla").run()
+grams = next(n for n in at.number_input if n.key == f"{prefix}_cgrams")
+grams.set_value(235.0).run()
+assert not at.exception, at.exception
+
+before = len(at.session_state["blends"][at.session_state["selected_blend_id"]]["ingredients"])
+next(b for b in at.button if b.key == f"{prefix}_add_custom_btn").click().run()
+assert not at.exception, at.exception
+after = len(at.session_state["blends"][at.session_state["selected_blend_id"]]["ingredients"])
+assert after == before + 1, f"custom food was not added ({before} -> {after})"
+print(f"OK: custom food added to the blend ({before} -> {after} ingredients)")
+
+# Read the rendered widget, not session_state: AppTest's proxy has no
+# .get(), and the widget is what the RD actually sees anyway.
+name_now = next(x for x in at.text_input if x.key == f"{prefix}_cname").value
+assert (
+    not name_now
+), f"the food name survived the add ({name_now!r}) -- the next label would inherit it"
+for stale_key, label in (
+    (f"{prefix}_cv_energy", "energy"),
+    (f"{prefix}_cv_sodium_mg", "sodium"),
+    (f"{prefix}_cv_protein_g", "protein"),
+):
+    assert value_of(stale_key) == 0.0, f"{label} survived the add: {value_of(stale_key)}"
+print("OK: the form is blank again, so a second label starts from zero")
+
+captions = " ".join(c.value for c in at.caption)
+assert "left alone" not in captions, "the previous photo's summary is still on screen"
+print("OK: the previous photo's summary is cleared too")
+
 print("\n=== LABEL PHOTO FILL APPTEST PASSED ===")

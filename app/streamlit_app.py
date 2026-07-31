@@ -647,7 +647,7 @@ def render_add_food_ui(
         "Source",
         [
             "Search foods from the Canadian Nutrient File",
-            "Enter a Nutrition Facts label (custom food)",
+            "Enter a Canada Nutrition Facts label (custom food)",
         ],
         horizontal=True,
         key=f"{key_prefix}_add_mode",
@@ -763,7 +763,7 @@ def render_add_food_ui(
                 # so point at the way out rather than just saying no.
                 _note(
                     "No foods found. Try fewer words, or switch to "
-                    "<strong>Enter a Nutrition Facts label</strong> above to add "
+                    "<strong>Enter a Canada Nutrition Facts label</strong> above to add "
                     "this food yourself."
                 )
         else:
@@ -788,6 +788,33 @@ def render_add_food_ui(
 
     else:  # Custom food from label — a Canadian Nutrition Facts lookalike
         st.caption("Enter values exactly as printed on the nutrition facts label.")
+
+        # Wipe the form after a custom food was added on the previous run.
+        #
+        # Without this the fields keep the food just added, so a second
+        # label inherits the first one's numbers for every field the RD
+        # doesn't happen to overwrite -- add Ensure, then Boost, and
+        # Boost silently carries Ensure's sodium. Nothing on screen would
+        # show it.
+        #
+        # Deleting the keys (rather than setting them to 0) lets each
+        # widget fall back to its own `value=` default. Like the photo
+        # drafts, it must happen before those widgets are instantiated,
+        # which is why the Add handler at the bottom only sets a flag.
+        if st.session_state.pop(f"{key_prefix}_clear_form", False):
+            for _stale in (
+                f"{key_prefix}_cname",
+                f"{key_prefix}_cv_serving",
+                f"{key_prefix}_cv_energy",
+                f"{key_prefix}_label_photo",
+                f"{key_prefix}_photo_result",
+                f"{key_prefix}_label_photo_seen",
+            ):
+                st.session_state.pop(_stale, None)
+            for _d in defs_for_tier("label", pack=DEFAULT_PACK):
+                st.session_state.pop(f"{key_prefix}_cv_{_d.name}", None)
+            for _d in defs_for_tier("clinical", pack=DEFAULT_PACK):
+                st.session_state.pop(f"{key_prefix}_cv_clin_{_d.name}", None)
 
         # Apply anything a label photo staged on the previous run. This has
         # to happen BEFORE the first widget below is instantiated -- see the
@@ -1091,6 +1118,12 @@ def render_add_food_ui(
                         "unit": basis,
                         "counts_as_fluid": _custom_final_fluid,
                     }
+                    # Only a flag: every field above has already been
+                    # instantiated this run, so clearing them here would
+                    # raise StreamlitAPIException (§11). The caller reruns
+                    # after adding, and the block at the top of this
+                    # branch does the wiping.
+                    st.session_state[f"{key_prefix}_clear_form"] = True
 
     return result
 
