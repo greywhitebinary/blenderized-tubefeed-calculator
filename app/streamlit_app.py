@@ -44,6 +44,7 @@ Design commitments (from CONTEXT.md section 1):
 import io
 import re
 import sys
+from datetime import date as ddate
 from datetime import time as dtime
 from pathlib import Path
 
@@ -65,6 +66,13 @@ from src.calculator import (
 )
 from src.measures import load_measure_lookup, get_measures_for_food
 from src.food_search import MIN_QUERY_LEN, build_index, search_foods
+from src.label_extract import (
+    APPROX_COST_PER_EXTRACTION_USD,
+    MAX_EXTRACTIONS_PER_DAY,
+    MAX_EXTRACTIONS_PER_SESSION,
+    LabelExtractionError,
+    extract_label,
+)
 from src.day_io import (
     DayFileError,
     day_to_workbook_bytes,
@@ -546,6 +554,68 @@ def _note(message: str) -> None:
     )
 
 
+@st.cache_resource(show_spinner=False)
+def _label_call_ledger() -> dict:
+    """A call counter SHARED by every visitor to this app instance.
+
+    `cache_resource` hands the same object to every session in the
+    process, which is the only cross-session state a Streamlit app gets
+    without a database. That makes this a real (if crude) global
+    throttle: the per-session limit alone is defeated by opening a new
+    tab, and this is not.
+
+    Its limits are honest ones. It resets when the app restarts, and if
+    Cloud ever runs more than one process each gets its own counter. It
+    reduces how often the spend limit on the API key gets tested; it is
+    not what protects the author's card. That is the console limit.
+    """
+    return {"date": None, "count": 0}
+
+
+def _label_calls_remaining() -> tuple[int, int]:
+    """(remaining this session, remaining today) — never below zero."""
+    ledger = _label_call_ledger()
+    today = ddate.today()
+    if ledger["date"] != today:
+        ledger["date"], ledger["count"] = today, 0
+    session_used = st.session_state.get("_label_calls_used", 0)
+    return (
+        max(0, MAX_EXTRACTIONS_PER_SESSION - session_used),
+        max(0, MAX_EXTRACTIONS_PER_DAY - ledger["count"]),
+    )
+
+
+def _label_record_call() -> None:
+    st.session_state["_label_calls_used"] = st.session_state.get("_label_calls_used", 0) + 1
+    _label_call_ledger()["count"] += 1
+
+
+def _label_api_client():
+    """The Anthropic client, or None when no key is configured.
+
+    The key is read HERE and nowhere else, straight out of Streamlit's
+    secrets. Streamlit executes server-side, so a secret read in this
+    process is never sent to the browser -- unlike a key in front-end
+    JavaScript, which anyone can read from devtools. It is never logged,
+    never rendered, and never put in an error message.
+
+    Returning None rather than raising keeps the app fully usable with no
+    key at all: the photo control simply doesn't appear, and the RD types
+    the label in by hand exactly as before.
+    """
+    try:
+        api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+    except Exception:  # noqa: BLE001 - no secrets file at all, locally
+        return None
+    if not api_key:
+        return None
+    try:
+        import anthropic
+    except ImportError:
+        return None
+    return anthropic.Anthropic(api_key=api_key)
+
+
 def render_add_food_ui(
     fn_df: pd.DataFrame,
     na_df: pd.DataFrame,
@@ -726,6 +796,108 @@ def render_add_food_ui(
             key=f"{key_prefix}_basis",
         )
         basis = "g" if "weight" in basis_choice else "mL"
+
+        # --- Label photo -> draft values (paid API) ------------------------
+        # Placed ABOVE the Nutrition Facts box on purpose. Filling the form
+        # means writing the number_inputs' session_state keys, and that only
+        # works BEFORE those widgets are instantiated this run (§11). So this
+        # block writes the keys and immediately reruns; the box below then
+        # renders holding the drafts.
+        #
+        # The extraction NEVER writes to a blend. It fills the same form the
+        # RD would have typed into, and the RD confirms every value against
+        # the label in their hand before pressing Add. That is the rule from
+        # CONTEXT.md §11, and this form doubles as the verification UI.
+        _photo_client = _label_api_client()
+        if _photo_client is not None:
+            _session_left, _day_left = _label_calls_remaining()
+            with st.expander("📷 Fill this in from a photo of the label"):
+                st.caption(
+                    f"Reads the panel and fills the form below for you to check. "
+                    f"Costs about {APPROX_COST_PER_EXTRACTION_USD * 100:.1f}¢ per photo, "
+                    f"billed to this app. **{_session_left} left this session** "
+                    f"({_day_left} left today across all users). "
+                    "Every value stays editable and nothing is saved until you press Add."
+                )
+                if _session_left <= 0 or _day_left <= 0:
+                    _note(
+                        "Photo reading is used up for now — please type the values in "
+                        "below. The limit is there because every photo is billed to "
+                        "the person who runs this app."
+                    )
+                else:
+                    _photo = st.file_uploader(
+                        "Photo of the Nutrition Facts panel",
+                        type=["jpg", "jpeg", "png", "webp"],
+                        key=f"{key_prefix}_label_photo",
+                        help="A straight-on, close photo of the panel reads best.",
+                    )
+                    _seen_key = f"{key_prefix}_label_photo_seen"
+                    if _photo is not None and st.session_state.get(_seen_key) != _photo.name:
+                        st.session_state[_seen_key] = _photo.name
+                        with st.spinner("Reading the label…"):
+                            try:
+                                _read = extract_label(
+                                    _photo.getvalue(),
+                                    _photo.type or "",
+                                    client=_photo_client,
+                                    pack=DEFAULT_PACK,
+                                )
+                            except LabelExtractionError as _exc:
+                                _note(str(_exc))
+                            else:
+                                _label_record_call()
+                                # Write the drafts into the form's widget keys.
+                                if _read.food_name:
+                                    st.session_state[f"{key_prefix}_cname"] = _read.food_name
+                                if _read.serving_amount and _read.serving_amount > 0:
+                                    st.session_state[f"{key_prefix}_cv_serving"] = float(
+                                        _read.serving_amount
+                                    )
+                                if _read.serving_unit in ("g", "mL"):
+                                    st.session_state[f"{key_prefix}_basis"] = (
+                                        "Serving size in weight (g)"
+                                        if _read.serving_unit == "g"
+                                        else "Serving size in volume (mL)"
+                                    )
+                                for _n, _v in _read.values.items():
+                                    # Energy's widget key is _cv_energy, not
+                                    # _cv_energy_kcal -- it predates the others.
+                                    _wkey = (
+                                        f"{key_prefix}_cv_energy"
+                                        if _n == "energy_kcal"
+                                        else f"{key_prefix}_cv_{_n}"
+                                    )
+                                    st.session_state[_wkey] = float(_v)
+                                st.session_state[f"{key_prefix}_photo_result"] = {
+                                    "found": _read.found_count,
+                                    "missing": _read.missing,
+                                    "notes": _read.notes,
+                                }
+                                st.rerun()
+
+                _result = st.session_state.get(f"{key_prefix}_photo_result")
+                if _result:
+                    _missing_labels = [
+                        registry_by_name(DEFAULT_PACK)[_m].label
+                        for _m in _result["missing"]
+                        if _m in registry_by_name(DEFAULT_PACK)
+                    ]
+                    st.success(
+                        f"Filled in {_result['found']} values. **Check every one against "
+                        "the label before adding it.**"
+                    )
+                    if _missing_labels:
+                        # Listed, not silently left at 0: an absent line and a
+                        # printed zero are different facts, and only the RD
+                        # holding the label can tell which this is.
+                        st.caption(
+                            "Not found on that label, so left alone: "
+                            + ", ".join(_missing_labels)
+                            + ". If the label really shows 0, enter 0 yourself."
+                        )
+                    if _result["notes"]:
+                        st.caption(f"Note from the reader: {_result['notes']}")
 
         _registry_map = registry_by_name(DEFAULT_PACK)
         cv: dict[str, float] = {}

@@ -16,6 +16,16 @@ pandas>=2.2
 streamlit==1.58.0
 openpyxl>=3.1
 
+# Label-photo reading (src/label_extract.py). Pinned to a major version:
+# this is the one dependency whose API shape a breaking release would
+# change under us, and it is the one that spends money.
+anthropic>=0.120,<1.0
+# Pillow is used to downscale label photos before they are sent. It
+# already arrives as a Streamlit dependency, but src/label_extract.py
+# imports it directly -- and this repo has been bitten once already by
+# relying on a package it did not declare (pyarrow, CONTEXT.md §9).
+pillow>=10.0
+
 # streamlit==1.58.0 is PINNED ON PURPOSE - do not loosen to >=1.58.
 # Streamlit Community Cloud resolved 1.60.0 against a >=1.58 spec, and
 # 1.60's different tab DOM silently broke this app's tab-label CSS (deploy
