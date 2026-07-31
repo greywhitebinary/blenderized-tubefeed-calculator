@@ -788,6 +788,40 @@ def render_add_food_ui(
 
     else:  # Custom food from label — a Canadian Nutrition Facts lookalike
         st.caption("Enter values exactly as printed on the nutrition facts label.")
+
+        # Apply anything a label photo staged on the previous run. This has
+        # to happen BEFORE the first widget below is instantiated -- see the
+        # staging comment in the photo handler, and CONTEXT.md §11.
+        _pending_photo_key = f"{key_prefix}_photo_pending"
+        _pending_photo = st.session_state.pop(_pending_photo_key, None)
+        if _pending_photo is not None:
+            if _pending_photo.food_name:
+                st.session_state[f"{key_prefix}_cname"] = _pending_photo.food_name
+            if _pending_photo.serving_amount and _pending_photo.serving_amount > 0:
+                st.session_state[f"{key_prefix}_cv_serving"] = float(_pending_photo.serving_amount)
+            if _pending_photo.serving_unit in ("g", "mL"):
+                st.session_state[f"{key_prefix}_basis"] = (
+                    "Serving size in weight (g)"
+                    if _pending_photo.serving_unit == "g"
+                    else "Serving size in volume (mL)"
+                )
+            for _n, _v in _pending_photo.values.items():
+                # Energy's widget key is _cv_energy, not _cv_energy_kcal --
+                # it predates the others.
+                _wkey = (
+                    f"{key_prefix}_cv_energy" if _n == "energy_kcal" else f"{key_prefix}_cv_{_n}"
+                )
+                st.session_state[_wkey] = float(_v)
+            # Derived here, from the same staged object, so one event
+            # leaves one piece of state. The handler below used to set
+            # this separately, which meant the drafts and the message
+            # explaining them could get out of step.
+            st.session_state[f"{key_prefix}_photo_result"] = {
+                "found": _pending_photo.found_count,
+                "missing": list(_pending_photo.missing),
+                "notes": _pending_photo.notes,
+            }
+
         basis_choice = st.radio(
             "Label basis",
             ["Serving size in weight (g)", "Serving size in volume (mL)"],
@@ -847,33 +881,16 @@ def render_add_food_ui(
                                 _note(str(_exc))
                             else:
                                 _label_record_call()
-                                # Write the drafts into the form's widget keys.
-                                if _read.food_name:
-                                    st.session_state[f"{key_prefix}_cname"] = _read.food_name
-                                if _read.serving_amount and _read.serving_amount > 0:
-                                    st.session_state[f"{key_prefix}_cv_serving"] = float(
-                                        _read.serving_amount
-                                    )
-                                if _read.serving_unit in ("g", "mL"):
-                                    st.session_state[f"{key_prefix}_basis"] = (
-                                        "Serving size in weight (g)"
-                                        if _read.serving_unit == "g"
-                                        else "Serving size in volume (mL)"
-                                    )
-                                for _n, _v in _read.values.items():
-                                    # Energy's widget key is _cv_energy, not
-                                    # _cv_energy_kcal -- it predates the others.
-                                    _wkey = (
-                                        f"{key_prefix}_cv_energy"
-                                        if _n == "energy_kcal"
-                                        else f"{key_prefix}_cv_{_n}"
-                                    )
-                                    st.session_state[_wkey] = float(_v)
-                                st.session_state[f"{key_prefix}_photo_result"] = {
-                                    "found": _read.found_count,
-                                    "missing": _read.missing,
-                                    "notes": _read.notes,
-                                }
+                                # STAGE the drafts; do not write widget keys
+                                # here. This handler runs below the "Label
+                                # basis" radio, and writing a widget's
+                                # session_state after that widget exists in
+                                # the same run raises StreamlitAPIException
+                                # (§11). Staging + rerun means the values are
+                                # applied at the TOP of the next run, above
+                                # every widget in this component -- which
+                                # stays correct even if this block moves.
+                                st.session_state[_pending_photo_key] = _read
                                 st.rerun()
 
                 _result = st.session_state.get(f"{key_prefix}_photo_result")

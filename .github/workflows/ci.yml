@@ -46,8 +46,8 @@ jobs:
       - name: Run pytest
         run: pytest tests/ -v
 
-      # --- The seven verification checks -------------------------------
-      # Unit tests can't see the app. These can: four of the seven drive the
+      # --- The eight verification checks -------------------------------
+      # Unit tests can't see the app. These can: five of the eight drive the
       # real Streamlit UI (AppTest), and the others parse the real 565k-row
       # CNF data -- which is where this project's actual regressions have
       # happened.
@@ -78,6 +78,9 @@ jobs:
 
       - name: AppTest - save and reopen a day
         run: python scripts/check_day_save_load.py
+
+      - name: AppTest - label photo fills the form
+        run: python scripts/check_label_photo_fill.py
 
       # --- Lint: BLOCKING since 2026-07-30 ----------------------------
       # These carried continue-on-error while ~5,600 lines of pre-existing
