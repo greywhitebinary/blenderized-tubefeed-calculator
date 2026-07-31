@@ -251,6 +251,35 @@ column name becomes `﻿Nutrient_Code` and merges silently fail.
 
 ### Competition plan (4 weeks — see `BUSINESS_CASE.md` §12)
 
+#### The official brief, verbatim (recorded 2026-07-31)
+
+The organiser's wording, kept here because **the author's own roadmap
+below has already diverged from it once**: her Week 1 plan called Week 3
+"Tests, CI, public deploy, **USDA**", while the real brief said nothing
+about adding data and asked whether the app could be *maintained*.
+Following the roadmap literally would have spent that week building the
+feature that was ultimately deleted. Where the two disagree, this wins.
+
+> — **Week 1 — Plan It:** this week is planning only. Your concept, your
+> market research, your requirements. No code yet. Plan it right and the
+> build barely takes an afternoon.
+> — **Week 2 — Core Feature Complete:** now you build it end-to-end.
+> Your main function works, start to finish.
+> — **Week 3 — Build It to Last:** refinement and a real development
+> pipeline, so it holds up long-term — maintainable and supportable, not
+> held together with tape.
+> — **Week 4 — Ship + Pitch:** the final live app + a 2–3 minute demo,
+> pitched like a real product.
+
+**Week 4 therefore requires a 2–3 minute video.** Week 2 was accepted as
+written paragraphs and `drafts/WEEK2_POST.md`'s video script went unused;
+Week 4 is not optional in the same way. Note "**pitched like a real
+product**" — a tab-by-tab feature tour (the shape of the unused Week 2
+script) is the wrong format. A pitch leads with the problem and who has
+it.
+
+#### The author's roadmap
+
 | Week | Deliverable | What gets built |
 |---|---|---|
 | **1 — Plan It** | `BUSINESS_CASE.md` posted publicly | Concept, market, requirements, methodology |
