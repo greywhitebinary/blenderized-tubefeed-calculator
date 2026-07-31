@@ -133,11 +133,34 @@ down the clinical content.
 **How to verify — use these, never long inline `python -c` commands:**
 
 ```
-.venv/bin/python scripts/verify_backend.py      # must print "=== ALL BACKEND MODULES VERIFIED ==="
-.venv/bin/python scripts/check_app_imports.py   # must print "IMPORTS OK"
-.venv/bin/python scripts/trace_calculation.py   # must print "CROSS-CHECK PASSED"
+.venv/bin/python -m pytest tests/ -q            # 154 tests
+
+.venv/bin/python scripts/verify_backend.py         # "ALL BACKEND MODULES VERIFIED"
+.venv/bin/python scripts/check_app_imports.py      # "IMPORTS OK"
+.venv/bin/python scripts/trace_calculation.py      # "CROSS-CHECK PASSED"
+.venv/bin/python scripts/check_tab_restructure.py  # AppTest
+.venv/bin/python scripts/check_recipe_record.py    # AppTest
+.venv/bin/python scripts/check_food_search.py      # AppTest
+.venv/bin/python scripts/check_day_save_load.py    # AppTest
+.venv/bin/python scripts/check_label_photo_fill.py # AppTest
+
+.venv/bin/python -m ruff check .                # must be clean; CI fails on it
+.venv/bin/python -m black --check .             # same
 .venv/bin/streamlit run app/streamlit_app.py    # the app itself
 ```
+
+All eight checks run in CI on every push, along with pytest and blocking
+lint. **Run them locally before you push anyway** — one of them takes a
+second and CI takes a minute.
+
+**A green local run is not a green CI run.** On 2026-07-31 three checks
+passed here and segfaulted on CI, because `requirements-dev.txt` let
+`pyarrow` float and a fresh machine resolved a version that crashes
+inside Streamlit's DataFrame rendering (exit 139, no traceback). If CI
+fails and you cannot reproduce it: clone to a temp directory, build a
+**fresh venv** from `requirements-dev.txt`, and run there. Use
+`python -X faulthandler -u` for a silent crash — it names the offending
+C library immediately.
 
 `check_app_imports.py` alone does **not** prove a UI change works — it only
 proves the module imports without error. For any UI change, write a

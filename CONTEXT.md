@@ -284,7 +284,7 @@ it.
 |---|---|---|
 | **1 — Plan It** | `BUSINESS_CASE.md` posted publicly | Concept, market, requirements, methodology |
 | **2 — Core Feature** | Working Streamlit app | Build calculator, measures, targets/report, Streamlit UI |
-| **3 — Build to Last** | Tests, CI, public deploy | pytest, GitHub Actions, dev/runtime dependency split, Streamlit Cloud (done 2026-07-23), recipe record, water ledger, three-layer food search |
+| **3 — Build to Last** | Tests, CI, public deploy | 154 pytest tests + 8 CI-gated checks, GitHub Actions with blocking lint, dev/runtime dependency split, Streamlit Cloud (done 2026-07-23), recipe record (multi-blend files), water ledger, three-layer food search, save/reopen a day, label-photo entry |
 | **4 — Ship + Pitch** | Live app + write-up | Polish from RD pilot feedback, validation appendix, AI-assist features (label-photo extraction, PDF → formulas), possible JSON save/load |
 
 > **One definition of Week 3.** This row, `BUSINESS_CASE.md` §12, and
@@ -650,6 +650,93 @@ author can compare their fixes or unblock themselves if stuck for too long.
       (openpyxl raises `ValueError`), so the space form is used instead.
       31-character cap still applies, with the blend name keeping the
       budget.
+  - [x] **Save and reopen a whole day — DONE 2026-07-31** (48ad6b3).
+    `src/day_io.py`, `tests/test_day_io.py`,
+    `scripts/check_day_save_load.py`. Closing the tab used to lose
+    everything. A file, not an account: the deploy has no per-user
+    storage and holds no patient data by design, which is what makes
+    public deployment safe. **The Custom foods sheet is the non-obvious
+    part** — a label-entered food lives only in session state under a
+    negative code, and both blend ingredients and oral rows reference it,
+    so a file without those values reloads a blend whose protein and
+    sodium have quietly shrunk. **Loading REPLACES and confirms first**
+    (recipes still load alongside); merging two days would produce an
+    intake record that never happened. The apply step runs at the top of
+    the script because it writes widget-owned keys (§11).
+  - [x] **Label photo → NFt form — DONE 2026-07-31** (854a82c, 24e74c0,
+    a723603, fe684b0, 2e9ac91). The flagship AI feature, shipped under
+    the rule agreed *before* it existed: the cap ships in the same
+    commit, and the photo fills the form rather than writing to a blend.
+    - **Never fabricates.** A nutrient with no line on the label comes
+      back ABSENT, never 0; a printed "0 g" IS kept. Schema and prompt
+      are generated from the registry, so the 13 fields cannot drift
+      from the form they fill.
+    - **The cap, all three parts:** console spend limit (the author's,
+      and the only one that survives a bug here), 10 per session plus a
+      shared 200/day via `cache_resource` (a per-session limit alone is
+      beaten by a second tab), and a visible per-use notice.
+    - **The key** is read in one place from `st.secrets`. Streamlit runs
+      server-side so it never reaches the browser; API exception text is
+      swallowed rather than shown, since it can carry request details.
+      Without a key the control does not render and the app is unchanged.
+    - **Three bugs made every call fail**, all mine, all in the request:
+      the undated model alias `claude-haiku-4-5` (this account resolves
+      `claude-haiku-4-5-20251001` — `client.models.list()` is free and is
+      the authority); an `enum` on a nullable field (400); and 17
+      nullable fields against a hard limit of 16 (400). The nullable
+      budget now goes entirely to nutrients — the other four use
+      sentinels a real label cannot produce, safe for the same reason 0
+      is a safe "no target": **a sentinel only works when the sentinel
+      value is impossible as a real answer.**
+    - **Then it crashed the app on first success** — writing the basis
+      radio's state after that widget existed (§11, in a file that
+      documents §11). Fixed by staging and applying at the top of the
+      component, not by reordering.
+    - **And the form never cleared after adding**, so a second label
+      inherited the first food's numbers in any field not overwritten —
+      Ensure's sodium into Boost, invisibly. Now wiped via the same
+      staged-flag pattern.
+  - [x] **Two AI-assist features REJECTED 2026-07-31** on the author's
+    clinical objections; reasoning kept in `BUSINESS_CASE.md` §7.
+    - *Plain-words recipe matching* ("a scoop of oats"). Her objection:
+      *"for an RD a scoop of oats would be terrible for a tube feed
+      recipe."* The document's own value proposition is **"Actual grams,
+      not fixed servings"** — a feature whose input is "a scoop" invites
+      imprecision into the one calculation that must be precise. Kept
+      from it: the COOKED-preparations constraint for any future matcher.
+    - *Semantic food search.* Proposed with the example "something to
+      thicken a blend" — which is a suggestion engine, not a search box,
+      and thickness is in the same document's **Out of scope** list
+      (viscosity is not computable from nutrient data; the drip test is
+      the RD's domain). It was added to that file earlier in the same
+      week while rewriting §8, contradicting a section three paragraphs
+      down.
+  - [x] **CI: eight checks + blocking lint — DONE 2026-07-31** (61558e4).
+    CI ran pytest and nothing else, so five checks ran only when someone
+    remembered — *the exact failure this repo already suffered*. All
+    eight now gate every push. `verify_backend.py`'s "too slow" note was
+    wrong when measured: **0.53s** from a cold checkout.
+  - [x] **CI went red for three commits — pyarrow 25 SEGFAULTS**
+    (37fcfc8, 2026-07-31). `requirements-dev.txt` had unbounded
+    `pyarrow>=15.0`; a fresh machine resolved 25.0.0 while the author's
+    laptop had 24.0.0. Three AppTest checks died with **exit 139 and no
+    traceback**, inside `libarrow`'s `PoolBuffer::Reserve` when Streamlit
+    converts a DataFrame to Arrow for display. Now `<25.0`.
+    - **pytest would never have caught it** — the crash is in Streamlit's
+      table rendering, which only the AppTests exercise. Moving all eight
+      checks into CI the day before is what surfaced it.
+    - **The deploy was never affected**: pyarrow is deliberately absent
+      from `requirements.txt`, so Cloud never takes that path. A CI-only
+      crash in a package production doesn't install.
+    - **How to diagnose this class of failure:** `python -X faulthandler
+      -u script.py` names the offending C library on a silent crash; and
+      reproduce CI by cloning to a temp dir with a **fresh venv** built
+      from `requirements-dev.txt`, because version drift is invisible
+      otherwise.
+    - It also exposed the photo summary being gated on having an API key
+      — it described values already in the form, so it should never have
+      depended on the client. Moved.
+  - Tests **154**, checks **8**, ruff and black clean and blocking.
 - [ ] Week 4 — Ship + Pitch — NOT STARTED (polish from RD pilot feedback,
   validation appendix, and the AI-assist features moved here from Week 3:
   label-photo extraction and PDF → formulas extraction. Saving/loading a

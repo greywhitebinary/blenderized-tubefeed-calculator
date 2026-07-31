@@ -45,15 +45,21 @@
 
    See CONTEXT.md §11 ("HARD RULES for paid-API features").
 
-3. To verify the backend, run:
+3. To verify, run the pytest suite AND all eight check scripts in
+   scripts/ (verify_backend, check_app_imports, trace_calculation,
+   check_tab_restructure, check_recipe_record, check_food_search,
+   check_day_save_load, check_label_photo_fill), plus ruff and black.
+   Every one of them runs in CI on each push, and lint is blocking.
+   HANDOFF.md lists the exact commands.
 
-   .venv/bin/python scripts/verify_backend.py
+   If you add backend features, extend verify_backend.py rather than
+   writing a new one-off check. For UI changes, build a Streamlit
+   AppTest script — "imports OK" alone does not prove a UI change works,
+   and every UI regression this project has had was invisible to pytest.
 
-   It exits 0 and prints "=== ALL BACKEND MODULES VERIFIED ===" on
-   success. If you add backend features, extend that script instead of
-   writing a new one-off verification command. For UI changes, build
-   a Streamlit AppTest script (see recent commits for the pattern) —
-   "imports OK" alone does not prove a UI change works.
+   A green local run is not a green CI run: unbounded dependencies
+   resolve differently on a fresh machine. Reproduce CI by cloning to a
+   temp dir and building a new venv from requirements-dev.txt.
 
 4. Current work (2026-07-30): Week 2 is COMPLETE and the app is live
    at https://btfcalc.streamlit.app. Week 3 ("Build to Last") is
