@@ -363,18 +363,41 @@ Planned, in priority order (sequenced after the core build, Week 3+):
    beside the CSV as provenance) promoted to a feature: upload the HCP
    product PDF, the agent extracts kcal/mL, protein/mL, free water; the
    RD approves the diff before it lands.
-3. **Plain-words recipe matching.** "A scoop of oats, half a banana,
-   splash of 2% milk" → proposed CNF matches + household measures for the
-   RD to confirm. **Clinical design constraint (author's ruling): default
-   to COOKED preparations** — blended feeds go directly into the stomach,
-   so "oats" means cooked oats and "chicken" means cooked chicken. The
-   matcher must never silently select raw meat/egg entries; raw variants
-   (e.g., sushi-grade fish) are surfaced only as an explicit, flagged
-   choice. Search assist only — never calculation.
-4. **Semantic food search** — matching intent rather than words
-   ("something to thicken a blend"). Requires an embedding model, so it
-   is a paid-API feature under the §11 hard rules. The three
-   non-AI search layers in §8.1 ship first and may make it unnecessary.
+3. ~~**Plain-words recipe matching.**~~ — **REJECTED 2026-07-31 by the
+   author, on clinical grounds.** The proposal was to accept "a scoop of
+   oats, half a banana, splash of 2% milk" and offer CNF matches plus
+   household measures. Her objection: *"for an RD a scoop of oats would
+   be terrible for a tube feed recipe."* She is right, and this document
+   already said so two sections up — the value proposition is literally
+   **"Actual grams, not fixed servings — enter what you really used."**
+   A blend is weighed. A feature whose input is "a scoop" invites
+   imprecision into the one calculation that has to be precise, and it
+   would undercut the app's own differentiator to save a few seconds of
+   typing.
+
+   The matching half of the idea also stopped being needed: since the
+   three-layer search shipped (§8.1), typing "oats" simply finds oats.
+
+   **Worth keeping from it** — the clinical constraint the author set
+   when it was still on the table, because it applies to any future food
+   matcher: **default to COOKED preparations.** Blended feeds go
+   straight into the stomach, so "oats" means cooked oats and "chicken"
+   means cooked chicken. A matcher must never silently select raw
+   meat/egg entries; raw variants (e.g. sushi-grade fish) are surfaced
+   only as an explicit, flagged choice.
+4. ~~**Semantic food search**~~ — **REJECTED 2026-07-31, and it should
+   never have been listed.** It was proposed as "matching intent rather
+   than words", with the example *"something to thicken a blend"* — but
+   that example is not a search box, it is a suggestion engine, and
+   thickness is in this document's own **Out of scope** list below:
+   viscosity is not computable from nutrient data, and the drip test is
+   the RD's domain. A model answering "what should I add to thicken
+   this?" would be guessing at a physical property the tool has already
+   said it cannot measure, and dressing the guess as a search result.
+   Same line as the rejected ADIME notes: the agent is in the workflow,
+   not in the clinical judgement. The three non-AI search layers in §8.1
+   already ship and cover the real need, which was only ever finding a
+   food that is in the database.
 
 **Explicitly rejected — AI-written chart notes (ADIME).** An LLM cannot
 write an assessment note without the patient's medical picture, which
