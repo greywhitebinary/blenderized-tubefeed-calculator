@@ -52,16 +52,25 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Any
 
 from src.nutrients import DEFAULT_PACK, load_registry
 
+_LOGGER = logging.getLogger(__name__)
+
 #: Haiku by the author's choice: reading a printed table is the cheapest
 #: thing a vision model does, and this runs on her card. Roughly a third
 #: of a cent per photo.
-LABEL_MODEL = "claude-haiku-4-5"
+#:
+#: The DATED id, because the undated alias "claude-haiku-4-5" is NOT what
+#: `client.models.list()` returns for this account -- that endpoint is
+#: the authority on what a key can actually call, and it costs nothing
+#: to ask. Assuming the alias resolves was the first of three bugs in
+#: this file's first live call.
+LABEL_MODEL = "claude-haiku-4-5-20251001"
 
 #: The output is a small flat JSON object; it does not need room to ramble.
 MAX_OUTPUT_TOKENS = 1024
@@ -72,6 +81,15 @@ MAX_OUTPUT_TOKENS = 1024
 MAX_IMAGE_DIMENSION = 1568
 
 SUPPORTED_MEDIA_TYPES = ("image/jpeg", "image/png", "image/webp")
+
+#: Hard API limit on how many response-schema fields may be nullable or
+#: union-typed. Exceeding it is a 400, not a warning:
+#:   "Schemas contains too many parameters with union types (17 ...).
+#:    This causes exponential compilation cost. Reduce the number of
+#:    nullable or union-typed parameters (limit: 16 ...)"
+#: The budget is spent entirely on nutrients, because "this nutrient is
+#: not on the label" is the one distinction that must not be faked.
+MAX_UNION_PARAMETERS = 16
 
 # --- Spend policy ---------------------------------------------------------
 # Enforced in app/streamlit_app.py; stated here so the numbers are in one
@@ -126,26 +144,58 @@ def build_output_schema(pack: str = DEFAULT_PACK) -> dict[str, Any]:
     line", so it never has to choose between inventing a number and
     breaking the schema.
     """
+    # The nullable budget is spent entirely on nutrients -- see
+    # MAX_UNION_PARAMETERS. These four are plain types, using a sentinel
+    # the label cannot legitimately produce: an empty string, or a
+    # serving size of 0. That is safe here for the same reason 0 is a
+    # safe "no target" in the targets form -- a sentinel only works when
+    # the sentinel value is impossible as a real answer. No label prints
+    # a 0 mL serving.
+    #
+    # It would NOT be safe for a nutrient, where 0 is a perfectly real
+    # printed value, which is why the nutrients keep the unions.
     properties: dict[str, Any] = {
         "food_name": {
-            "type": ["string", "null"],
-            "description": "Product name as printed, or null if not visible.",
+            "type": "string",
+            "description": "Product name as printed. Empty string if not visible.",
         },
         "serving_amount": {
-            "type": ["number", "null"],
-            "description": "Serving size number as printed (e.g. 250 for '250 mL').",
+            "type": "number",
+            "description": (
+                "Serving size number as printed (e.g. 250 for '250 mL'). "
+                "Use 0 if no serving size is visible."
+            ),
         },
         "serving_unit": {
-            "type": ["string", "null"],
-            "enum": ["g", "mL", None],
-            "description": "Unit of the serving size: g or mL.",
+            # Deliberately no "enum". Combining an enum with a nullable
+            # type is rejected outright:
+            #   400 invalid_request_error -- output_config.format.schema:
+            #   Enum value 'g' does not match declared type
+            #   '['string', 'null']'
+            # The permitted values are stated in the description, and
+            # anything unexpected is coerced to "g" in
+            # parse_response_json() rather than trusted -- so the
+            # constraint is enforced where it actually matters.
+            "type": "string",
+            "description": 'Unit of the serving size: exactly "g" or "mL".',
         },
         "notes": {
-            "type": ["string", "null"],
+            "type": "string",
             "description": "Anything unreadable or uncertain. Empty if the label was clear.",
         },
     }
-    for d in label_nutrients(pack):
+
+    nutrients = label_nutrients(pack)
+    if len(nutrients) > MAX_UNION_PARAMETERS:
+        # A clear failure at build time beats an opaque 400 at call time.
+        raise LabelExtractionError(
+            f"The '{pack}' pack has {len(nutrients)} label nutrients, but a "
+            f"response schema may contain at most {MAX_UNION_PARAMETERS} "
+            "nullable fields. Split the extraction into two calls rather than "
+            "making any nutrient non-nullable — a nutrient that cannot be null "
+            "is a nutrient the model has to invent."
+        )
+    for d in nutrients:
         properties[d.name] = {
             "type": ["number", "null"],
             "description": f"{d.label} in {d.unit} per serving as printed, or null if absent.",
@@ -313,12 +363,18 @@ def extract_label(
             output_config={"format": {"type": "json_schema", "schema": build_output_schema(pack)}},
         )
     except Exception as exc:  # noqa: BLE001 - any API failure is one message
-        # Deliberately does not include the exception text, which can
-        # carry request details. The RD gets something actionable and the
-        # fallback is the form they were already going to type into.
+        # Logged for whoever maintains this, shown to nobody. The first
+        # real failure of this feature was a 400 caused by a bug in the
+        # schema above, and the on-screen message said "the service
+        # didn't respond" -- which sent the author looking at her API key
+        # and her network instead of at my code. The RD still gets one
+        # calm sentence; the actual reason now reaches the app logs.
+        #
+        # The API key is never part of an exception message, and is not
+        # logged here. Only the error the service returned.
+        _LOGGER.warning("Label extraction failed: %s: %s", type(exc).__name__, exc)
         raise LabelExtractionError(
-            "Couldn't read the label just now — the service didn't respond. "
-            "You can still type the values in by hand below."
+            "Couldn't read the label just now. You can still type the values " "in by hand below."
         ) from exc
 
     try:

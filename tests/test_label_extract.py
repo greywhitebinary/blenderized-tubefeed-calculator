@@ -22,6 +22,7 @@ import pytest
 
 from src.label_extract import (
     MAX_IMAGE_DIMENSION,
+    MAX_UNION_PARAMETERS,
     ExtractedLabel,
     LabelExtractionError,
     build_output_schema,
@@ -291,3 +292,77 @@ class TestExtractLabel:
         client = StubClient(payload={**FULL_LABEL, "serving_unit": "oz"})
         result = extract_label(_png_bytes(), "image/png", client=client)
         assert result.serving_unit == "g"
+
+
+# ---------------------------------------------------------------------------
+# Schema constraints the API enforces
+#
+# Both of these shipped broken and were only caught by a live call. They
+# are structural properties of the schema, checkable with no network and
+# no key, so there is no excuse for finding them the expensive way twice.
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaIsAcceptable:
+    def test_no_nullable_field_also_declares_an_enum(self):
+        """The API rejects the combination outright:
+
+            400 invalid_request_error -- output_config.format.schema:
+            Enum value 'g' does not match declared type '['string','null']'
+
+        Every call failed on this, and the on-screen message blamed the
+        service.
+        """
+        schema = build_output_schema()
+        offenders = [
+            name
+            for name, spec in schema["properties"].items()
+            if isinstance(spec.get("type"), list) and "enum" in spec
+        ]
+        assert not offenders, f"nullable fields must not carry an enum: {offenders}"
+
+    def test_nullable_field_count_is_within_the_api_limit(self):
+        """The second failure, immediately after fixing the first:
+
+            400 -- Schemas contains too many parameters with union types
+            (17 parameters ...). Reduce the number of nullable or
+            union-typed parameters (limit: 16 ...)
+
+        The budget goes to nutrients. If this fails because a pack gained
+        label nutrients, split the extraction into two calls -- do NOT
+        make a nutrient non-nullable, because a nutrient that cannot be
+        null is a nutrient the model has to invent.
+        """
+        schema = build_output_schema()
+        unions = [
+            name
+            for name, spec in schema["properties"].items()
+            if isinstance(spec.get("type"), list)
+        ]
+        assert len(unions) <= MAX_UNION_PARAMETERS, (
+            f"{len(unions)} nullable fields exceeds the API limit of "
+            f"{MAX_UNION_PARAMETERS}: {unions}"
+        )
+
+    def test_the_nullable_budget_is_spent_on_nutrients(self):
+        """Non-nutrient fields use impossible-value sentinels instead of
+        null -- an empty name, a 0 serving size. That is only safe
+        because no real label prints either. It would not be safe for a
+        nutrient, where a printed 0 is a genuine measurement."""
+        schema = build_output_schema()
+        for d in label_nutrients():
+            assert isinstance(schema["properties"][d.name]["type"], list), d.name
+        for plain in ("food_name", "serving_unit", "notes", "serving_amount"):
+            assert schema["properties"][plain]["type"] in ("string", "number"), plain
+
+    def test_a_zero_serving_size_is_treated_as_not_found(self):
+        """Because 0 is the sentinel for "no serving size visible"."""
+        result = parse_response_json({**FULL_LABEL, "serving_amount": 0})
+        assert not result.serving_amount
+
+    def test_the_model_id_is_dated(self):
+        """The undated alias is not what models.list() returns for this
+        account, and assuming it resolved cost a debugging round."""
+        from src.label_extract import LABEL_MODEL
+
+        assert LABEL_MODEL == "claude-haiku-4-5-20251001"
