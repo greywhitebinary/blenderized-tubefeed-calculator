@@ -20,10 +20,18 @@ but grams are always the canonical unit internally.
 
 import pandas as pd
 
-from src.data_loader import (
-    load_measure_name,
-    load_measure_weight_conversion,
-)
+try:
+    from src.data_loader import (
+        load_measure_name,
+        load_measure_weight_conversion,
+    )
+except ImportError:
+    # Allow running as a script (python src/measures.py) without the
+    # project root on sys.path — fall back to a relative-style import.
+    from data_loader import (
+        load_measure_name,
+        load_measure_weight_conversion,
+    )
 
 # Measure_Type_Code 6 = User-defined household measures
 HOUSEHOLD_MEASURE_TYPE = 6

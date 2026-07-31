@@ -54,13 +54,17 @@ def _load_table(
             try:
                 return pd.read_parquet(parquet_path)
             except ImportError:
-                # pyarrow is a DEV-ONLY dependency (see requirements-dev.txt
-                # for why). Without it pandas can't read Parquet — but the
-                # cache is only ever a speed optimisation, never a source of
-                # truth, so fall through to the CSV instead of crashing.
-                # This is the path a local checkout takes if someone
-                # installs requirements.txt alone while a built cache sits
-                # in data/processed/: slower startup, identical numbers.
+                # Defensive only — pandas needs pyarrow to read Parquet, and
+                # in practice it is always installed, because Streamlit
+                # itself hard-requires it (`pyarrow>=7.0`). So any
+                # environment that can run this app can already read the
+                # cache. requirements-dev.txt names pyarrow explicitly to
+                # PIN it (<25 segfaults in CI), not to add it.
+                #
+                # The branch stays anyway: the cache is a speed optimisation,
+                # never a source of truth, so falling through to the CSV
+                # costs a slower load and gives identical numbers. Cheaper
+                # than being wrong if Streamlit ever drops the dependency.
                 pass
 
     read_kwargs = {} if encoding is None else {"encoding": encoding}

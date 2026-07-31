@@ -11,6 +11,7 @@ Uses the real example day, so the numbers are a real 9-ingredient blend
 against real CNF rather than a fixture.
 """
 
+import copy
 import sys
 from pathlib import Path
 
@@ -125,3 +126,82 @@ assert not energy.empty and float(energy.iloc[0]["Daily Total"]) > 0, energy
 print(f"OK: restored day still computes -- energy {float(energy.iloc[0]['Daily Total']):,.0f} kcal")
 
 print("\n=== DAY SAVE/LOAD APPTEST PASSED ===")
+
+# --- Same-session reopen: the bug the fresh-session test above cannot see ---
+#
+# The section above passes precisely because at2 is a BRAND NEW AppTest --
+# no widget with key "vol_{bid}" or "grams_{ing_id}" has ever been created
+# in that session, so there's nothing stale for the loaded values to
+# collide with. That's exactly why the real bug (opening a saved day
+# mid-session silently keeps the OLD on-screen numbers instead of the
+# file's) went unnoticed: it only shows up when the same session that
+# built/saved the day is still open and its per-blend/per-ingredient
+# widgets already hold values under the same ids the reopened file uses.
+at3 = AppTest.from_file(str(ROOT / "app" / "streamlit_app.py"), default_timeout=180)
+at3.run()
+assert not at3.exception, at3.exception
+
+next(b for b in at3.button if "example" in b.label.lower()).click().run()
+assert not at3.exception, at3.exception
+
+bid = min(at3.session_state["blends"])
+ing_id = at3.session_state["blends"][bid]["ingredients"][0]["id"]
+
+# Save the day exactly as it stands right now (1000 mL, 257 g milk --
+# see the "Load example day" handler) BEFORE touching any widget.
+saved3 = day_to_workbook_bytes(
+    label=at3.session_state["recipe_name_input"],
+    patient_weight=at3.session_state["patient_weight_input"],
+    weight_unit=at3.session_state["weight_unit"],
+    targets={
+        "energy_kcal": at3.session_state["target_energy_kcal"],
+        "protein_g": at3.session_state["target_protein_g"],
+    },
+    blends=at3.session_state["blends"],
+    intake_log=at3.session_state["intake_log"],
+    custom_foods=at3.session_state["custom_foods"],
+)
+parsed3 = workbook_bytes_to_day(saved3)
+assert not parsed3.warnings, parsed3.warnings
+
+# Snapshot the FILE's values with a deep copy right now, before anything
+# else touches `parsed3`. Without the deepcopy this assertion is vacuous:
+# _apply_saved_day() (once fixed) hands session_state.blends a COPY of
+# parsed3.blends, but the app then mutates whatever it was handed in
+# place -- so a plain alias here would silently change out from under this
+# very assertion and "pass" even with the old aliasing bug back in place.
+# This is a real trap; it fooled the author of this test once.
+expected_volume = copy.deepcopy(parsed3.blends[bid]["measured_volume_mL"])
+expected_grams0 = copy.deepcopy(parsed3.blends[bid]["ingredients"][0]["grams"])
+assert expected_volume == 1000.0, expected_volume
+assert expected_grams0 == 257.0, expected_grams0
+
+# Now edit the SAME blend/ingredient through the real on-screen widgets,
+# to values that do NOT appear anywhere in the saved file.
+next(n for n in at3.number_input if n.key == f"vol_{bid}").set_value(400.0).run()
+next(n for n in at3.number_input if n.key == f"grams_{ing_id}").set_value(11.0).run()
+assert not at3.exception, at3.exception
+assert at3.session_state["blends"][bid]["measured_volume_mL"] == 400.0
+assert at3.session_state["blends"][bid]["ingredients"][0]["grams"] == 11.0
+
+# Reopen the saved day -- in this SAME session, where "vol_{bid}" and
+# "grams_{ing_id}" already hold the edited 400/11 values above.
+at3.session_state["_apply_day"] = parsed3
+at3.run()
+assert not at3.exception, at3.exception
+
+restored_volume = at3.session_state["blends"][bid]["measured_volume_mL"]
+restored_grams0 = at3.session_state["blends"][bid]["ingredients"][0]["grams"]
+assert (
+    restored_volume == expected_volume
+), f"expected the file's volume {expected_volume}, got stale on-screen value {restored_volume}"
+assert (
+    restored_grams0 == expected_grams0
+), f"expected the file's grams {expected_grams0}, got stale on-screen value {restored_grams0}"
+print(
+    f"OK: same-session reopen restored the file's numbers "
+    f"(volume {restored_volume:.0f} mL, ingredient[0] {restored_grams0:.0f} g) "
+    "instead of the stale on-screen 400/11"
+)
+
+print("\n=== SAME-SESSION REOPEN PASSED ===")

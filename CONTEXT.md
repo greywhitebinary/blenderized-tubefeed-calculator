@@ -1565,12 +1565,14 @@ this entry:**
   add), and every UI change above as pending her hands-on scrutiny —
   this entry documents what changed, not that it's been validated.
 - **Results tab commercial formula comparator is a known-unhappy
-  design, not yet redesigned.** Author's own framing: the nutrients
-  monitored for a commercial formula "should be the nutrients we are
-  monitoring regularly when we eat regular foods in the community" —
-  i.e. rethink the comparator around the same label-tier lens as BTF
-  recipes, not just widen the existing kcal/protein/water table. Ask
-  her before redesigning it; she said she hasn't gotten to it yet.
+  design, not yet redesigned** [the comparator now lives in the Feed
+  Recipes tab, per the 2026-07-20 restructure below]. Author's own
+  framing: the nutrients monitored for a commercial formula "should be
+  the nutrients we are monitoring regularly when we eat regular foods
+  in the community" — i.e. rethink the comparator around the same
+  label-tier lens as BTF recipes, not just widen the existing
+  kcal/protein/water table. Ask her before redesigning it; she said she
+  hasn't gotten to it yet.
 
 **Three-tab restructure + author UI feedback rounds 1–6 (2026-07-20,
 this session) — display-only throughout; `intake_log`,
@@ -1951,7 +1953,11 @@ deploy, and the third is open Week 3 work.
   same push. Logs live under "Manage app" (bottom-right of the running app
   while logged in as owner); the line that matters on a rebuild is
   `Installing streamlit==...` / `Found Streamlit version X`.
-- **`requirements.txt` ships dev tooling to production.** jupyter, pytest,
-  black, and ruff are all in it, so Cloud installs ~130 packages the app
-  never imports and rebuilds are slow. **Splitting runtime from dev
-  dependencies is open Week 3 work** — see §9.
+- **`requirements.txt` used to ship dev tooling to production.** jupyter,
+  pytest, black, and ruff were all in it, so Cloud installed ~130 packages
+  the app never imports and rebuilds were slow. **Resolved:**
+  `requirements.txt` now carries runtime dependencies only (pandas,
+  streamlit, openpyxl, anthropic, pillow) and the dev tooling moved to
+  `requirements-dev.txt`, which pulls the runtime file in via `-r
+  requirements.txt`. CI installs the dev file; Cloud installs only the
+  runtime one.

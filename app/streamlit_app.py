@@ -8,7 +8,7 @@ batch volume against whatever the schedule claimed was given -- see the
 doc's section 1 for the bug) with:
 
   - Blends: a list of recipe formulations (name + ingredients + measured
-    volume), managed in the Build tab. A blend is scale-free -- its
+    volume), managed in the Feed Recipes tab. A blend is scale-free -- its
     densities (kcal/mL, protein/mL) don't care how many times it was made.
   - Intake Record: one chronological list of rows (blend / formula /
     flush / oral), each contributing exactly what it says it gave, summed
@@ -41,6 +41,7 @@ Design commitments (from CONTEXT.md section 1):
   - "For RD use, estimates only" -- not a family-facing tool.
 """
 
+import copy
 import io
 import re
 import sys
@@ -268,8 +269,8 @@ def default_counts_as_fluid(food_desc: str, group_code) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Session state — Blends (Build tab) + Intake Record (Intake tab), per
-# FEED_LOG_REWORK.md section 3.2.
+# Session state — Blends (Feed Recipes tab) + Intake Record (Daily Intake
+# Record tab), per FEED_LOG_REWORK.md section 3.2.
 # ---------------------------------------------------------------------------
 
 
@@ -435,7 +436,7 @@ def _new_blend(name: str) -> int:
     # `index=`/`value=` argument once session_state already holds an entry
     # for its key) -- so without this pop, selecting a freshly-created
     # blend here would be silently overwritten back to whatever index the
-    # widget last showed, the next time the Build tab renders the
+    # widget last showed, the next time the Feed Recipes tab renders the
     # selectbox. Popping the key forces it to re-seed from `index=`
     # (computed from selected_blend_id) on the next render instead.
     st.session_state.pop("blend_selector", None)
@@ -447,7 +448,7 @@ def init_state():
     custom foods (FEED_LOG_REWORK.md section 3.2).
 
     - blends: dict id -> {name, ingredients: [...], measured_volume_mL} —
-      the list of recipe formulations built in the Build tab.
+      the list of recipe formulations built in the Feed Recipes tab.
     - intake_log: list of row dicts (see src/intake.py's module docstring
       for the exact shape) — the single source of truth for everything
       the client actually received, tube feed and oral together.
@@ -637,7 +638,7 @@ def render_add_food_ui(
     counts_as_fluid checkbox (seeded with the same auto-default used
     elsewhere -- CNF Beverages group or mL-basis custom food) right before
     the Add button, and the RD's choice (default or overridden) is what
-    ends up in the returned dict. The Build tab leaves this False -- a
+    ends up in the returned dict. The Feed Recipes tab leaves this False -- a
     blend's ingredient table already lets the RD toggle counts_as_fluid
     after adding; the "Add food/drink" UI passes True, since
     FEED_LOG_REWORK.md section 3.4 calls for the toggle to live right there
@@ -1240,6 +1241,34 @@ st.markdown(
 init_state()
 
 
+# Widget-key prefixes for keys that are scoped to a blend/ingredient/intake
+# row id (e.g. "vol_{blend_id}", "grams_{ing_id}", "del_intake_{id}") or to
+# one of the per-blend/per-row widget components ("blend_{id}_*" from the
+# add-food UI, "oral_add_*" from its own instance of the same UI). These
+# ids get reassigned when a day is loaded from a file -- blend ids come
+# from the file, ingredient ids restart at 1 -- so they collide with keys
+# the CURRENT session already holds for the SAME ids. _apply_saved_day()
+# below pops all of them before writing the loaded day into session_state,
+# so every such widget re-seeds from the loaded value instead of returning
+# a stale one from before the load. MUST stay in sync with the widget
+# `key=`/`key_prefix=` call sites -- add a prefix here whenever a new
+# per-id (or per-component-instance) widget key is introduced.
+_STALE_WIDGET_KEY_PREFIXES = (
+    "blend_",  # blend_selector, blend_name_{id}, blend_{id}_* (add-food UI)
+    "vol_",  # vol_{blend_id} -- measured volume number_input
+    "grams_",  # grams_{ing_id} -- ingredient grams number_input
+    "fluid_",  # fluid_{ing_id} -- ingredient counts-as-fluid checkbox
+    "del_",  # del_{ing_id}, del_intake_{id} -- row delete buttons
+    "flow_date_",  # flow_date_{blend_id} -- flow-test date_input
+    "flow_result_",  # flow_result_{blend_id} -- flow-test result selectbox
+    "flow_notes_",  # flow_notes_{blend_id} -- flow-test notes text_input
+    "recipe_upload_",  # recipe_upload_{blend_id} -- per-blend recipe file_uploader
+    "oral_add_",  # oral_add_* -- the "Add food/drink" component's own keys
+    "tf_",  # tf_time_input, tf_source_select, tf_amount_input, tf_add_btn
+    "flush_",  # flush_mode, flush_single_time/amount, flush_per*, flush_med_amount, flush_add_btn
+)
+
+
 def _apply_saved_day(parsed) -> None:
     """Replace the whole working day with one read from a file.
 
@@ -1255,9 +1284,31 @@ def _apply_saved_day(parsed) -> None:
     that day"; merging two days would produce an intake record that never
     happened. Recipes are the opposite and load alongside what you have.
     """
-    st.session_state.blends = parsed.blends or {}
-    st.session_state.intake_log = parsed.intake_log
-    st.session_state.custom_foods = parsed.custom_foods
+    # Pop every stale per-blend/per-ingredient/per-row widget key BEFORE
+    # writing the loaded day into session_state. Without this, a loaded
+    # blend/ingredient id that happens to match one from the CURRENT
+    # session (e.g. blend id 1, ingredient id 1 -- ids restart low both
+    # times) would leave that widget's number_input/checkbox holding its
+    # old session value; the code that reads it back a few lines below
+    # this run (e.g. `selected_blend["measured_volume_mL"] = ...`) then
+    # writes that stale value straight back into the freshly loaded blend,
+    # silently discarding the file's numbers with no error. Safe to do
+    # here, and only here: _apply_saved_day() runs before any widget is
+    # instantiated this run, so popping can't raise the §11
+    # StreamlitAPIException that setting an existing widget key would.
+    for _key in list(st.session_state.keys()):
+        if _key.startswith(_STALE_WIDGET_KEY_PREFIXES):
+            st.session_state.pop(_key, None)
+
+    # Deep-copy rather than alias `parsed`'s collections. The app mutates
+    # session_state.blends / intake_log / custom_foods in place (grams
+    # edits, volume edits, deletes, ...); handing it the ParsedDay's own
+    # nested dicts/lists would let those in-place edits silently change
+    # `parsed` itself out from under anything still holding a reference
+    # to it (e.g. a regression test asserting against the file's values).
+    st.session_state.blends = copy.deepcopy(parsed.blends) or {}
+    st.session_state.intake_log = copy.deepcopy(parsed.intake_log)
+    st.session_state.custom_foods = copy.deepcopy(parsed.custom_foods)
 
     # Rebuild the id counters from what was actually loaded, so newly
     # added rows can't collide with loaded ones.
@@ -1679,7 +1730,7 @@ if load_example_clicked:
         st.session_state.next_custom_code = -1
         st.session_state["load_example"] = True
 
-        # Assessment / Nutrition Targets tab presets (patient/day label,
+        # Nutrition Targets tab presets (patient/day label,
         # delivery method, weight, and the three targets this case
         # specifies) -- all set here, BEFORE any of those widgets are
         # instantiated further down in this same script run (the §11
@@ -1715,8 +1766,8 @@ st.caption(
 
 
 # ===========================================================================
-# Reusable Intake Record helpers — used by the Intake tab's editor below
-# and (once resolved) by the Results tab's chart note.
+# Reusable Intake Record helpers — used by the Daily Intake Record tab's
+# editor below and (once resolved) by that same tab's chart note.
 # ===========================================================================
 
 _FLUSH_LABEL = "Water flush"
@@ -1748,21 +1799,34 @@ def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
     return options, lookup_map
 
 
+def _intake_source_name(row: dict) -> str:
+    """Resolve the display name for an Intake Record row's source (blend
+    name, formula name, flush label, or food description).
+
+    Factored out of _intake_row_label() so the Excel export's "Source"
+    column can call this directly instead of re-parsing the formatted
+    "{time} — {name} — {amount} {unit}" label on " — ". That split broke
+    on any food name that itself contains " — ", including this app's own
+    example day ("Banana, raw — 1 small" exported as just "Banana, raw").
+    """
+    source_type = row["source_type"]
+    if source_type == "blend":
+        blend = st.session_state.blends.get(row["source_id"])
+        return blend["name"] if blend else "(deleted blend)"
+    elif source_type == "formula":
+        return row["source_id"]
+    elif source_type == "flush":
+        return row.get("food_description") or _FLUSH_LABEL
+    else:
+        return row.get("food_description") or "(unknown food)"
+
+
 def _intake_row_label(row: dict) -> str:
     """Human-readable one-line summary of an Intake Record row, for the
     row list and (later) the chart note."""
     t = row.get("time")
     t_str = t.strftime("%H:%M") if t else "(no time)"
-    source_type = row["source_type"]
-    if source_type == "blend":
-        blend = st.session_state.blends.get(row["source_id"])
-        name = blend["name"] if blend else "(deleted blend)"
-    elif source_type == "formula":
-        name = row["source_id"]
-    elif source_type == "flush":
-        name = row.get("food_description") or _FLUSH_LABEL
-    else:
-        name = row.get("food_description") or "(unknown food)"
+    name = _intake_source_name(row)
     return f"{t_str} — {name} — {row['amount']:.0f} {row['unit']}"
 
 
@@ -1825,7 +1889,7 @@ def _format_oral_bits(rows: list[dict]) -> list[str]:
 
 def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
     """FEED_LOG_REWORK.md section 3.4: the oral-entry UI. Reuses the same
-    search-or-custom-food component as the Build tab (section 3.3), plus a
+    search-or-custom-food component as the Feed Recipes tab (section 3.3), plus a
     counts_as_fluid toggle and an optional time. Submitting appends one
     oral row to the Intake Record.
 
@@ -2049,7 +2113,7 @@ with recipes_tab:
 
     # --- Blend details ---
     st.subheader("Blend details")
-    _example_loaded = st.session_state.pop("load_example", False)
+    st.session_state.pop("load_example", False)
 
     measured_volume = st.number_input(
         "**Measured final volume (mL)**",
@@ -2875,7 +2939,7 @@ with record_tab:
                             else FOOD_DRINK_LABEL
                         ),
                         "Source type": row["source_type"],
-                        "Source": _intake_row_label(row).split(" — ")[1],
+                        "Source": _intake_source_name(row),
                         "Amount": row["amount"],
                         "Unit": row["unit"],
                         "Counts as fluid": row["counts_as_fluid"],
@@ -2913,8 +2977,31 @@ with record_tab:
         # Excel also caps a sheet title at 31 characters. The prefix is
         # the least meaningful part, so the BLEND NAME keeps the budget
         # and the truncation lands after the prefix is applied.
+        #
+        # Dedupe against sheets already in this workbook: two blends can
+        # legitimately land on the same 31-char title -- same name reused
+        # after a delete (_new_blend() re-issues "Blend 3" once the
+        # middle of three blends is gone), or two different names that
+        # truncate to the same 31 characters ("...v1" / "...v2" past the
+        # cap). openpyxl accepts a duplicate sheet title silently and the
+        # second write just overwrites the first, so without this the
+        # earlier blend's ingredients vanish from the export with no
+        # error. Trim the base so a " (2)", " (3)", ... suffix still fits
+        # under the cap, e.g. "BTF Morning blend (2)".
+        _used_sheet_names = set(writer.book.sheetnames)
         for _bid, _blend in st.session_state.blends.items():
-            _sheet_name = f"BTF {sanitize_filename(_blend['name'], fallback=f'Blend {_bid}')}"[:31]
+            _base_sheet_name = f"BTF {sanitize_filename(_blend['name'], fallback=f'Blend {_bid}')}"
+            _sheet_name = _base_sheet_name[:31]
+            if _sheet_name in _used_sheet_names:
+                _suffix = 2
+                while True:
+                    _tag = f" ({_suffix})"
+                    _candidate = f"{_base_sheet_name[:31 - len(_tag)]}{_tag}"
+                    if _candidate not in _used_sheet_names:
+                        _sheet_name = _candidate
+                        break
+                    _suffix += 1
+            _used_sheet_names.add(_sheet_name)
             if _blend["ingredients"]:
                 _ing_df = pd.DataFrame(_blend["ingredients"])[
                     ["food_description", "grams", "unit", "counts_as_fluid"]
@@ -2985,7 +3072,7 @@ with record_tab:
     )
 
     # Save the whole day so it can be reopened. Lives here, at the bottom
-    # of the Intake tab, because `targets` is only in scope after the
+    # of the Daily Intake Record tab, because `targets` is only in scope after the
     # Nutrition Targets tab has run -- and because "here is your day,
     # keep it" belongs next to the day's export.
     #

@@ -369,6 +369,10 @@ def dilute(
         nutrient_totals=new_totals,
         measured_final_volume_mL=new_volume,
         added_water_mL=profile.added_water_mL,  # original added water unchanged
+        # Dilution changes the volume (the density denominator), not which
+        # ingredients supplied which nutrients -- carry the original
+        # provenance through unchanged rather than losing it silently.
+        nutrient_coverage=profile.nutrient_coverage,
     )
 
 
@@ -391,7 +395,15 @@ def required_daily_volume(
         target_protein_g: RD's target daily protein (g).
 
     Returns:
-        Required daily volume in mL (0 if densities are zero).
+        Required daily volume in mL. If a target's density (kcal_per_mL or
+        protein_per_mL) is zero -- e.g. a recipe with no calories -- that
+        term evaluates to float("inf"), since no finite volume of a
+        zero-density blend can ever meet a positive target; max() then
+        propagates the inf through to the return value. This is the
+        semantically correct answer, not a bug: returning 0 would falsely
+        read as "no volume needed." Callers must check for a non-finite
+        result before formatting it -- an f-string "%.0f" of inf renders
+        the literal text "inf mL".
     """
     vol_for_kcal = target_kcal / profile.kcal_per_mL if profile.kcal_per_mL > 0 else float("inf")
     vol_for_protein = (

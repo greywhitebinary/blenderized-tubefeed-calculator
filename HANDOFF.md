@@ -26,9 +26,9 @@
 
 1. **Your feedback is the input.** These prompts are scaffolding; the
    value is in what *you* noticed using the app as an RD. Write your notes
-   in plain clinical language — "the fluid numbers on the Results tab
-   confused me" is more useful than a bug report. You don't need to know
-   what's technically possible.
+   in plain clinical language — "the fluid numbers on the Daily Intake
+   Record tab confused me" is more useful than a bug report. You don't
+   need to know what's technically possible.
 2. **Push before handing off** (`git push`). If a new agent misunderstands
    something, you want a clean remote to fall back to.
 
@@ -213,14 +213,14 @@ than writing new one-off checks.
   calcium/iron/magnesium/phosphorus) — see `CONTEXT.md` §9's 2026-07-19
   entry for the full list of what changed and why. **None of it is
   clinically reviewed yet** — the author is doing that pass next. Don't
-  treat it as validated, and don't redesign the Results tab comparator
-  table without asking her first (she's flagged it as a design she's
-  unhappy with but hasn't specified the fix for).
+  treat it as validated, and don't redesign the Feed Recipes tab
+  comparator table without asking her first (she's flagged it as a
+  design she's unhappy with but hasn't specified the fix for).
 - Magnesium and phosphorus are deliberately target-less. Do not invent DRI
   targets for them — see `CONTEXT.md` §9 for the clinical reasoning.
-- "Free water" in the Results tab blends two data sources into one number:
-  CNF food moisture (blend/oral rows) and each commercial formula's
-  declared `free_water_per_mL` (formula rows) — see
+- "Free water" in the Daily Intake Record tab blends two data sources
+  into one number: CNF food moisture (blend/oral rows) and each
+  commercial formula's declared `free_water_per_mL` (formula rows) — see
   `src/intake.py::IntakeTotals.free_water_mL`'s docstring. This is a
   deliberate design choice the author has not yet fully stress-tested
   against real mixed tube-feed-plus-formula days — treat feedback about it
