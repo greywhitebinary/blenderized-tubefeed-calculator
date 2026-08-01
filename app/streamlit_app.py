@@ -1772,6 +1772,12 @@ st.caption(
 
 _FLUSH_LABEL = "Water flush"
 
+# Above this many Intake Record rows, the row list starts collapsed so the
+# day's totals stay near the top of the tab. Six is roughly a day that
+# still fits on screen alongside its results: four feeds plus a couple of
+# flushes. Tune this one number to change the behaviour.
+ROW_LIST_COLLAPSE_THRESHOLD = 6
+
 
 def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
     """Build the "Add tube feed" source dropdown: every blend + every
@@ -2369,14 +2375,46 @@ with record_tab:
                 ]
                 st.rerun()
 
-        if _tube_rows:
-            st.markdown(f"*{TUBE_FEED_LABEL}*")
-            for _row in _tube_rows:
-                _render_intake_row(_row)
-        if _oral_rows:
-            st.markdown(f"*{FOOD_DRINK_LABEL}*")
-            for _row in _oral_rows:
-                _render_intake_row(_row)
+        # Collapsed once the day gets long (author, 2026-08-01). A real
+        # day is mostly flushes -- the example day is 19 rows, 11 of them
+        # water and 8 of those an identical 30 mL -- and every row is a
+        # full-width line with its own delete button. That pushed the
+        # day's actual OUTPUT (per-source breakdown, adequacy, chart
+        # note) roughly a screen and a half down the page, so the numbers
+        # the RD came for sat below a wall of "30 mL flush".
+        #
+        # Collapsing, not paginating or summarising: the rows still have
+        # to be individually deletable (grouping "8 x 30 mL" into one
+        # line would take that away), and they are still ONE list under a
+        # display grouping, exactly as before -- section 6.3 is untouched.
+        # Short days stay open so a new user sees rows appear as they add
+        # them; the collapse only kicks in once scrolling was going to be
+        # the problem anyway.
+        # Singular/plural spelled out per word rather than appending "s":
+        # "flush" pluralises to "flushes", and a summary line that reads
+        # "11 flushs" undermines every number next to it.
+        _n_rows = len(_ordered_rows)
+        _counts = []
+        for _source_type, _one, _many in (
+            ("blend", "blend feed", "blend feeds"),
+            ("formula", "formula", "formulas"),
+            ("flush", "flush", "flushes"),
+            ("oral", "oral item", "oral items"),
+        ):
+            _n = sum(1 for r in _ordered_rows if r["source_type"] == _source_type)
+            if _n:
+                _counts.append(f"{_n} {_one if _n == 1 else _many}")
+        _summary = f"📋 {_n_rows} row{'' if _n_rows == 1 else 's'} — " + ", ".join(_counts)
+
+        with st.expander(_summary, expanded=_n_rows <= ROW_LIST_COLLAPSE_THRESHOLD):
+            if _tube_rows:
+                st.markdown(f"*{TUBE_FEED_LABEL}*")
+                for _row in _tube_rows:
+                    _render_intake_row(_row)
+            if _oral_rows:
+                st.markdown(f"*{FOOD_DRINK_LABEL}*")
+                for _row in _oral_rows:
+                    _render_intake_row(_row)
 
 
 with recipes_tab:
