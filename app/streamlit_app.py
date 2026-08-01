@@ -2390,21 +2390,52 @@ with record_tab:
         # Short days stay open so a new user sees rows appear as they add
         # them; the collapse only kicks in once scrolling was going to be
         # the problem anyway.
-        # Singular/plural spelled out per word rather than appending "s":
-        # "flush" pluralises to "flushes", and a summary line that reads
-        # "11 flushs" undermines every number next to it.
+        # Names the DISTINCT things given, with how many times each was
+        # given -- not a row count per source_type (author, 2026-08-01).
+        # The first version of this line read "4 blend feeds, 3 formulas"
+        # for a day that had ONE blend given four times and ONE product
+        # given three times. That reads as four different blends, which is
+        # the kind of number an RD notices first and stops trusting the
+        # rest of the page over.
+        #
+        # Flushes are named but NOT counted: eleven of them is noise in a
+        # summary line, and "did I flush" is the question, not "how many
+        # times". They're still individually listed and deletable inside.
         _n_rows = len(_ordered_rows)
-        _counts = []
-        for _source_type, _one, _many in (
-            ("blend", "blend feed", "blend feeds"),
-            ("formula", "formula", "formulas"),
-            ("flush", "flush", "flushes"),
-            ("oral", "oral item", "oral items"),
-        ):
-            _n = sum(1 for r in _ordered_rows if r["source_type"] == _source_type)
-            if _n:
-                _counts.append(f"{_n} {_one if _n == 1 else _many}")
-        _summary = f"📋 {_n_rows} row{'' if _n_rows == 1 else 's'} — " + ", ".join(_counts)
+        _times_given: dict[tuple, int] = {}
+        _order: list[tuple] = []
+        for _r in _ordered_rows:
+            if _r["source_type"] in ("blend", "formula"):
+                _key = (_r["source_type"], _r["source_id"])
+                if _key not in _times_given:
+                    _times_given[_key] = 0
+                    _order.append(_key)
+                _times_given[_key] += 1
+
+        _parts: list[str] = []
+        for _key in _order:
+            _stype, _sid = _key
+            if _stype == "blend":
+                _nm = st.session_state.blends.get(_sid, {}).get("name") or f"Blend {_sid}"
+            else:
+                _nm = str(_sid)
+            _n = _times_given[_key]
+            _parts.append(f"{_nm} ×{_n}" if _n > 1 else _nm)
+
+        # A day drawing on many feeds would otherwise run the label off
+        # the edge of the expander.
+        if len(_parts) > 3:
+            _parts = _parts[:3] + [f"+{len(_parts) - 3} more"]
+
+        if any(_r["source_type"] == "flush" for _r in _ordered_rows):
+            _parts.append("water flushes")
+        _n_oral = sum(1 for _r in _ordered_rows if _r["source_type"] == "oral")
+        if _n_oral:
+            _parts.append(f"{_n_oral} by mouth")
+
+        _summary = f"📋 Everything given ({_n_rows} row{'' if _n_rows == 1 else 's'})"
+        if _parts:
+            _summary += " — " + ", ".join(_parts)
 
         with st.expander(_summary, expanded=_n_rows <= ROW_LIST_COLLAPSE_THRESHOLD):
             if _tube_rows:
@@ -3143,8 +3174,19 @@ with record_tab:
 
 
 # --- Footer ---
+#
+# The second line is the one that matters now the app is public (author,
+# 2026-08-01). The author is a registered dietitian, and a regulated
+# professional publishing a clinical tool needs the "not YOUR dietitian"
+# distinction stated where users actually are -- which is here, in the
+# app, not only in the README that most of them will never open.
 st.divider()
 st.caption(
     "⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use.  \n"
+    "Provided for informational and educational purposes only. Not a substitute for professional "
+    "medical advice, diagnosis or treatment. Always seek the advice of your physician, registered "
+    "dietitian or other qualified health provider about a medical condition or a feeding regimen, "
+    "and never disregard or delay that advice because of something calculated here. Use of this "
+    "tool does not create a dietitian–client or any other professional relationship.  \n"
     "RD clinical judgment is the final authority. Built on the Canadian Nutrient File (CNF) 2026."
 )

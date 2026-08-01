@@ -54,6 +54,11 @@ commercial formula, water flushes and one oral food.
   in the day label.
 - **For RD use, estimates only.** This tool cannot measure viscosity, tube
   flow or tolerance, and it does not compute targets or assess anyone.
+- **It is a calculator, not a clinician.** It does not recommend a feeding
+  plan or decide anything about a patient. The dietitian using it makes
+  those calls and remains responsible for them.
+- **Using it creates no professional relationship.** See the
+  [medical disclaimer](#medical-disclaimer) below.
 
 ---
 
@@ -147,6 +152,50 @@ tests/                 unit tests
 | `BUSINESS_CASE.md` | The clinical problem, and every equation (Appendix A) |
 | `CONTEXT.md` | Full design history and the reasoning behind each decision |
 | `MAINTAINING.md` | Day-to-day workflows for running and updating the project |
+
+## Get in touch
+
+I'd like to hear from you if you manage blenderized tube feeds and have
+thoughts on this, if you've found a wrong number or a bug, or if you want
+to adapt it for another country's data.
+
+- **Bugs, wrong numbers, ideas:** open a
+  [GitHub issue](https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues).
+  Public, so the next person with the same question finds the answer.
+- **To find me:** [LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/)
+- **Anything else:** greywhitebinary@gmail.com
+
+**What I can't help with: anything about a specific person's care.** That
+isn't reluctance, it's the limit of what anyone can responsibly do from
+the outside — I can't examine, monitor or follow up, and the people who
+can are already on your team. See the disclaimer below.
+
+## Who this is for
+
+Built for dietitians and the other healthcare professionals who support
+blenderized tube feeding.
+
+If you're a patient, a parent or a caregiver doing this at home, you're
+welcome to use it. The numbers are the same numbers. What differs is what
+happens next: bring what you find to your own healthcare team, who can
+weigh it against everything else they know about the person in front of
+them.
+
+## Medical disclaimer
+
+This tool and its documentation are provided for informational and
+educational purposes only. They are not a substitute for professional
+medical advice, diagnosis or treatment, and they do not constitute
+individual medical or nutrition advice.
+
+Always seek the advice of your physician, registered dietitian or other
+qualified health provider with any questions you have about a medical
+condition or a feeding regimen. Never disregard professional advice, or
+delay seeking it, because of something you read or calculated here.
+
+Use of this tool does not create a dietitian–client relationship or any
+other professional relationship. The author is a registered dietitian, but
+is not your dietitian and cannot advise on any individual's care.
 
 ## Licence
 
