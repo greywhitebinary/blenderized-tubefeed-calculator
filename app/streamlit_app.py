@@ -2042,22 +2042,41 @@ with recipes_tab:
     # runs, so the key holds THIS run's text. Falls back to the stored
     # name for blends whose widget hasn't rendered yet (anything not
     # currently selected).
-    blend_names = []
-    for bid in blend_ids:
-        _widget_name = st.session_state.get(f"blend_name_{bid}")
-        _name = _widget_name if _widget_name is not None else st.session_state.blends[bid]["name"]
-        blend_names.append(_name or f"Blend {bid}")
+    def _blend_label(bid: int) -> str:
+        widget_name = st.session_state.get(f"blend_name_{bid}")
+        name = widget_name if widget_name is not None else st.session_state.blends[bid]["name"]
+        return name or f"Blend {bid}"
+
+    # Options are the BLEND IDS, not positions (author, 2026-08-01).
+    #
+    # This started as an index list, `range(len(blend_ids))`, which meant
+    # that starting the app and pressing "Load example day" sent the
+    # browser the same options both times -- [0] before, [0] after -- even
+    # though the starter blend (id 0) had been replaced by the example
+    # blend (id 1). The server computed the right label; the browser saw a
+    # structurally identical widget and kept the one it had already drawn.
+    # Result: "Select blend" read "Blend 1" above a "Blend name" field
+    # reading "Whole-food blend", which looks like two different blends.
+    #
+    # Ids make the options genuinely change ([0] -> [1]), so the frontend
+    # has to redraw. It also removes the parallel names list this used to
+    # index into, which was its own source of drift.
+    #
+    # AppTest could never reproduce the symptom -- it has no browser to
+    # hold a stale label -- so this was found by the author using the
+    # deployed app. Worth remembering the next time a UI bug "cannot be
+    # reproduced": the test harness renders, it does not paint.
     sel_idx = blend_ids.index(st.session_state.selected_blend_id)
 
     bsel1, bsel2, bsel3 = st.columns([3, 1, 1])
-    chosen_idx = bsel1.selectbox(
+    chosen_id = bsel1.selectbox(
         "Select blend",
-        options=list(range(len(blend_ids))),
+        options=blend_ids,
         index=sel_idx,
-        format_func=lambda i: blend_names[i],
+        format_func=_blend_label,
         key="blend_selector",
     )
-    st.session_state.selected_blend_id = blend_ids[chosen_idx]
+    st.session_state.selected_blend_id = chosen_id
     selected_blend_id = st.session_state.selected_blend_id
     selected_blend = st.session_state.blends[selected_blend_id]
 
