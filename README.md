@@ -12,7 +12,7 @@ No install, no account, nothing to set up. Click **"Load example day"** in
 the top row to see a worked case with a nine-ingredient blend, a
 commercial formula, water flushes and one oral food.
 
-![The Feed Recipes tab, showing a blend's ingredients and its live kcal/mL and protein/mL](docs/screenshot-feed-recipes.png)
+![The Daily Intake Record tab: the day's intake summarised in one line, a per-source breakdown of energy, macros and minerals split into Tube Feed, Food & Drink and Total, and a water ledger showing where every millilitre came from](docs/screenshot-daily-intake-record.png)
 
 ---
 
@@ -35,6 +35,10 @@ commercial formula, water flushes and one oral food.
   never as zero.
 - **Saves your day to a spreadsheet** you can reopen later or edit in
   Excel, and exports a chart note you can paste into your own records.
+
+![The Feed Recipes tab: a blend's ingredient list with per-ingredient amounts and counts-as-fluid toggles, its measured final volume, and the live kcal/mL and protein g/mL above them](docs/screenshot-feed-recipes.png)
+
+![The Nutrition Targets tab: optional patient weight, and blank per-nutrient target fields with no defaults filled in](docs/screenshot-nutrition-targets.png)
 
 ## Scope and safety
 
