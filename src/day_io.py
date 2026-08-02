@@ -68,7 +68,15 @@ import pandas as pd
 # implementation of those rules, not two.
 from src.recipe_io import _coerce_bool, _coerce_date, _coerce_float, _coerce_str
 
-DAY_FORMAT_VERSION = 1
+# v1  inputs only (six sheets), with a separate "report" workbook alongside.
+# v2  one file: the same input sheets, plus the computed report sheets, plus
+#     a readable "Source" column on Intake and "Delivery method" on Day.
+#     Two downloads became one because the failure was asymmetric -- an RD
+#     who saved only the report could not reload it and lost the day's work,
+#     while nobody is harmed by a file carrying extra sheets. v1 files still
+#     load: the reader takes sheets and columns by name and ignores anything
+#     it doesn't recognise.
+DAY_FORMAT_VERSION = 2
 
 DAY_SHEET = "Day"
 TARGETS_SHEET = "Targets"
@@ -79,6 +87,12 @@ CUSTOM_FOODS_SHEET = "Custom foods"
 
 _BLEND_ID_COLUMN = "Blend id"
 _BLEND_NAME_COLUMN = "Blend name"
+
+# The reloadable half. A report sheet may not overwrite one of these --
+# that would make the file unopenable by the app it came from.
+_INPUT_SHEETS = frozenset(
+    {DAY_SHEET, TARGETS_SHEET, BLENDS_SHEET, INGREDIENTS_SHEET, INTAKE_SHEET, CUSTOM_FOODS_SHEET}
+)
 
 
 class DayFileError(ValueError):
@@ -165,13 +179,31 @@ def day_to_workbook_bytes(
     blends: dict[int, dict[str, Any]],
     intake_log: list[dict[str, Any]],
     custom_foods: dict[int, dict[str, float]],
+    delivery_method: str = "",
+    extra_sheets: dict[str, pd.DataFrame] | None = None,
 ) -> bytes:
-    """Serialise a whole day to .xlsx bytes."""
+    """Serialise a whole day to .xlsx bytes.
+
+    Args:
+        extra_sheets: computed report tables (adequacy, micro screen,
+            per-source breakdown, water ledger, chart note) written after
+            the reloadable sheets, so ONE file both reopens in the app and
+            reads as a report. Sheet names must not collide with the six
+            input sheets; the caller owns their content and column order.
+            The reader ignores them entirely -- they are for humans.
+        delivery_method: chart-note wording only, recorded so the report
+            half of the file is self-describing.
+
+    An intake row may carry a "_source_name" key (the readable blend or
+    formula name). It is written to a "Source" column for people reading
+    the file, and ignored on load, which reads "Source id".
+    """
     day_df = pd.DataFrame(
         [
             {"Field": "Day label", "Value": label or ""},
             {"Field": "Patient weight", "Value": float(patient_weight or 0.0)},
             {"Field": "Weight unit", "Value": weight_unit or "kg"},
+            {"Field": "Delivery method", "Value": delivery_method or ""},
             {"Field": "Format version", "Value": DAY_FORMAT_VERSION},
         ]
     )
@@ -224,6 +256,9 @@ def day_to_workbook_bytes(
             # written as text so a formula name and a blend id can share
             # one column without Excel retyping it.
             "Source id": "" if row.get("source_id") is None else str(row.get("source_id")),
+            # Readable name for whoever opens the file; the loader uses
+            # "Source id" and ignores this.
+            "Source": row.get("_source_name") or "",
             "Description": row.get("food_description") or "",
             "Amount": float(row.get("amount", 0.0) or 0.0),
             "Unit": row.get("unit", "mL") or "mL",
@@ -237,6 +272,7 @@ def day_to_workbook_bytes(
             "Time",
             "Source type",
             "Source id",
+            "Source",
             "Description",
             "Amount",
             "Unit",
@@ -283,6 +319,16 @@ def day_to_workbook_bytes(
         ).to_excel(writer, sheet_name=INGREDIENTS_SHEET, index=False)
         intake_df.to_excel(writer, sheet_name=INTAKE_SHEET, index=False)
         custom_df.to_excel(writer, sheet_name=CUSTOM_FOODS_SHEET, index=False)
+
+        # Report tables last, so the file reads inputs-then-results in tab
+        # order. Excel caps a sheet title at 31 characters and rejects
+        # : \ / ? * [ ] outright (openpyxl raises), so names are trimmed
+        # and screened here rather than trusting the caller.
+        for sheet_name, frame in (extra_sheets or {}).items():
+            safe = re.sub(r"[:\\/?*\[\]]", "-", str(sheet_name))[:31]
+            if not safe or safe in _INPUT_SHEETS:
+                continue
+            frame.to_excel(writer, sheet_name=safe, index=False)
     return buffer.getvalue()
 
 

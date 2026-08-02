@@ -43,15 +43,29 @@ def main() -> None:
         "Per-blend density panel",
         "Dilution What-If",
         "Commercial Formula Comparator",
-        "Flow Test",
         "Intake Record",
         "Daily Totals & Adequacy",
         "Per-Source Breakdown",
         "Chart Note",
-        "Export",
+        # One download since 2026-08-01 (was "Export" + a separate save).
+        "Save this day",
     ):
         assert expected in subheaders, f"missing subheader: {expected!r} — have {subheaders}"
     print("section placement OK: all expected subheaders present")
+
+    # The flow test is an EXPANDER, not a subheader, since 2026-08-01: it's
+    # optional documentation, so the form is collapsed and the label
+    # carries the result. Checked by label rather than by widget key so
+    # this fails if the collapsing ever hides the finding as well as the
+    # form.
+    expander_labels = [e.label for e in at.expander]
+    assert any(
+        "Flow test" in label for label in expander_labels
+    ), f"no flow-test expander — have {expander_labels}"
+    assert any(
+        (s.key or "").startswith("flow_result_") for s in at.selectbox
+    ), "flow-test result selectbox missing"
+    print("flow test OK: collapsed expander, result still reachable")
 
     # The example day produces a chart note and a non-empty adequacy table.
     assert any("Provides ~" in (c.value or "") for c in at.code), "no chart note"

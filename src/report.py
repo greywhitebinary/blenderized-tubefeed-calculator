@@ -164,11 +164,33 @@ def _zero_coverage(name: str, coverage: dict[str, tuple[int, int]]) -> bool:
     return n_total > 0 and n_supplying == 0
 
 
+# Per-kg is shown ONLY for these, not every nutrient (author, 2026-08-01).
+# kcal/kg, protein g/kg and fluid mL/kg are what adult practice actually
+# quotes; sodium mg/kg and potassium mg/kg are paediatric figures, and a
+# column that fills them in everywhere implies all the rows are equally
+# comparable when they are not. Everything else renders "—", the same
+# "nothing to say here" convention the Target/% Target columns already use.
+# Value maps to how many decimals that figure is normally quoted at.
+PER_KG_DECIMALS: dict[str, int] = {
+    "energy_kcal": 1,
+    "protein_g": 2,
+}
+PER_KG_FLUID_DECIMALS = 1
+
+
+def _per_kg_cell(name: str, daily_val: float, patient_weight_kg: float | None):
+    """The Per kg cell for one row, or "—" when it isn't a per-kg figure."""
+    if not patient_weight_kg or patient_weight_kg <= 0 or name not in PER_KG_DECIMALS:
+        return "—"
+    return round(daily_val / patient_weight_kg, PER_KG_DECIMALS[name])
+
+
 def _tier_rows(
     defs: list[NutrientDef],
     daily_totals: dict[str, float],
     targets: dict[str, float],
     coverage: dict[str, tuple[int, int]],
+    patient_weight_kg: float | None = None,
 ) -> list[dict]:
     """Build report rows for a list of NutrientDef (one tier's worth).
 
@@ -185,11 +207,18 @@ def _tier_rows(
         pct = (daily_val / target_val * 100) if target_val > 0 else 0.0
         status = _adequacy_status(daily_val, target_val, ttype)
 
+        row: dict = {
+            "Nutrient": d.label,
+            "Daily Total": round(daily_val, d.decimals),
+            "Unit": d.unit,
+        }
+        # Column only exists when a weight was entered -- an all-"—"
+        # column would be noise for the many days with no weight.
+        if patient_weight_kg:
+            row["Per kg"] = _per_kg_cell(d.name, daily_val, patient_weight_kg)
         rows.append(
             {
-                "Nutrient": d.label,
-                "Daily Total": round(daily_val, d.decimals),
-                "Unit": d.unit,
+                **row,
                 "Target": round(target_val, d.decimals) if target_val > 0 else "—",
                 "% Target": round(pct, 0) if target_val > 0 else "—",
                 "Status": status,
@@ -223,6 +252,7 @@ def generate_adequacy_report(
     pack: str = DEFAULT_PACK,
     fluid_provided_mL: float | None = None,
     nutrient_coverage: dict[str, tuple[int, int]] | None = None,
+    patient_weight_kg: float | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Generate the MAIN adequacy report as a DataFrame.
 
@@ -279,7 +309,7 @@ def generate_adequacy_report(
     coverage = nutrient_coverage or {}
 
     label_defs = [d for d in defs_for_tier("label", pack=pack) if d.show_in_report]
-    rows = _tier_rows(label_defs, daily_totals, targets, coverage)
+    rows = _tier_rows(label_defs, daily_totals, targets, coverage, patient_weight_kg)
 
     # Free water: a first-class computed output, not a single CNF nutrient
     # lookup -- see daily_totals' docstring note above for what it blends.
@@ -292,11 +322,19 @@ def generate_adequacy_report(
     water_def = registry_by_name(pack).get("water_g")
     water_decimals = water_def.decimals if water_def else 1
     free_water_mL = daily_totals.get("water_g", 0.0)
+    _free_water_row: dict = {
+        "Nutrient": "Free water (estimated)",
+        "Daily Total": round(free_water_mL, water_decimals),
+        "Unit": "mL",
+    }
+    if patient_weight_kg:
+        # Deliberately "—": the per-kg fluid figure an RD quotes is the
+        # I&O "Fluid provided" total below, not this estimate, which
+        # structurally under-counts label-entered foods.
+        _free_water_row["Per kg"] = "—"
     rows.append(
         {
-            "Nutrient": "Free water (estimated)",
-            "Daily Total": round(free_water_mL, water_decimals),
-            "Unit": "mL",
+            **_free_water_row,
             "Target": "—",
             "% Target": "—",
             "Status": "Informational — see Fluid provided",
@@ -316,11 +354,16 @@ def generate_adequacy_report(
     fluid_val = fluid_provided_mL if fluid_provided_mL is not None else free_water_mL
     fluid_target = targets.get("fluid_mL", 0.0)
     fluid_pct = (fluid_val / fluid_target * 100) if fluid_target > 0 else 0.0
+    _fluid_row: dict = {
+        "Nutrient": "Fluid provided",
+        "Daily Total": round(fluid_val, 0),
+        "Unit": "mL",
+    }
+    if patient_weight_kg:
+        _fluid_row["Per kg"] = round(fluid_val / patient_weight_kg, PER_KG_FLUID_DECIMALS)
     rows.append(
         {
-            "Nutrient": "Fluid provided",
-            "Daily Total": round(fluid_val, 0),
-            "Unit": "mL",
+            **_fluid_row,
             "Target": round(fluid_target, 0) if fluid_target > 0 else "—",
             "% Target": round(fluid_pct, 0) if fluid_target > 0 else "—",
             "Status": _adequacy_status(fluid_val, fluid_target, "estimate"),

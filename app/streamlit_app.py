@@ -38,11 +38,16 @@ Design commitments (from CONTEXT.md section 1):
   - Daily totals are a direct sum over what was actually given -- never
     extrapolated from a batch volume against a schedule (the bug this
     rework fixes).
-  - "For RD use, estimates only" -- not a family-facing tool.
+  - Estimates to inform clinical judgment, never to replace it. Built for
+    dietitians and the teams supporting blenderized tube feeding; families
+    and patients are welcome to use it, but it gives no individual advice
+    and creates no professional relationship (author, 2026-08-01 -- this
+    used to read "not a family-facing tool", which excluded the people
+    doing this at home rather than telling them where their questions
+    belong).
 """
 
 import copy
-import io
 import re
 import sys
 from datetime import date as ddate
@@ -222,16 +227,6 @@ def get_food_group():
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def sanitize_filename(name: str, fallback: str = "btf") -> str:
-    """Strip characters that break filenames/downloads on common filesystems.
-
-    e.g. "chicken/rice" -> "chickenrice"; empty or all-invalid names fall
-    back to `fallback` so the download always has a usable name.
-    """
-    cleaned = re.sub(r'[\\/:*?"<>|]', "", (name or "")).strip()
-    return cleaned or fallback
 
 
 def find_food(fn_df: pd.DataFrame, desc: str) -> int | None:
@@ -1761,7 +1756,8 @@ with top_l:
 
 st.title(f"🥕🥦🥤 {recipe_name or 'BTF day'} 💉💧🍌")
 st.caption(
-    "⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use."
+    "⚠️ Under development. Estimates to inform clinical judgment, not to replace it. "
+    "Check the numbers before you act on them."
 )
 
 
@@ -2401,6 +2397,13 @@ with record_tab:
         # Flushes are named but NOT counted: eleven of them is noise in a
         # summary line, and "did I flush" is the question, not "how many
         # times". They're still individually listed and deletable inside.
+        # Oral rows are counted as ONE category, not named individually
+        # (author, 2026-08-01). A blend and a commercial feed are each a
+        # thing you gave repeatedly, so naming them earns its space; the
+        # food and drink side is "did they eat anything, how much", and
+        # listing every banana crowds the line without answering it. The
+        # category name matches the section header the rows sit under
+        # inside, so the label and the list use one vocabulary.
         _n_rows = len(_ordered_rows)
         _times_given: dict[tuple, int] = {}
         _order: list[tuple] = []
@@ -2431,7 +2434,7 @@ with record_tab:
             _parts.append("water flushes")
         _n_oral = sum(1 for _r in _ordered_rows if _r["source_type"] == "oral")
         if _n_oral:
-            _parts.append(f"{_n_oral} by mouth")
+            _parts.append(f"{FOOD_DRINK_LABEL} ×{_n_oral}")
 
         _summary = f"📋 Everything given ({_n_rows} row{'' if _n_rows == 1 else 's'})"
         if _parts:
@@ -2587,10 +2590,16 @@ with record_tab:
             targets,
             fluid_provided_mL=intake_totals.fluid_provided_mL,
             nutrient_coverage=intake_totals.nutrient_coverage,
+            patient_weight_kg=patient_weight_kg if patient_weight_kg > 0 else None,
         )
         adequacy_display = adequacy_df.copy()
         adequacy_display["Target"] = adequacy_display["Target"].astype(str)
         adequacy_display["% Target"] = adequacy_display["% Target"].astype(str)
+        # Mixed floats and "—" in one column, same convention as Target /
+        # % Target above -- cast so Arrow isn't fixing a mixed-type column
+        # on every render.
+        if "Per kg" in adequacy_display.columns:
+            adequacy_display["Per kg"] = adequacy_display["Per kg"].astype(str)
         st.dataframe(
             adequacy_display.style
             # The Styler (needed for status colouring) would otherwise
@@ -2633,25 +2642,13 @@ with record_tab:
                     "Not shown — no data from any ingredient: " + ", ".join(hidden_clinical_names)
                 )
 
-        if patient_weight_kg > 0:
-            st.markdown(f"**Per-kg (at {patient_weight_kg:.1f} kg)**")
-            pk1, pk2, pk3 = st.columns(3)
-            pk1.metric(
-                "Energy",
-                f"{intake_totals.nutrient_totals.get('energy_kcal', 0.0) / patient_weight_kg:.1f}",
-                "kcal/kg/day",
-            )
-            pk2.metric(
-                "Protein",
-                f"{intake_totals.nutrient_totals.get('protein_g', 0.0) / patient_weight_kg:.2f}",
-                "g/kg/day",
-            )
-            pk3.metric(
-                "Fluid provided",
-                f"{intake_totals.fluid_provided_mL / patient_weight_kg:.1f}",
-                "mL/kg/day",
-            )
-            st.caption("Display only — no target, equation, or IBW is computed from weight.")
+        # Per-kg used to be three st.metric tiles below this table (author,
+        # 2026-08-01). Metrics are the app's loudest display element, which
+        # gave kcal/kg, protein g/kg and fluid mL/kg more visual weight than
+        # the adequacy table they were derived from. They are now a "Per kg"
+        # column inside that table, between Unit and Target, so they read as
+        # another way of looking at the same daily totals rather than a
+        # separate, more important finding.
 
 with recipes_tab:
     st.divider()
@@ -2659,10 +2656,15 @@ with recipes_tab:
     # --- Dilution what-if (operates on the selected blend) ---
     st.subheader("Dilution What-If")
     st.caption(
-        "If the blend needs thinning with **water**, see the density impact "
-        "before you commit. Thinning with broth, juice or milk is a recipe "
-        "change, not a dilution — add it as an ingredient above and every "
-        "nutrient is counted, not just calories and protein."
+        "A preview of what thinning with **water** would cost you, before you "
+        "commit. **It changes nothing on its own.** If you go on to actually "
+        "thin the blend, save it as a new blend below — otherwise the app "
+        "keeps reporting the thicker recipe's densities against the volumes "
+        "you log, and every daily total, adequacy % and flow-test result "
+        "describes a blend you no longer have.  \n"
+        "Thinning with broth, juice or milk isn't a dilution at all, it's a "
+        "recipe change — add it as an ingredient above, where every nutrient "
+        "is counted rather than just calories and protein."
     )
 
     if selected_profile is None:
@@ -2734,6 +2736,66 @@ with recipes_tab:
                         f"<strong>{rd:.0f} mL</strong> after dilution "
                         f"(+{rd - ro:.0f} mL)"
                     )
+
+                # --- Commit the preview into a real, documentable blend ---
+                # Without this the what-if is a dead end: it models a change
+                # to the jug and writes nothing, so an RD who acts on it is
+                # left with an app describing a recipe that no longer
+                # exists (author, 2026-08-01). Every downstream number --
+                # daily totals, adequacy %, per-kg, chart note, export --
+                # then silently uses the un-thinned density.
+                #
+                # A COPY, not an edit in place: the thick original is
+                # itself a finding worth keeping ("this needed thinning"),
+                # and each blend carries its own flow test, so the pair
+                # documents the before and after.
+                #
+                # Measured volume is deliberately left at 0. Adding 150 mL
+                # of water does NOT reliably make the blend 150 mL bigger
+                # once blending, air and rinse water are involved, and
+                # "volume is measured, not computed" is a core commitment
+                # (CONTEXT.md §1). Leaving it blank makes the app's
+                # existing InvalidBlendError guard demand a real
+                # measurement instead of inventing one.
+                _water_code = find_food(fn, "Water, municipal")
+                st.markdown("**Actually thinning it?**")
+                if _water_code is None:
+                    _note(
+                        "Couldn't find a plain water entry in CNF, so this can't "
+                        "be saved automatically. Add the water as an ingredient "
+                        "yourself and re-measure the volume."
+                    )
+                elif st.button(
+                    f"➕ Save as a new blend with {added_mL:.0f} mL {liquid_type.lower()}",
+                    key=f"dilute_commit_{selected_blend_id}",
+                    width="stretch",
+                    help="Copies this blend, adds the water as an ingredient, and "
+                    "leaves the measured volume blank so you can pour it out and "
+                    "measure it for real.",
+                ):
+                    _src_name = selected_blend["name"] or f"Blend {selected_blend_id}"
+                    _new_id = _new_blend(f"{_src_name} (thinned +{added_mL:.0f} mL)")
+                    _copy = st.session_state.blends[_new_id]
+                    for _ing in selected_blend["ingredients"]:
+                        st.session_state.next_ingr_id += 1
+                        _copy["ingredients"].append({**_ing, "id": st.session_state.next_ingr_id})
+                    st.session_state.next_ingr_id += 1
+                    _copy["ingredients"].append(
+                        {
+                            "id": st.session_state.next_ingr_id,
+                            "food_code": _water_code,
+                            "food_description": f"{liquid_type} (added to thin)",
+                            "grams": float(added_mL),
+                            "unit": "mL",
+                            "counts_as_fluid": True,
+                        }
+                    )
+                    _copy["measured_volume_mL"] = 0.0
+                    st.toast(
+                        f'Created "{_copy["name"]}". Measure the thinned blend '
+                        "and enter its volume."
+                    )
+                    st.rerun()
             else:
                 st.caption("Slide the slider to see the effect of adding thinning liquid.")
 
@@ -2741,13 +2803,13 @@ with recipes_tab:
     # thin the blend, then record whether it flows. Optional for
     # established recipes; handy in one place during recipe development --
     # author feedback 2026-07-20.) ---
-    st.subheader("Flow Test")
-    st.caption(
-        "Documentation only — the tool can't measure viscosity or tube "
-        "flow. This is the half of the sweet spot the app can't compute: "
-        "it records what your syringe told you, and it belongs to this "
-        "blend, so the chart note can say which recipe it refers to."
-    )
+    # Collapsed, with the RESULT in the label (author, 2026-08-01). The
+    # flow test is optional documentation -- most blends never get one --
+    # but it took four always-visible widgets on every blend. Putting the
+    # result in the expander's own label means the answer ("Passed",
+    # "Needs thinning") is readable without opening it, so collapsing
+    # hides the form, not the finding.
+    #
     # Keyed per blend: switching blends shows that blend's own flow test
     # rather than leaving the previous one on screen describing a recipe
     # it was never about.
@@ -2755,25 +2817,43 @@ with recipes_tab:
         "flow_test", {"date": None, "result": "Not done", "notes": ""}
     )
     _ft_results = ["Not done", "Passed", "Needs thinning"]
-    ft1, ft2 = st.columns(2)
-    flow_test_date = ft1.date_input(
-        "Date", value=_ft_state.get("date"), key=f"flow_date_{selected_blend_id}"
+    _ft_current = _ft_state.get("result") or "Not done"
+    _ft_date_bit = (
+        f" ({_ft_state['date'].isoformat()})"
+        if _ft_state.get("date") and _ft_current != "Not done"
+        else ""
     )
-    flow_test_result = ft2.selectbox(
-        "Result",
-        _ft_results,
-        index=_ft_results.index(_ft_state.get("result") or "Not done"),
-        key=f"flow_result_{selected_blend_id}",
+    _ft_label = (
+        "🧪 Flow test — not recorded"
+        if _ft_current == "Not done"
+        else f"🧪 Flow test — {_ft_current}{_ft_date_bit}"
     )
-    flow_test_notes = st.text_area(
-        "Notes",
-        value=_ft_state.get("notes", ""),
-        placeholder="e.g., flowed through a 60 mL syringe without resistance",
-        key=f"flow_notes_{selected_blend_id}",
-    )
-    _ft_state["date"] = flow_test_date
-    _ft_state["result"] = flow_test_result
-    _ft_state["notes"] = flow_test_notes
+    with st.expander(_ft_label):
+        st.caption(
+            "Documentation only — the tool can't measure viscosity or tube "
+            "flow. This is the half of the sweet spot the app can't compute: "
+            "it records what your syringe told you, and it belongs to this "
+            "blend, so the chart note can say which recipe it refers to."
+        )
+        ft1, ft2 = st.columns(2)
+        flow_test_date = ft1.date_input(
+            "Date", value=_ft_state.get("date"), key=f"flow_date_{selected_blend_id}"
+        )
+        flow_test_result = ft2.selectbox(
+            "Result",
+            _ft_results,
+            index=_ft_results.index(_ft_current),
+            key=f"flow_result_{selected_blend_id}",
+        )
+        flow_test_notes = st.text_area(
+            "Notes",
+            value=_ft_state.get("notes", ""),
+            placeholder="e.g., flowed through a 60 mL syringe without resistance",
+            key=f"flow_notes_{selected_blend_id}",
+        )
+        _ft_state["date"] = flow_test_date
+        _ft_state["result"] = flow_test_result
+        _ft_state["notes"] = flow_test_notes
 
     # --- Recipe record: save this blend to a file, or load one back ---
     # The calculator computes; this remembers. Everything else in a blend
@@ -2982,194 +3062,79 @@ with record_tab:
         _note_text = " ".join(_note_lines)
         st.code(_note_text, language=None)
 
-    # --- Export to Excel ---
-    st.subheader("Export")
-
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        pd.DataFrame(
-            {
-                "Field": ["Patient / day label", "Delivery method", "Patient weight (kg)"],
-                "Value": [recipe_name, delivery_method, patient_weight_kg],
-            }
-        ).to_excel(writer, sheet_name="Day", index=False)
-
-        # Intake Record sheet: every row, chronological (design doc
-        # section 3.5's export requirement).
-        if st.session_state.intake_log:
-            _export_rows = []
-            for row in sorted_intake_log(st.session_state.intake_log):
-                _export_rows.append(
-                    {
-                        "Time": row["time"].strftime("%H:%M") if row["time"] else "",
-                        "Section": (
-                            TUBE_FEED_LABEL
-                            if row["source_type"] in ("blend", "formula", "flush")
-                            else FOOD_DRINK_LABEL
-                        ),
-                        "Source type": row["source_type"],
-                        "Source": _intake_source_name(row),
-                        "Amount": row["amount"],
-                        "Unit": row["unit"],
-                        "Counts as fluid": row["counts_as_fluid"],
-                    }
-                )
-            pd.DataFrame(_export_rows).to_excel(writer, sheet_name="Intake Record", index=False)
-        else:
-            pd.DataFrame(
-                {
-                    "Time": [],
-                    "Section": [],
-                    "Source type": [],
-                    "Source": [],
-                    "Amount": [],
-                    "Unit": [],
-                    "Counts as fluid": [],
-                }
-            ).to_excel(writer, sheet_name="Intake Record", index=False)
-
-        # One sheet per blend: ingredient list + measured volume.
-        #
-        # Prefixed "BTF " since 2026-07-30. Without it the tab was named
-        # only after the blend ("Whole-food blend"), which sits between
-        # "Intake Record" and "Adequacy" and does not announce itself as
-        # an ingredient list -- the author opened her own export looking
-        # for ingredients, saw the macro sheets, and concluded they
-        # weren't in the file. They were, one tab over.
-        #
-        # "BTF " and not "BTF: " -- Excel rejects : \ / ? * [ ] in a
-        # sheet title outright (openpyxl raises ValueError), so a colon
-        # here would crash the whole export, not just look wrong.
-        # sanitize_filename() already strips those from the blend name;
-        # the prefix has to obey the same rule.
-        #
-        # Excel also caps a sheet title at 31 characters. The prefix is
-        # the least meaningful part, so the BLEND NAME keeps the budget
-        # and the truncation lands after the prefix is applied.
-        #
-        # Dedupe against sheets already in this workbook: two blends can
-        # legitimately land on the same 31-char title -- same name reused
-        # after a delete (_new_blend() re-issues "Blend 3" once the
-        # middle of three blends is gone), or two different names that
-        # truncate to the same 31 characters ("...v1" / "...v2" past the
-        # cap). openpyxl accepts a duplicate sheet title silently and the
-        # second write just overwrites the first, so without this the
-        # earlier blend's ingredients vanish from the export with no
-        # error. Trim the base so a " (2)", " (3)", ... suffix still fits
-        # under the cap, e.g. "BTF Morning blend (2)".
-        _used_sheet_names = set(writer.book.sheetnames)
-        for _bid, _blend in st.session_state.blends.items():
-            _base_sheet_name = f"BTF {sanitize_filename(_blend['name'], fallback=f'Blend {_bid}')}"
-            _sheet_name = _base_sheet_name[:31]
-            if _sheet_name in _used_sheet_names:
-                _suffix = 2
-                while True:
-                    _tag = f" ({_suffix})"
-                    _candidate = f"{_base_sheet_name[:31 - len(_tag)]}{_tag}"
-                    if _candidate not in _used_sheet_names:
-                        _sheet_name = _candidate
-                        break
-                    _suffix += 1
-            _used_sheet_names.add(_sheet_name)
-            if _blend["ingredients"]:
-                _ing_df = pd.DataFrame(_blend["ingredients"])[
-                    ["food_description", "grams", "unit", "counts_as_fluid"]
-                ]
-            else:
-                _ing_df = pd.DataFrame(
-                    {"food_description": [], "grams": [], "unit": [], "counts_as_fluid": []}
-                )
-            _ing_df.to_excel(writer, sheet_name=_sheet_name, index=False, startrow=1)
-            _sheet = writer.sheets[_sheet_name]
-            _sheet["A1"] = f"Measured final volume (mL): {_blend['measured_volume_mL']:.0f}"
-
-        # Daily totals sheets, if the Intake Record has anything logged.
-        if st.session_state.intake_log:
-            generate_adequacy_report(
-                intake_totals.nutrient_totals,
-                targets,
-                fluid_provided_mL=intake_totals.fluid_provided_mL,
-                nutrient_coverage=intake_totals.nutrient_coverage,
-            )[0].to_excel(writer, sheet_name="Adequacy", index=False)
-            generate_clinical_screen(
-                intake_totals.nutrient_totals,
-                targets,
-                nutrient_coverage=intake_totals.nutrient_coverage,
-            )[0].to_excel(writer, sheet_name="Micro Screen", index=False)
-            generate_source_breakdown(intake_totals).to_excel(
-                writer, sheet_name="Per-Source Breakdown", index=False
-            )
-
-        # Water ledger -- every source on its own line
-        _wl = generate_water_ledger(intake_totals.water_sources)
-        if not _wl.empty:
-            _wl.to_excel(writer, sheet_name="Water Sources", index=False)
-
-        # Flow test documentation -- one row per blend, named, since each
-        # blend now carries its own (2026-07-30). Every blend is listed
-        # here, not just those fed today: the export is the working record
-        # of the recipes, where the chart note above is the day.
-        pd.DataFrame(
-            [
-                {
-                    "Blend": b.get("name") or f"Blend {bid}",
-                    "Date": (
-                        b.get("flow_test", {}).get("date").isoformat()
-                        if b.get("flow_test", {}).get("date")
-                        else ""
-                    ),
-                    "Result": b.get("flow_test", {}).get("result", "Not done"),
-                    "Notes": b.get("flow_test", {}).get("notes", ""),
-                }
-                for bid, b in sorted(st.session_state.blends.items())
-            ]
-        ).to_excel(writer, sheet_name="Flow Test", index=False)
-
-        # Chart note text
-        if st.session_state.intake_log:
-            pd.DataFrame({"Chart note": [_note_text]}).to_excel(
-                writer, sheet_name="Chart Note", index=False
-            )
-
-    _ex1, _ex2 = st.columns(2)
-    _ex1.download_button(
-        label="📥 Export to Excel",
-        data=output.getvalue(),
-        file_name=f"{sanitize_filename(recipe_name)}_report.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        width="stretch",
-    )
-
-    # Save the whole day so it can be reopened. Lives here, at the bottom
-    # of the Daily Intake Record tab, because `targets` is only in scope after the
-    # Nutrition Targets tab has run -- and because "here is your day,
-    # keep it" belongs next to the day's export.
+    # --- One file: the day you can reopen, and the report you can file ---
     #
-    # The Excel export above and this are different things: that one is a
-    # report to file in a chart, this one loads back into the app. The
-    # captions say so, because an RD downloading two spreadsheets from
-    # one screen has every right to be confused about which is which.
-    _ex2.download_button(
-        label="💾 Save this day",
+    # This used to be two download buttons (author, 2026-08-01). The split
+    # asked the RD to know, at download time, whether they were filing this
+    # or coming back to it tomorrow -- and it is usually both. Worse, the
+    # failure was asymmetric: saving only the report meant the day could
+    # never be reloaded and the work was gone, while nobody is harmed by a
+    # file carrying extra sheets. One file, both jobs.
+    #
+    # The per-blend "BTF <name>" sheets and the standalone "Flow Test"
+    # sheet are gone with it, as duplicates rather than losses: the
+    # reloadable half already carries every ingredient on the Ingredients
+    # sheet (tagged with its blend, so Excel can sort or filter by recipe)
+    # and every flow test as columns on the Blends sheet. Two views of the
+    # same rows in one workbook is how they drift apart.
+    st.subheader("Save this day")
+
+    _report_sheets: dict[str, pd.DataFrame] = {}
+    if st.session_state.intake_log:
+        _report_sheets["Adequacy"] = generate_adequacy_report(
+            intake_totals.nutrient_totals,
+            targets,
+            fluid_provided_mL=intake_totals.fluid_provided_mL,
+            nutrient_coverage=intake_totals.nutrient_coverage,
+            patient_weight_kg=patient_weight_kg if patient_weight_kg > 0 else None,
+        )[0]
+        _report_sheets["Micro Screen"] = generate_clinical_screen(
+            intake_totals.nutrient_totals,
+            targets,
+            nutrient_coverage=intake_totals.nutrient_coverage,
+        )[0]
+        _report_sheets["Per-Source Breakdown"] = generate_source_breakdown(intake_totals)
+
+    _wl = generate_water_ledger(intake_totals.water_sources)
+    if not _wl.empty:
+        _report_sheets["Water Sources"] = _wl
+    if st.session_state.intake_log:
+        _report_sheets["Chart Note"] = pd.DataFrame({"Chart note": [_note_text]})
+
+    # Chronological, and each row tagged with the readable source name so
+    # the Intake sheet is legible to a person as well as reloadable by the
+    # app (day_io writes it to a "Source" column and ignores it on load).
+    _intake_for_file = [
+        {**row, "_source_name": _intake_source_name(row)}
+        for row in sorted_intake_log(st.session_state.intake_log)
+    ]
+
+    st.download_button(
+        label="💾 Download this day (.xlsx)",
         data=day_to_workbook_bytes(
             label=recipe_name,
             patient_weight=st.session_state.get("patient_weight_input", 0.0),
             weight_unit=st.session_state.get("weight_unit", "kg"),
             targets=targets,
             blends=st.session_state.blends,
-            intake_log=st.session_state.intake_log,
+            intake_log=_intake_for_file,
             custom_foods=st.session_state.custom_foods,
+            delivery_method=delivery_method,
+            extra_sheets=_report_sheets,
         ),
         file_name=suggested_day_filename(recipe_name),
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        help="Reopen it later with “Open a saved day” at the top of the page.",
+        help="One spreadsheet that does both jobs: reopen it here later, or " "file it as it is.",
         width="stretch",
     )
     st.caption(
-        "**Export to Excel** is a report for the chart. **Save this day** keeps "
-        "your blends, intake record and targets so you can carry on later — "
-        "it downloads to your computer, and it holds whatever you typed in the "
-        "patient/day label."
+        "One file, two uses. Re-upload it with “Open a saved day” at the top "
+        "of the page to carry on where you left off, or file it as it is — the "
+        "first tabs hold what you entered (blends, ingredients, intake record, "
+        "targets, custom foods) and the rest hold the worked-out numbers "
+        "(adequacy, micro screen, per-source breakdown, water sources, chart "
+        "note). It downloads to your computer, and it holds whatever you typed "
+        "in the patient/day label."
     )
 
 
@@ -3182,11 +3147,13 @@ with record_tab:
 # app, not only in the README that most of them will never open.
 st.divider()
 st.caption(
-    "⚠️ Under development — for RD use, estimates only. Double-check all numbers before clinical use.  \n"
-    "Provided for informational and educational purposes only. Not a substitute for professional "
-    "medical advice, diagnosis or treatment. Always seek the advice of your physician, registered "
-    "dietitian or other qualified health provider about a medical condition or a feeding regimen, "
-    "and never disregard or delay that advice because of something calculated here. Use of this "
-    "tool does not create a dietitian–client or any other professional relationship.  \n"
-    "RD clinical judgment is the final authority. Built on the Canadian Nutrient File (CNF) 2026."
+    "⚠️ **Under development.** A calculator for dietitians and the teams supporting blenderized "
+    "tube feeding. It gives estimates to inform clinical judgment, not to replace it, so check "
+    "the numbers before you act on them.  \n"
+    "Anyone is welcome to use it, but it is not a substitute for professional medical advice, "
+    "diagnosis or treatment, and using it creates no dietitian–client or other professional "
+    "relationship. For anything about a specific person's care, ask their own physician, "
+    "registered dietitian or qualified health provider, and never disregard or delay that advice "
+    "because of something calculated here.  \n"
+    "Built on the Canadian Nutrient File (CNF) 2026."
 )
