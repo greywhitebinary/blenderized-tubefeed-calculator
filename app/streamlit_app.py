@@ -2025,7 +2025,28 @@ with recipes_tab:
     blend_ids = list(st.session_state.blends.keys())
     if st.session_state.selected_blend_id not in blend_ids:
         st.session_state.selected_blend_id = blend_ids[0] if blend_ids else None
-    blend_names = [st.session_state.blends[bid]["name"] or f"Blend {bid}" for bid in blend_ids]
+    # Read each name off its WIDGET where one exists, not off the stored
+    # blend (author, 2026-08-01). The "Blend name" text_input renders
+    # BELOW this selectbox, and it owns the value -- `blends[bid]["name"]`
+    # is only written after it runs. So on the render where the RD edits a
+    # name, this list still holds the PREVIOUS one and the dropdown
+    # disagrees with the field six lines under it.
+    #
+    # The visible symptom was a dropdown reading "Blend 1" above a name
+    # field reading "Whole-food blend": clearing the name made the stored
+    # value "" (so the label fell back to f"Blend {bid}"), and typing the
+    # name back left the fallback on screen for one more render. It looked
+    # like two blends, or like the rename hadn't taken.
+    #
+    # Streamlit fills a widget's session_state entry before the script
+    # runs, so the key holds THIS run's text. Falls back to the stored
+    # name for blends whose widget hasn't rendered yet (anything not
+    # currently selected).
+    blend_names = []
+    for bid in blend_ids:
+        _widget_name = st.session_state.get(f"blend_name_{bid}")
+        _name = _widget_name if _widget_name is not None else st.session_state.blends[bid]["name"]
+        blend_names.append(_name or f"Blend {bid}")
     sel_idx = blend_ids.index(st.session_state.selected_blend_id)
 
     bsel1, bsel2, bsel3 = st.columns([3, 1, 1])
@@ -2192,6 +2213,82 @@ with recipes_tab:
         if st.button("🗑️ Clear this blend's ingredients"):
             selected_blend["ingredients"] = []
             st.rerun()
+
+    # --- Flow test: a property of THIS blend, next to its other
+    # properties (author, 2026-08-01) ---
+    #
+    # It used to sit under the Dilution What-If, from the 2026-07-20
+    # reasoning "thin the blend, then record whether it flows". Two
+    # things undid that. Collapsing it into an expander left it with no
+    # heading of its own, so it read as part of the dilution section
+    # rather than as a fact about the recipe. And thinning now produces
+    # a SEPARATE blend, so the flow test you record afterwards belongs
+    # to that one, not to the blend you were previewing from.
+    #
+    # Whether a blend pulls through a syringe is true regardless of
+    # whether anyone ever thins it, so it belongs with the ingredients
+    # and the measured volume.
+    # Collapsed, with the RESULT in the label (author, 2026-08-01). The
+    # flow test is optional documentation -- most blends never get one --
+    # but it took four always-visible widgets on every blend. Putting the
+    # result in the expander's own label means the answer ("Passed",
+    # "Needs thinning") is readable without opening it, so collapsing
+    # hides the form, not the finding.
+    #
+    # Keyed per blend: switching blends shows that blend's own flow test
+    # rather than leaving the previous one on screen describing a recipe
+    # it was never about.
+    _ft_state = selected_blend.setdefault(
+        "flow_test", {"date": None, "result": "Not done", "notes": ""}
+    )
+    _ft_results = ["Not done", "Passed", "Needs thinning"]
+    # Read the label off the WIDGETS' session_state, not off _ft_state.
+    # _ft_state is only written at the bottom of this block, after the
+    # widgets render, so on the run where the RD changes the dropdown it
+    # still holds the previous answer -- the label would say "not
+    # recorded" for a test that had just been marked Passed, and stay
+    # wrong until some unrelated interaction forced another rerun.
+    # Streamlit populates a widget's session_state entry before the script
+    # runs, so these keys already hold this run's values. The keys don't
+    # exist on the first render of a blend, hence the fallbacks.
+    _ft_result_key = f"flow_result_{selected_blend_id}"
+    _ft_date_key = f"flow_date_{selected_blend_id}"
+    _ft_current = st.session_state.get(_ft_result_key) or _ft_state.get("result") or "Not done"
+    _ft_shown_date = st.session_state.get(_ft_date_key, _ft_state.get("date"))
+    _ft_date_bit = (
+        f" ({_ft_shown_date.isoformat()})" if _ft_shown_date and _ft_current != "Not done" else ""
+    )
+    _ft_label = (
+        "🧪 Flow test — not recorded"
+        if _ft_current == "Not done"
+        else f"🧪 Flow test — {_ft_current}{_ft_date_bit}"
+    )
+    with st.expander(_ft_label):
+        st.caption(
+            "Documentation only — the tool can't measure viscosity or tube "
+            "flow. This is the half of the sweet spot the app can't compute: "
+            "it records what your syringe told you, and it belongs to this "
+            "blend, so the chart note can say which recipe it refers to."
+        )
+        ft1, ft2 = st.columns(2)
+        flow_test_date = ft1.date_input(
+            "Date", value=_ft_state.get("date"), key=f"flow_date_{selected_blend_id}"
+        )
+        flow_test_result = ft2.selectbox(
+            "Result",
+            _ft_results,
+            index=_ft_results.index(_ft_current),
+            key=f"flow_result_{selected_blend_id}",
+        )
+        flow_test_notes = st.text_area(
+            "Notes",
+            value=_ft_state.get("notes", ""),
+            placeholder="e.g., flowed through a 60 mL syringe without resistance",
+            key=f"flow_notes_{selected_blend_id}",
+        )
+        _ft_state["date"] = flow_test_date
+        _ft_state["result"] = flow_test_result
+        _ft_state["notes"] = flow_test_notes
 
 
 with record_tab:
@@ -2798,62 +2895,6 @@ with recipes_tab:
                     st.rerun()
             else:
                 st.caption("Slide the slider to see the effect of adding thinning liquid.")
-
-    # --- Flow test documentation (pairs with the dilution what-if above:
-    # thin the blend, then record whether it flows. Optional for
-    # established recipes; handy in one place during recipe development --
-    # author feedback 2026-07-20.) ---
-    # Collapsed, with the RESULT in the label (author, 2026-08-01). The
-    # flow test is optional documentation -- most blends never get one --
-    # but it took four always-visible widgets on every blend. Putting the
-    # result in the expander's own label means the answer ("Passed",
-    # "Needs thinning") is readable without opening it, so collapsing
-    # hides the form, not the finding.
-    #
-    # Keyed per blend: switching blends shows that blend's own flow test
-    # rather than leaving the previous one on screen describing a recipe
-    # it was never about.
-    _ft_state = selected_blend.setdefault(
-        "flow_test", {"date": None, "result": "Not done", "notes": ""}
-    )
-    _ft_results = ["Not done", "Passed", "Needs thinning"]
-    _ft_current = _ft_state.get("result") or "Not done"
-    _ft_date_bit = (
-        f" ({_ft_state['date'].isoformat()})"
-        if _ft_state.get("date") and _ft_current != "Not done"
-        else ""
-    )
-    _ft_label = (
-        "🧪 Flow test — not recorded"
-        if _ft_current == "Not done"
-        else f"🧪 Flow test — {_ft_current}{_ft_date_bit}"
-    )
-    with st.expander(_ft_label):
-        st.caption(
-            "Documentation only — the tool can't measure viscosity or tube "
-            "flow. This is the half of the sweet spot the app can't compute: "
-            "it records what your syringe told you, and it belongs to this "
-            "blend, so the chart note can say which recipe it refers to."
-        )
-        ft1, ft2 = st.columns(2)
-        flow_test_date = ft1.date_input(
-            "Date", value=_ft_state.get("date"), key=f"flow_date_{selected_blend_id}"
-        )
-        flow_test_result = ft2.selectbox(
-            "Result",
-            _ft_results,
-            index=_ft_results.index(_ft_current),
-            key=f"flow_result_{selected_blend_id}",
-        )
-        flow_test_notes = st.text_area(
-            "Notes",
-            value=_ft_state.get("notes", ""),
-            placeholder="e.g., flowed through a 60 mL syringe without resistance",
-            key=f"flow_notes_{selected_blend_id}",
-        )
-        _ft_state["date"] = flow_test_date
-        _ft_state["result"] = flow_test_result
-        _ft_state["notes"] = flow_test_notes
 
     # --- Recipe record: save this blend to a file, or load one back ---
     # The calculator computes; this remembers. Everything else in a blend

@@ -1953,6 +1953,26 @@ deploy, and the third is open Week 3 work.
   same push. Logs live under "Manage app" (bottom-right of the running app
   while logged in as owner); the line that matters on a rebuild is
   `Installing streamlit==...` / `Found Streamlit version X`.
+- **A hot reload can leave modules under `src/` stale, and the crash
+  blames code that is actually correct.** On 2026-08-01, one commit
+  added a keyword argument to `day_to_workbook_bytes()` in `src/day_io.py`
+  and updated its call site in `app/streamlit_app.py`. The live app died
+  with `TypeError: day_to_workbook_bytes() got an unexpected keyword
+  argument 'delivery_method'` — Cloud logged `🔄 Updated app!`, re-ran the
+  **main script** with the new call, and kept the **already-imported**
+  `src.day_io` from the previous commit. New caller, old callee, from one
+  self-consistent commit.
+  - Diagnose: is `git status -sb` in sync, and do the COMMITTED versions
+    of both files agree (`git show HEAD:src/day_io.py | grep ...`)? If
+    they do, the repo is fine and the running process is not.
+  - Fix: **Reboot app**. That restarts Python and re-imports everything.
+  - Expect it for any signature or constant change under `src/`. A change
+    confined to `app/` never hits it.
+  - Corollary: **don't trust what you see on the deploy — screenshots
+    included — until you've confirmed it rebooted since the last push.**
+    A stale deploy the same week showed the blend selector reading
+    "Blend 1" while the name field read "Whole-food blend", which was
+    unreproducible on current code and cost a round of investigation.
 - **`requirements.txt` used to ship dev tooling to production.** jupyter,
   pytest, black, and ruff were all in it, so Cloud installed ~130 packages
   the app never imports and rebuilds were slow. **Resolved:**
