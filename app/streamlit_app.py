@@ -2025,6 +2025,7 @@ with recipes_tab:
     blend_ids = list(st.session_state.blends.keys())
     if st.session_state.selected_blend_id not in blend_ids:
         st.session_state.selected_blend_id = blend_ids[0] if blend_ids else None
+
     # Read each name off its WIDGET where one exists, not off the stored
     # blend (author, 2026-08-01). The "Blend name" text_input renders
     # BELOW this selectbox, and it owns the value -- `blends[bid]["name"]`
@@ -2042,10 +2043,17 @@ with recipes_tab:
     # runs, so the key holds THIS run's text. Falls back to the stored
     # name for blends whose widget hasn't rendered yet (anything not
     # currently selected).
-    def _blend_label(bid: int) -> str:
-        widget_name = st.session_state.get(f"blend_name_{bid}")
-        name = widget_name if widget_name is not None else st.session_state.blends[bid]["name"]
-        return name or f"Blend {bid}"
+    # Labels are computed ONCE, here, into a plain dict -- format_func must
+    # not touch st.session_state. Streamlit calls format_func outside the
+    # script run (serialising widget state), where session_state raises
+    # "has no attribute" and takes six of the nine CI checks down with it.
+    _blend_labels: dict[int, str] = {}
+    for _bid in blend_ids:
+        _widget_name = st.session_state.get(f"blend_name_{_bid}")
+        _stored = st.session_state.blends[_bid]["name"]
+        _blend_labels[_bid] = (_widget_name if _widget_name is not None else _stored) or (
+            f"Blend {_bid}"
+        )
 
     # Options are the BLEND IDS, not positions (author, 2026-08-01).
     #
@@ -2073,7 +2081,7 @@ with recipes_tab:
         "Select blend",
         options=blend_ids,
         index=sel_idx,
-        format_func=_blend_label,
+        format_func=lambda bid: _blend_labels.get(bid, f"Blend {bid}"),
         key="blend_selector",
     )
     st.session_state.selected_blend_id = chosen_id
@@ -2865,35 +2873,47 @@ with recipes_tab:
                 # and each blend carries its own flow test, so the pair
                 # documents the before and after.
                 #
-                # Measured volume is deliberately left at 0. Adding 150 mL
-                # of water does NOT reliably make the blend 150 mL bigger
-                # once blending, air and rinse water are involved, and
-                # "volume is measured, not computed" is a core commitment
-                # (CONTEXT.md §1). Leaving it blank makes the app's
-                # existing InvalidBlendError guard demand a real
-                # measurement instead of inventing one.
+                # Measured volume is CARRIED FORWARD as original + added
+                # (author's challenge, 2026-08-01). It used to be left
+                # blank, on the "volume is measured, not computed" rule
+                # (CONTEXT.md §1) -- but that rule earns its keep for a
+                # different case. It exists because INGREDIENT WEIGHTS
+                # don't predict blended volume: whipping raw food into a
+                # slurry traps air and packs particles unpredictably.
+                # Adding a known volume of water to a blend whose volume
+                # was ALREADY measured is not that. Water is miscible and
+                # roughly additive, so the estimate is out by a percent or
+                # two on a figure the app already calls an estimate --
+                # while blocking every density on the new blend until the
+                # RD re-measures was a heavy toll for arithmetic they can
+                # do in their head.
+                #
+                # The caveat that survives: RE-BLENDING can change trapped
+                # air, so the guidance says what the number assumes and
+                # invites a correction rather than presenting it as
+                # measured.
+                _new_volume_mL = selected_blend["measured_volume_mL"] + added_mL
                 _water_code = find_food(fn, "Water, municipal")
+                _src_label = selected_blend["name"] or f"Blend {selected_blend_id}"
                 st.markdown("**Going to actually thin it?**")
                 st.caption(
-                    f"Saving turns the preview into a blend of its own, so the "
-                    f"thinned version can be fed, logged and documented while "
-                    f"the thick original stays exactly as it is. Pressing this "
-                    f"will:  \n"
-                    f"1. copy every ingredient of "
-                    f'**"{selected_blend["name"] or f"Blend {selected_blend_id}"}"** '
-                    f"and add the {added_mL:.0f} mL of "
-                    f"{liquid_type.lower()} as one more ingredient;  \n"
-                    f"2. add it to **Select blend** at the top of this tab and "
+                    f"Saving turns the preview dilution into a blend of its own. "
+                    f'Clicking the "Save as a new blend with {added_mL:.0f} mL '
+                    f'{liquid_type.lower()}" button will:  \n'
+                    f'1. Copy every ingredient of **"{_src_label}"** and add the '
+                    f"{added_mL:.0f} mL of {liquid_type.lower()} as one more "
+                    f"ingredient;  \n"
+                    f"2. Add it to **Select blend** at the top of this tab and "
                     f"switch you to it;  \n"
-                    f"3. leave its **Measured final volume** blank — pour the "
-                    f"thinned blend out and measure it, because adding "
-                    f"{added_mL:.0f} mL of {liquid_type.lower()} does not "
-                    f"reliably make the jug {added_mL:.0f} mL bigger. Until you "
-                    f"enter it, the app won't show densities for the new blend "
-                    f"rather than guess them;  \n"
-                    f"4. give it its own **🧪 Flow test**, under its ingredient "
-                    f"list, so you can record whether the thinned version "
-                    f"actually pulls through the tube."
+                    f"3. Set its **Measured final volume** to "
+                    f"**{_new_volume_mL:.0f} mL** — this blend's "
+                    f"{selected_blend['measured_volume_mL']:.0f} mL plus the "
+                    f"{added_mL:.0f} mL of {liquid_type.lower()}. Re-measure and "
+                    f"correct it if you blend it again, since that can change how "
+                    f"much air is trapped;  \n"
+                    f"4. Give it its own **🧪 Flow test**, under its ingredient "
+                    f"list, so you can record whether the thinned version actually "
+                    f"pulls through the tube."
                 )
                 if _water_code is None:
                     _note(
@@ -2907,7 +2927,7 @@ with recipes_tab:
                     width="stretch",
                     help="Your original blend is left untouched.",
                 ):
-                    _src_name = selected_blend["name"] or f"Blend {selected_blend_id}"
+                    _src_name = _src_label
                     # Name says WHAT it was thinned with, not just how much
                     # (author, 2026-08-01): "(thinned +150 mL)" left the RD
                     # to remember whether that was water, broth or juice --
@@ -2932,11 +2952,11 @@ with recipes_tab:
                             "counts_as_fluid": True,
                         }
                     )
-                    _copy["measured_volume_mL"] = 0.0
+                    _copy["measured_volume_mL"] = _new_volume_mL
                     st.toast(
-                        f'Created "{_copy["name"]}" and switched to it. Next: '
-                        "measure the thinned blend and enter its volume, then "
-                        "record its flow test."
+                        f'Created "{_copy["name"]}" and switched to it. Volume '
+                        f"set to {_new_volume_mL:.0f} mL — re-measure if you blend "
+                        "it again. Next: record its flow test."
                     )
                     st.rerun()
             else:
