@@ -2753,15 +2753,14 @@ with recipes_tab:
     # --- Dilution what-if (operates on the selected blend) ---
     st.subheader("Dilution What-If")
     st.caption(
-        "A preview of what thinning with **water** would cost you, before you "
-        "commit. **It changes nothing on its own.** If you go on to actually "
-        "thin the blend, save it as a new blend below — otherwise the app "
-        "keeps reporting the thicker recipe's densities against the volumes "
-        "you log, and every daily total, adequacy % and flow-test result "
-        "describes a blend you no longer have.  \n"
-        "Thinning with broth, juice or milk isn't a dilution at all, it's a "
-        "recipe change — add it as an ingredient above, where every nutrient "
-        "is counted rather than just calories and protein."
+        "**What would thinning this blend with water cost you?** Move the "
+        "slider to see the density drop before you commit to anything.  \n"
+        "This is a calculation, not a change: the blend above is untouched "
+        "until you save the thinned version as its own blend, which you can "
+        "do at the bottom of this section.  \n"
+        "Thinning with broth, juice or milk isn't a dilution, it's a recipe "
+        "change — add it as an ingredient instead, where every nutrient is "
+        "counted rather than just calories and protein."
     )
 
     if selected_profile is None:
@@ -2855,7 +2854,28 @@ with recipes_tab:
                 # existing InvalidBlendError guard demand a real
                 # measurement instead of inventing one.
                 _water_code = find_food(fn, "Water, municipal")
-                st.markdown("**Actually thinning it?**")
+                st.markdown("**Going to actually thin it?**")
+                st.caption(
+                    f"Saving turns the preview into a blend of its own, so the "
+                    f"thinned version can be fed, logged and documented while "
+                    f"the thick original stays exactly as it is. Pressing this "
+                    f"will:  \n"
+                    f"1. copy every ingredient of "
+                    f'**"{selected_blend["name"] or f"Blend {selected_blend_id}"}"** '
+                    f"and add the {added_mL:.0f} mL of "
+                    f"{liquid_type.lower()} as one more ingredient;  \n"
+                    f"2. add it to **Select blend** at the top of this tab and "
+                    f"switch you to it;  \n"
+                    f"3. leave its **Measured final volume** blank — pour the "
+                    f"thinned blend out and measure it, because adding "
+                    f"{added_mL:.0f} mL of {liquid_type.lower()} does not "
+                    f"reliably make the jug {added_mL:.0f} mL bigger. Until you "
+                    f"enter it, the app won't show densities for the new blend "
+                    f"rather than guess them;  \n"
+                    f"4. give it its own **🧪 Flow test**, under its ingredient "
+                    f"list, so you can record whether the thinned version "
+                    f"actually pulls through the tube."
+                )
                 if _water_code is None:
                     _note(
                         "Couldn't find a plain water entry in CNF, so this can't "
@@ -2866,12 +2886,18 @@ with recipes_tab:
                     f"➕ Save as a new blend with {added_mL:.0f} mL {liquid_type.lower()}",
                     key=f"dilute_commit_{selected_blend_id}",
                     width="stretch",
-                    help="Copies this blend, adds the water as an ingredient, and "
-                    "leaves the measured volume blank so you can pour it out and "
-                    "measure it for real.",
+                    help="Your original blend is left untouched.",
                 ):
                     _src_name = selected_blend["name"] or f"Blend {selected_blend_id}"
-                    _new_id = _new_blend(f"{_src_name} (thinned +{added_mL:.0f} mL)")
+                    # Name says WHAT it was thinned with, not just how much
+                    # (author, 2026-08-01): "(thinned +150 mL)" left the RD
+                    # to remember whether that was water, broth or juice --
+                    # and a recipe name is exactly the place that shouldn't
+                    # need remembering, since it is what the chart note, the
+                    # blend selector and the saved file all carry.
+                    _new_id = _new_blend(
+                        f"{_src_name} (thinned with {added_mL:.0f} mL {liquid_type.lower()})"
+                    )
                     _copy = st.session_state.blends[_new_id]
                     for _ing in selected_blend["ingredients"]:
                         st.session_state.next_ingr_id += 1
@@ -2889,12 +2915,16 @@ with recipes_tab:
                     )
                     _copy["measured_volume_mL"] = 0.0
                     st.toast(
-                        f'Created "{_copy["name"]}". Measure the thinned blend '
-                        "and enter its volume."
+                        f'Created "{_copy["name"]}" and switched to it. Next: '
+                        "measure the thinned blend and enter its volume, then "
+                        "record its flow test."
                     )
                     st.rerun()
             else:
-                st.caption("Slide the slider to see the effect of adding thinning liquid.")
+                st.caption(
+                    "Move the slider to see what thinning would do to the "
+                    "density. Nothing changes until you choose to save it."
+                )
 
     # --- Recipe record: save this blend to a file, or load one back ---
     # The calculator computes; this remembers. Everything else in a blend
