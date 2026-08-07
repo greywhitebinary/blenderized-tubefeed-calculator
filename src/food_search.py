@@ -168,6 +168,11 @@ class SearchIndex:
     desc_tokens: tuple[frozenset[str], ...]
     #: Words from Alternate_Description_EN, one frozenset per row.
     alt_tokens: tuple[frozenset[str], ...]
+    #: First word of each description. CNF files foods headword-first
+    #: ("Milk, fluid, ..."), so the headword is how the ranking tells
+    #: "this food IS what you typed" apart from "this food CONTAINS what
+    #: you typed" ("Cracker, milk"). "" for an untokenisable description.
+    desc_headword: tuple[str, ...]
     #: Every distinct word CNF uses, for the fuzzy layer to spell against.
     vocabulary: tuple[str, ...]
 
@@ -204,7 +209,9 @@ def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
         # description-only search rather than refusing to start.
         alternates = pd.Series([""] * len(food_name_df), index=food_name_df.index)
 
-    desc_tokens = tuple(frozenset(tokenize(t)) for t in descriptions)
+    desc_words = [tokenize(t) for t in descriptions]
+    desc_tokens = tuple(frozenset(words) for words in desc_words)
+    desc_headword = tuple(words[0] if words else "" for words in desc_words)
     alt_tokens = tuple(frozenset(tokenize(t)) for t in alternates)
 
     vocab: set[str] = set()
@@ -217,6 +224,7 @@ def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
         frame=food_name_df,
         desc_tokens=desc_tokens,
         alt_tokens=alt_tokens,
+        desc_headword=desc_headword,
         vocabulary=tuple(sorted(vocab)),
     )
 
@@ -257,7 +265,16 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          recognises the CNF description, which is what they will see;
       2. whole-word matches above prefix-only ones, so typing "rice"
          puts rice above "ricelike";
-      3. shorter descriptions first, because CNF's terse entries are its
+      3. foods whose HEADWORD (first word) a query word prefixes above
+         foods that merely contain the word -- CNF files foods
+         headword-first, so "Milk, fluid, ..." IS milk while "Cracker,
+         milk" CONTAINS milk. Without this tier, tier 4 alone answered
+         "egg" with "Bagel, egg" and "milk" with "Cracker, milk", which
+         is the complaint that motivated it. This tier sits BELOW tier 2
+         deliberately: a prefix-only headword ("Eggplant, raw" for
+         "egg") must not outrank a real whole-word match deeper in the
+         description ("Roll, dinner, egg");
+      4. shorter descriptions first, because CNF's terse entries are its
          basic foods and the long ones are heavily-qualified variants.
     """
     scored: list[tuple[tuple, int]] = []
@@ -281,9 +298,11 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
             break
         else:
             description = index.frame["Food_Description_EN"].iat[position]
+            headword = index.desc_headword[position]
             sort_key = (
                 0 if matched_in_desc else 1,
                 0 if exact_words == len(query_tokens) else 1,
+                0 if any(headword.startswith(t) for t in query_tokens) else 1,
                 len(str(description)),
             )
             scored.append((sort_key, position))

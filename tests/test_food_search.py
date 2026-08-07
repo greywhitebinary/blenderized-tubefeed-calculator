@@ -69,6 +69,9 @@ def food_name_df() -> pd.DataFrame:
         (7, "Potatoes, mashed, prepared", "mash, mashed", 11),
         (8, "Milk, fluid, 2% M.F.", "", 1),
         (9, "Chickpeas (garbanzo beans), mature seeds, cooked", "", 16),
+        (10, "Bagel, egg", "", 18),
+        (11, "Egg, chicken, whole, cooked, poached", "", 3),
+        (12, "Eggplant, raw", "", 11),
     ]
     return pd.DataFrame(
         rows,
@@ -176,6 +179,34 @@ def test_query_below_minimum_length_returns_nothing(index):
 
 def test_limit_is_respected(index):
     assert len(search_foods("grains", index, limit=1)) == 1
+
+
+def test_headword_match_ranks_above_contains_match(index):
+    """The complaint that added the third sort tier (2026-08-07).
+
+    "egg" used to rank "Bagel, egg" above actual eggs, and "milk"
+    ranked "Cracker, milk" above fluid milk, because once the desc/alt
+    and whole-word tiers tied, description length was the only
+    tiebreaker. CNF files foods headword-first, so a query word that
+    prefixes the description's FIRST word means this food IS the thing
+    typed; a word deeper in the description is an ingredient of it.
+    """
+    descriptions = _descriptions(search_foods("egg", index))
+    assert descriptions.index("Egg, chicken, whole, cooked, poached") < descriptions.index(
+        "Bagel, egg"
+    )
+
+
+def test_headword_tier_does_not_beat_whole_word_tier(index):
+    """A prefix-only headword must not outrank a real whole-word match.
+
+    For "egg", "Eggplant, raw" matches only because "eggplant" starts
+    with "egg"; "Bagel, egg" contains the actual word. The headword
+    tier sits BELOW the whole-word tier precisely so the bagel stays
+    the better answer to "egg".
+    """
+    descriptions = _descriptions(search_foods("egg", index))
+    assert descriptions.index("Bagel, egg") < descriptions.index("Eggplant, raw")
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +327,30 @@ def test_every_synonym_resolves():
             failures.append(f"{term!r} -> {result.match_type}, {len(result)} matches")
 
     assert not failures, "synonyms that no longer resolve:\n  " + "\n  ".join(failures)
+
+
+@pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")
+def test_real_cnf_basic_foods_rank_above_contains_foods():
+    """The headword tier, against the real CNF.
+
+    The fixture versions above prove the mechanism; this one proves it
+    against the actual descriptions an RD complained about (2026-08-07):
+    searching "egg" offered bagels before eggs and "milk" offered a
+    cracker before milk. Skipped without the raw CNF download, like the
+    other real-data guards.
+    """
+    frame = pd.read_csv(CNF_FOOD_NAME, encoding="utf-8-sig", low_memory=False)
+    index = build_index(frame)
+
+    milk = _descriptions(search_foods("milk", index))
+    cracker = next(d for d in milk if d.startswith("Cracker, milk"))
+    fluid = next(d for d in milk if d.startswith("Milk, fluid"))
+    assert milk.index(fluid) < milk.index(cracker)
+
+    egg = _descriptions(search_foods("egg", index))
+    bagel = next(d for d in egg if d.startswith("Bagel, egg"))
+    chicken_egg = next(d for d in egg if d.startswith("Egg, chicken"))
+    assert egg.index(chicken_egg) < egg.index(bagel)
 
 
 @pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")

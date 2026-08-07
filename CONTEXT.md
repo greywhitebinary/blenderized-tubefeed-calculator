@@ -583,6 +583,22 @@ author can compare their fixes or unblock themselves if stuck for too long.
       real box against real CNF — the module being correct and the app
       being *wired* to it are separate claims, and the old search was a
       perfectly correct substring match).
+    - **Ranking: headword tier added 2026-08-07** (RD pilot feedback:
+      "egg" offered "Bagel, egg" before chicken eggs; "milk" offered
+      "Cracker, milk" before fluid milk). Root cause: after the
+      desc-vs-alt and whole-word-vs-prefix tiers tied, *description
+      length* was the only tiebreaker, so a short composite food beat
+      the basic food. CNF files foods headword-first, so the new third
+      tier ranks a row whose FIRST word a query word prefixes ("Milk,
+      fluid, ..." IS milk) above one that merely contains the word
+      deeper in ("Cracker, milk" CONTAINS milk). The tier sits BELOW
+      the whole-word tier on purpose: a prefix-only headword
+      ("Eggplant, raw" for "egg") must not outrank a real whole-word
+      match ("Roll, dinner, egg"). Pinned by two fixture tests plus
+      `test_real_cnf_basic_foods_rank_above_contains_foods` (real-CNF
+      guard, skip-gated like the synonym guard). Debugging aid:
+      `scripts/try_food_search.py "<query>"` prints each result's rank
+      with the sort-key tiers that produced it. Tests 154 → **157**.
   - [x] **Multi-recipe files + the pipeline holes — DONE 2026-07-30.**
     - **Recipe files now hold every blend** (format v2, commit 3cf3bd9).
       Author: *"if there is an option to add multiple BTFs... the output
