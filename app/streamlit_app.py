@@ -1725,26 +1725,23 @@ if load_example_clicked:
         st.session_state.next_custom_code = -1
         st.session_state["load_example"] = True
 
-        # Nutrition Targets tab presets (patient/day label, delivery
-        # method, weight) -- all set here, BEFORE any of those widgets are
+        # Presets set here, BEFORE the widgets they belong to are
         # instantiated further down in this same script run (the §11
         # widget-state gotcha: this is the one and only window in which
         # `st.session_state[key] = ...` for an already-existing widget key
         # is legal).
         #
-        # TARGETS ARE DELIBERATELY NOT PRESET (author, 2026-08-08). The
-        # example day used to arrive with energy, protein and fluid
-        # already filled in, which meant the adequacy column was answered
-        # before anyone had done anything. Leaving them blank means the
-        # example loads as a day with no targets -- totals shown, no
-        # percentages -- and typing three numbers in turns the whole
-        # adequacy column on in front of you. That is the better
-        # demonstration, and it matches the rule that this app never
-        # supplies a target the RD did not enter.
+        # THE WHOLE NUTRITION TARGETS TAB IS LEFT EMPTY (author,
+        # 2026-08-08): no weight, no targets. The example used to arrive
+        # with 75 kg and three targets already filled in, which answered
+        # the adequacy column and the per-kg column before anyone had
+        # done anything. Loading a day with the totals shown and no
+        # percentages, then typing the numbers in, turns both columns on
+        # while you watch -- a better demonstration, and it matches the
+        # rule that this app never supplies a patient number the RD did
+        # not enter.
         st.session_state["recipe_name_input"] = "Example — James W (H&N RT wk 5)"
         st.session_state["delivery_method_input"] = "Syringe bolus"
-        st.session_state["weight_unit"] = "kg"
-        st.session_state["patient_weight_input"] = 75.0
         st.rerun()
     else:
         st.error("Could not find example foods in CNF.")
@@ -1983,14 +1980,21 @@ with targets_tab:
         key="patient_weight_input",
     )
     patient_weight_kg = _weight_entered if _weight_unit == "kg" else _weight_entered / 2.20462
-    _kg_note = (
-        f" = {patient_weight_kg:.1f} kg" if _weight_unit == "lbs" and _weight_entered > 0 else ""
-    )
+
+    # The kg conversion gets its own bold line directly under the input
+    # (author, 2026-08-08). It used to be tacked onto the end of the
+    # static caption below as " = 99.8 kg", where it opened on a bare
+    # equals sign and sat at the end of a sentence about something else,
+    # which is where a number goes to be missed. It is a live value and
+    # the caption is fixed guidance, so they are separate lines now.
+    if _weight_unit == "lbs" and _weight_entered > 0:
+        _w_col.markdown(f"**{patient_weight_kg:.1f} kg**")
+
     # "0", not "blank": this is a number_input seeded to 0.0 with
     # min_value=0.0, so an empty box is not a state the RD can reach --
     # clearing it snaps back to 0. Saying "blank" described something the
     # form cannot do (author feedback 2026-07-30).
-    st.caption(f"0 = not provided. Display only — not a target.{_kg_note}")
+    st.caption("0 = not provided. Display only — not a target.")
 
     st.subheader("Targets (optional)")
     st.caption("0 = no target; enter patient-specific values.")
