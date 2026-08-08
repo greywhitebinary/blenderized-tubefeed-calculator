@@ -1995,8 +1995,13 @@ with targets_tab:
         # sub-line of the input. The negative top margin closes
         # Streamlit's default block gap so it sits ON the field rather
         # than floating between the field and the guidance below it.
+        #
+        # Full-strength text colour, NOT the dimmed grey the explanatory
+        # captions use: this is a value the RD reads, not guidance about
+        # how to use the form. Small and bold, but not faded. Inheriting
+        # the colour also keeps it correct if the theme ever changes.
         _w_col.markdown(
-            f"<div style='font-size:0.75rem; line-height:1.1; opacity:0.75; "
+            f"<div style='font-size:0.75rem; line-height:1.1; "
             f"margin-top:-0.75rem;'><strong>{patient_weight_kg:.1f} kg</strong></div>",
             unsafe_allow_html=True,
         )
