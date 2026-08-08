@@ -1725,21 +1725,26 @@ if load_example_clicked:
         st.session_state.next_custom_code = -1
         st.session_state["load_example"] = True
 
-        # Nutrition Targets tab presets (patient/day label,
-        # delivery method, weight, and the three targets this case
-        # specifies) -- all set here, BEFORE any of those widgets are
+        # Nutrition Targets tab presets (patient/day label, delivery
+        # method, weight) -- all set here, BEFORE any of those widgets are
         # instantiated further down in this same script run (the §11
         # widget-state gotcha: this is the one and only window in which
         # `st.session_state[key] = ...` for an already-existing widget key
-        # is legal). Other target fields (fat/carb/fibre/sodium/etc.) are
-        # deliberately left untouched -> blank, per the case.
+        # is legal).
+        #
+        # TARGETS ARE DELIBERATELY NOT PRESET (author, 2026-08-08). The
+        # example day used to arrive with energy, protein and fluid
+        # already filled in, which meant the adequacy column was answered
+        # before anyone had done anything. Leaving them blank means the
+        # example loads as a day with no targets -- totals shown, no
+        # percentages -- and typing three numbers in turns the whole
+        # adequacy column on in front of you. That is the better
+        # demonstration, and it matches the rule that this app never
+        # supplies a target the RD did not enter.
         st.session_state["recipe_name_input"] = "Example — James W (H&N RT wk 5)"
         st.session_state["delivery_method_input"] = "Syringe bolus"
         st.session_state["weight_unit"] = "kg"
         st.session_state["patient_weight_input"] = 75.0
-        st.session_state["target_energy_kcal"] = 2250.0
-        st.session_state["target_protein_g"] = 100.0
-        st.session_state["target_fluid_mL"] = 2250.0
         st.rerun()
     else:
         st.error("Could not find example foods in CNF.")
@@ -1993,10 +1998,24 @@ with targets_tab:
     tc1, tc2 = st.columns(2)
     cols = (tc1, tc2)
     _registry_map = registry_by_name(DEFAULT_PACK)
-    for i, nutrient_name in enumerate(empty_targets()):
+
+    # Clinical entry order, not registry order (author, 2026-08-08).
+    # The registry is ordered like a Nutrition Facts panel, which is how
+    # a LABEL is laid out, not how a dietitian sets targets. These five
+    # are what gets decided first, so they come first; anything not named
+    # here keeps its registry order underneath.
+    _TARGET_ORDER = ("energy_kcal", "protein_g", "carbohydrate_g", "fat_g", "fluid_mL")
+    _ordered_target_names = [n for n in _TARGET_ORDER if n in targets] + [
+        n for n in targets if n not in _TARGET_ORDER
+    ]
+
+    for i, nutrient_name in enumerate(_ordered_target_names):
         col = cols[i % 2]
         if nutrient_name == "fluid_mL":
-            disp_label, unit, decimals = "Fluid", "mL", 0
+            # "Water", not "Fluid", on the target side: this is the water
+            # you decide to give. The report's "Fluid provided" row is the
+            # separate I&O total of everything that counted as fluid.
+            disp_label, unit, decimals = "Water", "mL", 0
         else:
             d = _registry_map[nutrient_name]
             disp_label, unit, decimals = d.label, d.unit, d.decimals
