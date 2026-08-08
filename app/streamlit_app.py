@@ -1988,7 +1988,18 @@ with targets_tab:
     # which is where a number goes to be missed. It is a live value and
     # the caption is fixed guidance, so they are separate lines now.
     if _weight_unit == "lbs" and _weight_entered > 0:
-        _w_col.markdown(f"**{patient_weight_kg:.1f} kg**")
+        # Sized explicitly rather than with st.caption: this page sets
+        # `html { font-size: 125% }`, so Streamlit's own caption size
+        # lands bigger here than it does anywhere else, and it still
+        # competed with the number it is annotating. 0.75rem reads as a
+        # sub-line of the input. The negative top margin closes
+        # Streamlit's default block gap so it sits ON the field rather
+        # than floating between the field and the guidance below it.
+        _w_col.markdown(
+            f"<div style='font-size:0.75rem; line-height:1.1; opacity:0.75; "
+            f"margin-top:-0.75rem;'><strong>{patient_weight_kg:.1f} kg</strong></div>",
+            unsafe_allow_html=True,
+        )
 
     # "0", not "blank": this is a number_input seeded to 0.0 with
     # min_value=0.0, so an empty box is not a state the RD can reach --
