@@ -72,6 +72,11 @@ def food_name_df() -> pd.DataFrame:
         (10, "Bagel, egg", "", 18),
         (11, "Egg, chicken, whole, cooked, poached", "", 3),
         (12, "Eggplant, raw", "", 11),
+        # A natural-language DISH name sharing the headword "egg": CNF
+        # files commodities inverted ("Egg, chicken, ...") but dishes as
+        # spoken, and this one is SHORTER than every real egg entry --
+        # the case that motivated the inverted-filing sort tier.
+        (13, "Egg Benedict", "", 22),
     ]
     return pd.DataFrame(
         rows,
@@ -207,6 +212,33 @@ def test_headword_tier_does_not_beat_whole_word_tier(index):
     """
     descriptions = _descriptions(search_foods("egg", index))
     assert descriptions.index("Bagel, egg") < descriptions.index("Eggplant, raw")
+
+
+def test_inverted_filing_ranks_above_dish_name_with_same_headword(index):
+    """The round-2 complaint (2026-08-07): "egg" led with Egg Benedict.
+
+    With the desc/whole-word/headword tiers all tied, length was the
+    only tiebreaker -- and "Egg Benedict" (12 chars) is shorter than
+    every real egg entry, because it is a dish name, not a commodity.
+    CNF files commodities inverted ("Egg, chicken, ..."), so a comma
+    straight after the headword is the signal. An RD who wants the dish
+    types the dish name.
+    """
+    descriptions = _descriptions(search_foods("egg", index))
+    assert descriptions.index("Egg, chicken, whole, cooked, poached") < descriptions.index(
+        "Egg Benedict"
+    )
+
+
+def test_inverted_tier_does_not_beat_headword_tier(index):
+    """An inverted CONTAINS-food still loses to a headword dish match.
+
+    "Bagel, egg" is inverted ("Bagel," ...) but only contains "egg";
+    "Egg Benedict" IS headword-egg. The headword tier sits above the
+    inverted tier, so the dish still outranks the bagel.
+    """
+    descriptions = _descriptions(search_foods("egg", index))
+    assert descriptions.index("Egg Benedict") < descriptions.index("Bagel, egg")
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +383,12 @@ def test_real_cnf_basic_foods_rank_above_contains_foods():
     bagel = next(d for d in egg if d.startswith("Bagel, egg"))
     chicken_egg = next(d for d in egg if d.startswith("Egg, chicken"))
     assert egg.index(chicken_egg) < egg.index(bagel)
+    # And the round-2 complaint: the dish "Egg Benedict" led the list
+    # because it is SHORTER than every real egg entry. The inverted
+    # tier ("Egg, chicken," is a commodity filing; "Egg Benedict" is a
+    # dish name) puts any chicken egg above it now.
+    benedict = next(d for d in egg if d.startswith("Egg Benedict"))
+    assert egg.index(chicken_egg) < egg.index(benedict)
 
 
 @pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")

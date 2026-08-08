@@ -173,6 +173,13 @@ class SearchIndex:
     #: "this food IS what you typed" apart from "this food CONTAINS what
     #: you typed" ("Cracker, milk"). "" for an untokenisable description.
     desc_headword: tuple[str, ...]
+    #: True when the description opens with "<headword>," -- CNF's
+    #: inverted commodity filing ("Egg, chicken, whole, cooked, ..."),
+    #: as opposed to a natural-language dish name ("Egg Benedict",
+    #: "Eggnog"). Both can share a headword, and length alone cannot
+    #: tell them apart: "Egg Benedict" is SHORTER than any real egg
+    #: entry. Among headword matches, inverted filings rank first.
+    desc_inverted: tuple[bool, ...]
     #: Every distinct word CNF uses, for the fuzzy layer to spell against.
     vocabulary: tuple[str, ...]
 
@@ -212,6 +219,10 @@ def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
     desc_words = [tokenize(t) for t in descriptions]
     desc_tokens = tuple(frozenset(words) for words in desc_words)
     desc_headword = tuple(words[0] if words else "" for words in desc_words)
+    desc_inverted = tuple(
+        bool(words) and str(raw).lower().startswith(words[0] + ",")
+        for raw, words in zip(descriptions, desc_words)
+    )
     alt_tokens = tuple(frozenset(tokenize(t)) for t in alternates)
 
     vocab: set[str] = set()
@@ -225,6 +236,7 @@ def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
         desc_tokens=desc_tokens,
         alt_tokens=alt_tokens,
         desc_headword=desc_headword,
+        desc_inverted=desc_inverted,
         vocabulary=tuple(sorted(vocab)),
     )
 
@@ -274,7 +286,15 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          deliberately: a prefix-only headword ("Eggplant, raw" for
          "egg") must not outrank a real whole-word match deeper in the
          description ("Roll, dinner, egg");
-      4. shorter descriptions first, because CNF's terse entries are its
+      4. CNF's inverted commodity filing ("Egg, chicken, ...") above
+         natural-language dish names ("Egg Benedict", "Eggnog"). Both
+         can share a headword, and tier 5 alone cannot tell them apart
+         -- "Egg Benedict" is SHORTER than every real egg entry, which
+         is how it ranked #1 for "egg" until this tier existed
+         (2026-08-07 RD feedback, round 2). An RD looking for a dish
+         types the dish ("chicken a la king"); a bare commodity word
+         means the commodity;
+      5. shorter descriptions first, because CNF's terse entries are its
          basic foods and the long ones are heavily-qualified variants.
     """
     scored: list[tuple[tuple, int]] = []
@@ -303,6 +323,7 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
                 0 if matched_in_desc else 1,
                 0 if exact_words == len(query_tokens) else 1,
                 0 if any(headword.startswith(t) for t in query_tokens) else 1,
+                0 if index.desc_inverted[position] else 1,
                 len(str(description)),
             )
             scored.append((sort_key, position))

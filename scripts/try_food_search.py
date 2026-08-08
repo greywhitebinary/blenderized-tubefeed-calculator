@@ -2,7 +2,7 @@
 
 NOT a CI check -- a debugging aid for "I searched X and didn't like the
 ranked list". Runs the real search against the real CNF and prints, for
-each result, WHERE it ranked and WHY (the three sort-key tiers from
+each result, WHERE it ranked and WHY (the sort-key tiers from
 src/food_search.py::_rows_matching):
 
     1. [desc] vs [alt]   -- matched in the CNF description, or only in
@@ -12,7 +12,10 @@ src/food_search.py::_rows_matching):
     3. head vs (absent)  -- a query word prefixes the description's FIRST
                             word: "Milk, fluid, ..." IS milk, while
                             "Cracker, milk" merely CONTAINS milk
-    4. description length (shorter ranks first) breaks remaining ties
+    4. inv vs (absent)   -- inverted commodity filing ("Egg, chicken,")
+                            ranks above a natural-language dish name
+                            ("Egg Benedict") sharing the same headword
+    5. description length (shorter ranks first) breaks remaining ties
 
 Usage:
     python scripts/try_food_search.py "chicken egg" "egg, chicken" egg
@@ -59,7 +62,8 @@ def explain(index, query_tokens, frame_row_position):
     where = "desc" if matched_in_desc else "alt "
     how = "exact " if exact_words == len(query_tokens) else "prefix"
     head = "head" if any(headword.startswith(t) for t in query_tokens) else "    "
-    return f"[{where}|{how}|{head}]"
+    inv = "inv " if index.desc_inverted[frame_row_position] else "    "
+    return f"[{where}|{how}|{head}|{inv}]"
 
 
 def main():

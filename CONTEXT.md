@@ -284,7 +284,7 @@ it.
 |---|---|---|
 | **1 — Plan It** | `BUSINESS_CASE.md` posted publicly | Concept, market, requirements, methodology |
 | **2 — Core Feature** | Working Streamlit app | Build calculator, measures, targets/report, Streamlit UI |
-| **3 — Build to Last** | Tests, CI, public deploy | 154 pytest tests + 8 CI-gated checks, GitHub Actions with blocking lint, dev/runtime dependency split, Streamlit Cloud (done 2026-07-23), recipe record (multi-blend files), water ledger, three-layer food search, save/reopen a day, label-photo entry |
+| **3 — Build to Last** | Tests, CI, public deploy | 159 pytest tests + 8 CI-gated checks, GitHub Actions with blocking lint, dev/runtime dependency split, Streamlit Cloud (done 2026-07-23), recipe record (multi-blend files), water ledger, three-layer food search, save/reopen a day, label-photo entry |
 | **4 — Ship + Pitch** | Live app + write-up | Polish from RD pilot feedback, validation appendix, AI-assist features (label-photo extraction, PDF → formulas), possible JSON save/load |
 
 > **One definition of Week 3.** This row, `BUSINESS_CASE.md` §12, and
@@ -543,7 +543,7 @@ author can compare their fixes or unblock themselves if stuck for too long.
       finds ground beef.
     - **Layer 3 — curated synonyms**, runs *before* fuzzy: a human
       statement about this database outranks a machine's spelling
-      hunch. 19 rows, every one verified against real CNF. Only for
+      hunch. 22 rows, every one verified against real CNF. Only for
       terms CNF holds under neither spelling (courgette → zucchini,
       prawns → shrimp, mangetout → peas edible-podded).
     - **Layer 2 — typo tolerance**, per word, via stdlib `difflib`
@@ -599,6 +599,28 @@ author can compare their fixes or unblock themselves if stuck for too long.
       guard, skip-gated like the synonym guard). Debugging aid:
       `scripts/try_food_search.py "<query>"` prints each result's rank
       with the sort-key tiers that produced it. Tests 154 → **157**.
+    - **Ranking round 2: inverted-filing tier + 3 synonyms, same day.**
+      The headword tier alone still let the DISH "Egg Benedict" (12
+      chars) lead "egg" over every real egg entry — length cannot tell
+      a short dish name from a short commodity. New tier 4: CNF files
+      commodities inverted ("Egg, chicken," — comma straight after the
+      headword) but dishes as spoken ("Egg Benedict", "Eggnog"), so
+      inverted filings rank above natural-language names sharing the
+      headword; it sits BELOW the headword tier (an inverted
+      contains-food like "Bagel, egg" still loses to a headword dish).
+      Author's reasoning, recorded: *"for prepared foods people will
+      type something specific like chicken a la king."* A 26-query
+      spelling audit the same session found CNF's own parenthetical
+      variants (donut, catsup, cilantro, swede, pierogi) and the fuzzy
+      layer (omelette→omelet, pitta→pita) already cover nearly
+      everything; the three genuine gaps became synonym rows:
+      **houmous→hummus, liquorice→licorice, perogies→pierogi**
+      (19 → 22 rows; the resolve/shadow guards cover them
+      automatically). A curated "common preparation" ranking (boiled
+      egg above dried yolk) was considered and REJECTED by the author
+      as unmaintainable — nothing in CNF's data encodes commonness, and
+      the search never auto-selects, so a scroll is the worst cost.
+      Tests 157 → **159**.
   - [x] **Multi-recipe files + the pipeline holes — DONE 2026-07-30.**
     - **Recipe files now hold every blend** (format v2, commit 3cf3bd9).
       Author: *"if there is an option to add multiple BTFs... the output
@@ -752,7 +774,7 @@ author can compare their fixes or unblock themselves if stuck for too long.
     - It also exposed the photo summary being gated on having an API key
       — it described values already in the form, so it should never have
       depended on the client. Moved.
-  - Tests **154**, checks **8**, ruff and black clean and blocking.
+  - Tests **159**, checks **8**, ruff and black clean and blocking.
 - [ ] Week 4 — Ship + Pitch — NOT STARTED (polish from RD pilot feedback,
   validation appendix, and the AI-assist features moved here from Week 3:
   label-photo extraction and PDF → formulas extraction. Saving/loading a
