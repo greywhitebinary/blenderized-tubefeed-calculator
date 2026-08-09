@@ -657,7 +657,7 @@ key held in deployment secrets, never in the repo.
 | **1 — Plan It** | This document posted publicly | Concept, market, requirements, methodology — including the Intake Record model (§7.3), the per-country nutrient registry (Appendix C), and the AI roadmap (§7) |
 | **2 — Core Feature** | Working Streamlit app | Data layer (CNF load, registry); calculator (blends → densities); Intake Record → daily totals; two-tier adequacy + fluids ledger; comparator; NFt-lookalike custom-food entry; chart note; export |
 | **3 — Build to Last** | Tests, CI, public deploy, USDA | pytest suite, GitHub Actions, runtime/dev dependency split, Streamlit Cloud deploy for RD pilot testing (**done 2026-07-23** — live at <https://btfcalc.streamlit.app>), recipe record, water ledger, three-layer food search |
-| **4 — Ship + Pitch** | Live app + write-up | Polish from pilot feedback, validation appendix, AI-assist edges (label-photo extraction, PDF → formulas extraction), possible JSON save/load |
+| **4 — Ship + Pitch** | Live app + write-up + demo video | Polish from pilot feedback, validation appendix, AI-assist edges (label-photo extraction, PDF → formulas extraction), possible JSON save/load; 3-minute demo video (**2026-08-09** — <https://vimeo.com/1216832087>), linked from the README and playable in the app itself |
 
 > **Scope reconciled 2026-07-30.** The AI-assist features were originally
 > listed under Week 3 here while `HANDOFF.md` Phase 2 omitted them —

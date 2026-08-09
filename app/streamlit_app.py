@@ -56,6 +56,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 # Ensure project root is on sys.path so `src` package is importable
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -1164,12 +1165,20 @@ st.markdown(
     }
     /* Trim Streamlit's large default top padding on the main content
        block (it reserves room to clear the top toolbar). The default
-       leaves a big empty gap above the first element; 2.5rem keeps a
+       leaves a big empty gap above the first element; this keeps a
        little breathing room below the Cloud toolbar without the void.
-       Both selectors cover Streamlit version drift in the testid name. */
+       Both selectors cover Streamlit version drift in the testid name.
+
+       Raised 2.5rem -> 3.75rem (author, 2026-08-09) now that the first
+       element is the onboarding button row. Streamlit's header is a
+       fixed, transparent 3.75rem bar that page content scrolls under,
+       so any padding below that height lets the toolbar clip whatever
+       comes first. 2.5rem was fine when the first element was a text
+       input whose LABEL took the damage; a bordered button gets its top
+       edge sliced off and looks broken. Tune this one number. */
     .stApp [data-testid="stMainBlockContainer"],
     .stApp .block-container {
-        padding-top: 2.5rem !important;
+        padding-top: 3.75rem !important;
     }
     /* Tab-label sizing, version-resilient. Streamlit's tab DOM attribute
        has drifted across releases (data-baseweb="tab" on older builds,
@@ -1361,13 +1370,63 @@ def _food_search_index(group_code: int | None):
 
 
 # ===========================================================================
-# TOP BAR — chrome only: patient/day label, load example. No sidebar.
+# TOP BAR — onboarding row (demo, example), then patient/day label and
+# "Open a saved day". No sidebar.
 # ===========================================================================
 
-top_l, top_r = st.columns([4, 1])
+
+# Demo video, in a modal rather than inline (author, 2026-08-09): a 16:9
+# player is a tall control, and a dialog is an overlay, so it reflows
+# nothing. Same reasoning that put "Open a saved day" in a popover.
+#
+# components.html, not st.video(): st.video special-cases YouTube URLs
+# only ("a URL for a hosted video file, including YouTube URLs"), and a
+# Vimeo page URL is neither, so it would render an empty player.
+#
+# The <style> line is load-bearing, not decoration. components.html drops
+# the markup into a bare document whose <body> has auto height, so an
+# iframe asking for height:100% resolves against nothing and collapses to
+# the browser's default 300x150 -- a postage-stamp video floating in a
+# tall white box. Giving html/body a real height is what makes 100% mean
+# the 430px asked for below. 430 pairs with width="medium" (750px max)
+# for roughly 16:9 without a scrollbar.
+@st.dialog("How this works", width="medium")
+def _show_demo_video() -> None:
+    components.html(
+        "<style>html,body{margin:0;height:100%;overflow:hidden}</style>"
+        '<iframe src="https://player.vimeo.com/video/1216832087'
+        '?badge=0&autopause=0&player_id=0&app_id=58479" '
+        'style="width:100%;height:100%;border:0;display:block;" '
+        'allow="autoplay; fullscreen; picture-in-picture" '
+        'title="BTF Tool Demonstration"></iframe>',
+        height=430,
+    )
+    # A blocked third-party iframe fails silently as an empty box, and an
+    # RD on a locked-down hospital network is exactly who that happens
+    # to. The fallback link is the whole point of this caption.
+    st.caption("Trouble playing? [Watch it on Vimeo](https://vimeo.com/1216832087) — 3 minutes.")
+
+
+# Onboarding strip, above everything (author, 2026-08-09). These two are
+# grouped because of WHO needs them, not because they are both chrome:
+# the demo and the example are for someone who has never seen the tool,
+# and they read as a sequence -- watch it, then load the same day and
+# poke at it. "Open a saved day" stays in the top right instead, because
+# it is a returning user's action (they have an .xlsx from last visit),
+# and mixing the two audiences in one stack is what made the top-right
+# column look like a pile of unrelated boxes.
+with st.container(horizontal=True):
+    _demo_clicked = st.button("▶️ How this works — a 3-minute demo")
+    load_example_clicked = st.button("📋 Load example day")
+if _demo_clicked:
+    _show_demo_video()
+
+# vertical_alignment="bottom" instead of the old st.write("") spacer: the
+# spacer was guessing at the height of the text input's label and landing
+# a few pixels off, which is what made the popover sit crooked next to it
+# (author, 2026-08-09). Aligning the columns' bottoms is exact.
+top_l, top_r = st.columns([4, 1], vertical_alignment="bottom")
 with top_r:
-    st.write("")  # vertical spacer so the button aligns with the text input
-    load_example_clicked = st.button("📋 Load example day", width="stretch")
     with st.popover("📂 Open a saved day", width="stretch"):
         # In a popover so the top bar keeps its shape -- the UI is pinned
         # (CONTEXT.md §9), and a file uploader is a tall control.
@@ -3348,15 +3407,47 @@ with record_tab:
 # professional publishing a clinical tool needs the "not YOUR dietitian"
 # distinction stated where users actually are -- which is here, in the
 # app, not only in the README that most of them will never open.
+#
+# The contact line (author, 2026-08-09) is here for that same reason --
+# the README has a whole "Get in touch" section the app had no trace of.
+# Deliberately NO email address: it is already public in the README, but
+# a mailto in a footer on a public app is a scraper magnet, and both of
+# these routes have a human gate in front of them.
+#
+# Two columns were tried here and dropped (author, 2026-08-09). They were
+# a fix for a wall of four dense grey lines, but the rewording below is
+# what actually fixed that, so the split stopped earning its complexity.
+# Stacked also restores the ordering that matters: contact sits AFTER
+# "ask their own physician", so the limit is read before the invitation
+# to write.
+#
+# The wording was reworked without softening anything (author, 2026-08-09).
+# Every obligation survives: informs-not-replaces, no substitute for
+# advice, no dietitian-client relationship, ask their own provider, don't
+# delay it. The professional terms ("registered dietitian", "qualified
+# health provider") are kept in full -- they are the precise ones.
+#
+# Two changes worth keeping: "gives estimates" is gone, because the
+# arithmetic is exact and it is the reference food data underneath that
+# is approximate, so the word was claiming the wrong kind of doubt. And
+# "anyone is welcome to use it" moved UP into the first paragraph, where
+# audience belongs. It used to open the second, which made the limits
+# paragraph start on a concession and read as a continuation of the
+# first rather than its own point. The paragraphs now have separate
+# jobs: what this is and how to use it, then what it is not.
 st.divider()
 st.caption(
-    "⚠️ **Under development.** A calculator for dietitians and the teams supporting blenderized "
-    "tube feeding. It gives estimates to inform clinical judgment, not to replace it, so check "
-    "the numbers before you act on them.  \n"
-    "Anyone is welcome to use it, but it is not a substitute for professional medical advice, "
-    "diagnosis or treatment, and using it creates no dietitian–client or other professional "
-    "relationship. For anything about a specific person's care, ask their own physician, "
-    "registered dietitian or qualified health provider, and never disregard or delay that advice "
-    "because of something calculated here.  \n"
-    "Built on the Canadian Nutrient File (CNF) 2026."
+    "- ⚠️ **Under development.** A calculator for dietitians and the teams supporting "
+    "blenderized tube feeding, and anyone is welcome to use it. It is built to inform "
+    "clinical judgment, not to replace it. Please use with caution and check numbers "
+    "before acting on them.\n"
+    "- Using this tool creates no dietitian–client or other professional relationship, and "
+    "it is no substitute for professional medical advice, diagnosis or treatment. For "
+    "anything about a specific person's care, ask their own physician, registered "
+    "dietitian or qualified health provider, and never delay that advice because of "
+    "something calculated here.\n"
+    "- Built on the Canadian Nutrient File (CNF) 2026.\n"
+    "- Issues or feedback? Please [open an issue at GitHub]"
+    "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
+    "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/)."
 )

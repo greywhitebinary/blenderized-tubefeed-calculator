@@ -8,6 +8,9 @@ Built for registered dietitians, on the **Canadian Nutrient File (CNF)
 
 ### ▶ Try it: **https://btfcalc.streamlit.app**
 
+**[Watch the 3-minute demo](https://vimeo.com/1216832087)** — the tool from
+targets to chart note.
+
 No install, no account, nothing to set up. Click **"Load example day"** in
 the top row to see a worked case with a nine-ingredient blend, a
 commercial formula, water flushes and one oral food.
