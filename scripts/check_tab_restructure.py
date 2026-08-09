@@ -68,7 +68,12 @@ def main() -> None:
     print("flow test OK: collapsed expander, result still reachable")
 
     # The example day produces a chart note and a non-empty adequacy table.
-    assert any("Provides ~" in (c.value or "") for c in at.code), "no chart note"
+    # Anchored on the summary headings rather than the timeline, because
+    # the headings are the part with a fixed shape -- the timeline text
+    # changes with whatever the example day happens to contain.
+    note_text = "\n".join(c.value or "" for c in at.code)
+    for heading in ("Feed regimen:", "Oral Intake:", "Total daily intake:"):
+        assert heading in note_text, f"chart note missing {heading!r}"
     assert len(at.dataframe) > 0
     print("chart note + tables OK")
 
