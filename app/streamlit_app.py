@@ -1169,13 +1169,9 @@ st.markdown(
        little breathing room below the Cloud toolbar without the void.
        Both selectors cover Streamlit version drift in the testid name.
 
-       Raised 2.5rem -> 3.75rem (author, 2026-08-09) now that the first
-       element is the onboarding button row. Streamlit's header is a
-       fixed, transparent 3.75rem bar that page content scrolls under,
-       so any padding below that height lets the toolbar clip whatever
-       comes first. 2.5rem was fine when the first element was a text
-       input whose LABEL took the damage; a bordered button gets its top
-       edge sliced off and looks broken. Tune this one number. */
+       3.75rem matches the height of Streamlit's fixed header, which
+       page content scrolls under -- anything less clips the first
+       element. Tune this one number. */
     .stApp [data-testid="stMainBlockContainer"],
     .stApp .block-container {
         padding-top: 3.75rem !important;
@@ -1375,21 +1371,10 @@ def _food_search_index(group_code: int | None):
 # ===========================================================================
 
 
-# Demo video, in a modal rather than inline (author, 2026-08-09): a 16:9
-# player is a tall control, and a dialog is an overlay, so it reflows
-# nothing. Same reasoning that put "Open a saved day" in a popover.
-#
-# components.html, not st.video(): st.video special-cases YouTube URLs
-# only ("a URL for a hosted video file, including YouTube URLs"), and a
-# Vimeo page URL is neither, so it would render an empty player.
-#
-# The <style> line is load-bearing, not decoration. components.html drops
-# the markup into a bare document whose <body> has auto height, so an
-# iframe asking for height:100% resolves against nothing and collapses to
-# the browser's default 300x150 -- a postage-stamp video floating in a
-# tall white box. Giving html/body a real height is what makes 100% mean
-# the 430px asked for below. 430 pairs with width="medium" (750px max)
-# for roughly 16:9 without a scrollbar.
+# components.html, not st.video(): st.video handles YouTube URLs only, so
+# a Vimeo one renders an empty player. The <style> line is load-bearing --
+# without a real height on html/body the iframe's height:100% collapses to
+# the browser default 300x150.
 @st.dialog("How this works", width="medium")
 def _show_demo_video() -> None:
     components.html(
@@ -1401,30 +1386,20 @@ def _show_demo_video() -> None:
         'title="BTF Tool Demonstration"></iframe>',
         height=430,
     )
-    # A blocked third-party iframe fails silently as an empty box, and an
-    # RD on a locked-down hospital network is exactly who that happens
-    # to. The fallback link is the whole point of this caption.
+    # Fallback: a blocked iframe fails silently as an empty box.
     st.caption("Trouble playing? [Watch it on Vimeo](https://vimeo.com/1216832087) — 3 minutes.")
 
 
-# Onboarding strip, above everything (author, 2026-08-09). These two are
-# grouped because of WHO needs them, not because they are both chrome:
-# the demo and the example are for someone who has never seen the tool,
-# and they read as a sequence -- watch it, then load the same day and
-# poke at it. "Open a saved day" stays in the top right instead, because
-# it is a returning user's action (they have an .xlsx from last visit),
-# and mixing the two audiences in one stack is what made the top-right
-# column look like a pile of unrelated boxes.
+# Onboarding pair: both are for someone who has never seen the tool.
+# "Open a saved day" stays top right as the returning-user action.
 with st.container(horizontal=True):
     _demo_clicked = st.button("▶️ How this works — a 3-minute demo")
     load_example_clicked = st.button("📋 Load example day")
 if _demo_clicked:
     _show_demo_video()
 
-# vertical_alignment="bottom" instead of the old st.write("") spacer: the
-# spacer was guessing at the height of the text input's label and landing
-# a few pixels off, which is what made the popover sit crooked next to it
-# (author, 2026-08-09). Aligning the columns' bottoms is exact.
+# vertical_alignment="bottom" aligns the popover with the text input
+# exactly; the old st.write("") spacer only guessed at the label height.
 top_l, top_r = st.columns([4, 1], vertical_alignment="bottom")
 with top_r:
     with st.popover("📂 Open a saved day", width="stretch"):
@@ -1788,22 +1763,9 @@ if load_example_clicked:
         # `st.session_state[key] = ...` for an already-existing widget key
         # is legal).
         #
-        # Weight and targets, restored 2026-08-09. They were emptied on
-        # 2026-08-08 so the demo video could show the adequacy and per-kg
-        # columns switching on as the numbers were typed in live; the
-        # video is recorded, so the example goes back to arriving whole.
-        # These are the figures spoken in it, and they should stay in
-        # step with it: 165 lb, 2250 kcal, 100 g protein, 2250 mL water.
-        #
-        # This is example data, not a patient number the app invented --
-        # the rule it has to honour is that nothing is supplied for a
-        # REAL day, and a day the RD explicitly asked to load is exactly
-        # the case where filling it in is the point.
-        #
-        # Every other target is zeroed rather than left alone, because
-        # "Load example day" warns that it replaces the targets on
-        # screen; leaving a stale sodium target from someone's earlier
-        # work would quietly make that warning a lie.
+        # These figures are spoken in the demo video -- keep them in step
+        # with it. Other targets are zeroed because "Load example day"
+        # warns that it replaces the targets on screen.
         st.session_state["patient_weight_input"] = 165.0
         st.session_state["weight_unit"] = "lbs"
         for _tname in empty_targets():
@@ -3247,27 +3209,10 @@ with record_tab:
         # Energy/Protein/CHO/Fat/Fluids in that order, and the feed line
         # showing its fluid split.
         #
-        # "Fluids" is counted differently on the two lines, because the
-        # clinic counts them differently (author, 2026-08-09):
-        #
-        #   Feed line -- free water + water flushes. Everything that goes
-        #   down the tube is liquid, and tap water stirred into a blend
-        #   plus the moisture the foods brought with them is all just
-        #   free water once it's blended. The bracket therefore adds up
-        #   to the number in front of it, and it's the same arithmetic as
-        #   the "Where the Water Came From" ledger.
-        #
-        #   Oral line -- only rows the RD ticked "counts as fluid", i.e.
-        #   fluid_provided_mL. Free water from food is NOT charted as
-        #   oral fluid: nobody charts the water in a banana. The obvious
-        #   drinks (juice, water, milk) get the tick and land here at
-        #   full volume; everything else contributes 0. On a renal or
-        #   heart-failure day where every mL matters, the food moisture
-        #   is still visible on its own line in the water ledger above,
-        #   it just isn't silently folded into a charted fluid figure.
-        #
-        # Total is the two lines added, so it stays internally consistent
-        # rather than being a third definition.
+        # "Fluids" is counted per line the way the clinic counts it, not
+        # by one rule: feed = free water + flushes (so the bracket adds
+        # up), oral = only rows ticked "counts as fluid", because nobody
+        # charts the water in a banana. Total is the two added.
         _tube_sub = intake_totals.subtotals.get(TUBE_FEED_LABEL, {}).get("nutrient_totals", {})
         _oral_family = intake_totals.subtotals.get(FOOD_DRINK_LABEL, {})
         _oral_sub = _oral_family.get("nutrient_totals", {})
@@ -3429,27 +3374,8 @@ with record_tab:
 # a mailto in a footer on a public app is a scraper magnet, and both of
 # these routes have a human gate in front of them.
 #
-# Two columns were tried here and dropped (author, 2026-08-09). They were
-# a fix for a wall of four dense grey lines, but the rewording below is
-# what actually fixed that, so the split stopped earning its complexity.
-# Stacked also restores the ordering that matters: contact sits AFTER
-# "ask their own physician", so the limit is read before the invitation
-# to write.
-#
-# The wording was reworked without softening anything (author, 2026-08-09).
-# Every obligation survives: informs-not-replaces, no substitute for
-# advice, no dietitian-client relationship, ask their own provider, don't
-# delay it. The professional terms ("registered dietitian", "qualified
-# health provider") are kept in full -- they are the precise ones.
-#
-# Two changes worth keeping: "gives estimates" is gone, because the
-# arithmetic is exact and it is the reference food data underneath that
-# is approximate, so the word was claiming the wrong kind of doubt. And
-# "anyone is welcome to use it" moved UP into the first paragraph, where
-# audience belongs. It used to open the second, which made the limits
-# paragraph start on a concession and read as a continuation of the
-# first rather than its own point. The paragraphs now have separate
-# jobs: what this is and how to use it, then what it is not.
+# Contact sits AFTER "ask their own physician" on purpose: the limit is
+# read before the invitation to write.
 st.divider()
 st.caption(
     "- ⚠️ **Under development.** A calculator for dietitians and the teams supporting "

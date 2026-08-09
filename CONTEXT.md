@@ -856,23 +856,16 @@ author can compare their fixes or unblock themselves if stuck for too long.
   means deliberately settled, not abandoned.
   - Parked, not cancelled: the volume-needed planning aid in the Daily
     Intake Record; the Excel export usefulness review.
-  - **Delivered 2026-08-09: the two-section chart note.** It shipped in
-    the opposite order to the way it was parked — the chronological
-    record first, then a summary — and the summary is three lines by
-    category (Feed regimen / Oral Intake / Total daily intake), each
-    carrying Energy, Protein, CHO, Fat and Fluids. "Fluids" is counted
-    per category the way the clinic counts it, not by one uniform rule:
-    see `FEED_LOG_REWORK.md` §3.5 for why, and for why the feed line's
-    bracket adds up while the oral line excludes food moisture.
-  - **Layout revised 2026-08-09 at the author's direction** — the "as new
-    features land" case, not a break in the pin. The top bar is now split
-    by audience: an onboarding row (demo video, Load example day) above
-    the patient/day label, with "Open a saved day" left in the top right
-    as the returning-user action. Main-block top padding went 2.5rem ->
-    3.75rem so the first element clears Streamlit's fixed 3.75rem header
-    instead of being clipped by it. The footer was reworded, became four
-    bullets, and gained a contact line (GitHub issues + LinkedIn, no
-    email address — a mailto on a public app is a scraper magnet).
+  - **Delivered 2026-08-09: the two-section chart note** — the
+    chronological record, then three summary lines by category (Feed
+    regimen / Oral Intake / Total daily intake). See
+    `FEED_LOG_REWORK.md` §3.5 for how "Fluids" is counted per category.
+  - **Layout revised 2026-08-09 at the author's direction** (the "as new
+    features land" case, not a break in the pin): onboarding row (demo
+    video, Load example day) above the patient/day label, "Open a saved
+    day" left top right; top padding 2.5rem → 3.75rem to clear
+    Streamlit's header; footer reworded to four bullets with a contact
+    line (GitHub issues + LinkedIn, no email).
 - ~~**`scripts/check_tab_restructure.py` is FAILING on `main`**~~ —
   **RESOLVED 2026-07-30 (commit e9b4f33)**, a one-character fix
   (`o.split(" — ", 1)[-1]` -> `[0]`). Kept because the *cause* is the

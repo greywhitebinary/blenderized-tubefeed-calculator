@@ -282,19 +282,14 @@ scope expansion agreed in the follow-up conversation:
 
   Total daily intake: Energy Xkcal, Protein Xg, CHO Xg, Fat Xg, Fluids Xml.
   ```
-  Categories and their contributions, which is what charting actually
-  asks for (author, 2026-08-09). "Fluids" is counted the way each
-  category is counted clinically, not by one uniform rule: the feed line
-  is free water + flushes (everything down the tube is liquid, and tap
-  water stirred into a blend is free water once it's blended), so the
-  bracket adds up to the number in front of it. The oral line counts
-  only rows ticked "counts as fluid" -- the obvious drinks -- because
-  nobody charts the water in an apple. That convention exists because
-  food moisture was historically unmeasurable; the app can measure it
-  now, so it stays visible on its own line in the water ledger rather
-  than being silently folded into a charted fluid figure where it would
-  disagree with the nurse's I&O sheet. Total is the two lines added, not
-  a third definition.
+  Categories and their contributions, which is what charting asks for
+  (author, 2026-08-09). "Fluids" is counted per category the way the
+  clinic counts it, not by one uniform rule: the feed line is free water
+  + flushes, so the bracket adds up to the number in front of it; the
+  oral line counts only rows ticked "counts as fluid", because nobody
+  charts the water in an apple. Food moisture stays visible on its own
+  line in the water ledger instead, where it can't silently disagree
+  with the nurse's I&O sheet. Total is the two lines added.
 
 ### 3.6 Docs (same session as implementation, separate commit)
 
