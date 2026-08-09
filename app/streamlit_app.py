@@ -114,6 +114,7 @@ from src.intake import (
     TUBE_FEED_LABEL,
     FOOD_DRINK_LABEL,
     TOTAL_LABEL,
+    WATER_FLUSH_LABEL,
 )
 
 # ---------------------------------------------------------------------------
@@ -3157,30 +3158,74 @@ with record_tab:
         ]
         _oral_note_rows = [r for r in _ordered_note_rows if r["source_type"] == "oral"]
 
-        _note_lines = []
+        _timeline_bits = []
         if _tube_note_rows:
-            _note_lines.append(
+            _timeline_bits.append(
                 f"BTF via {delivery_method}: "
                 + "; ".join(_format_tube_feed_bits(_tube_note_rows))
                 + "."
             )
         if _oral_note_rows:
-            _note_lines.append("Oral: " + "; ".join(_format_oral_bits(_oral_note_rows)) + ".")
+            _timeline_bits.append("Oral: " + "; ".join(_format_oral_bits(_oral_note_rows)) + ".")
 
-        _daily_kcal = intake_totals.nutrient_totals.get("energy_kcal", 0.0)
-        _daily_cho = intake_totals.nutrient_totals.get("carbohydrate_g", 0.0)
-        _daily_protein = intake_totals.nutrient_totals.get("protein_g", 0.0)
-        _daily_fat = intake_totals.nutrient_totals.get("fat_g", 0.0)
-        _weight_bit = (
-            f" ({_daily_protein / patient_weight_kg:.1f} g/kg)" if patient_weight_kg > 0 else ""
-        )
-        _note_lines.append(
-            f"Provides ~{_daily_kcal:.0f} kcal, {_daily_cho:.0f} g CHO, "
-            f"{_daily_protein:.0f} g protein{_weight_bit}, {_daily_fat:.0f} g fat."
-        )
-        _note_lines.append(f"Fluids provided: {intake_totals.fluid_provided_mL:.0f} mL/day.")
-        _note_lines.append(
-            f"Free water from foods and feeds: ~{intake_totals.free_water_mL:.0f} mL/day."
+        # --- The three summary lines, in the author's charting format
+        # (2026-08-09): feed regimen, oral intake, total -- each one
+        # Energy/Protein/CHO/Fat/Fluids in that order, and the feed line
+        # showing its fluid split.
+        #
+        # "Fluids" is counted differently on the two lines, because the
+        # clinic counts them differently (author, 2026-08-09):
+        #
+        #   Feed line -- free water + water flushes. Everything that goes
+        #   down the tube is liquid, and tap water stirred into a blend
+        #   plus the moisture the foods brought with them is all just
+        #   free water once it's blended. The bracket therefore adds up
+        #   to the number in front of it, and it's the same arithmetic as
+        #   the "Where the Water Came From" ledger.
+        #
+        #   Oral line -- only rows the RD ticked "counts as fluid", i.e.
+        #   fluid_provided_mL. Free water from food is NOT charted as
+        #   oral fluid: nobody charts the water in a banana. The obvious
+        #   drinks (juice, water, milk) get the tick and land here at
+        #   full volume; everything else contributes 0. On a renal or
+        #   heart-failure day where every mL matters, the food moisture
+        #   is still visible on its own line in the water ledger above,
+        #   it just isn't silently folded into a charted fluid figure.
+        #
+        # Total is the two lines added, so it stays internally consistent
+        # rather than being a third definition.
+        _tube_sub = intake_totals.subtotals.get(TUBE_FEED_LABEL, {}).get("nutrient_totals", {})
+        _oral_family = intake_totals.subtotals.get(FOOD_DRINK_LABEL, {})
+        _oral_sub = _oral_family.get("nutrient_totals", {})
+        _flush_mL = intake_totals.water_sources.get(WATER_FLUSH_LABEL, 0.0)
+
+        def _macro_bits(totals: dict, fluid_mL: float) -> str:
+            return (
+                f"Energy {totals.get('energy_kcal', 0.0):.0f}kcal, "
+                f"Protein {totals.get('protein_g', 0.0):.0f}g, "
+                f"CHO {totals.get('carbohydrate_g', 0.0):.0f}g, "
+                f"Fat {totals.get('fat_g', 0.0):.0f}g, "
+                f"Fluids {fluid_mL:.0f}ml"
+            )
+
+        _tube_free_water = _tube_sub.get("water_g", 0.0)
+        _tube_fluid = _tube_free_water + _flush_mL
+        _oral_fluid = _oral_family.get("fluid_provided_mL", 0.0)
+
+        _summary_lines = []
+        if _tube_note_rows:
+            _summary_lines.append(
+                "Feed regimen: "
+                + _macro_bits(_tube_sub, _tube_fluid)
+                + f" ({_tube_free_water:.0f}ml from free water "
+                f"+ {_flush_mL:.0f}ml from water flushes)."
+            )
+        if _oral_note_rows:
+            _summary_lines.append("Oral Intake: " + _macro_bits(_oral_sub, _oral_fluid) + ".")
+        _summary_lines.append(
+            "Total daily intake: "
+            + _macro_bits(intake_totals.nutrient_totals, _tube_fluid + _oral_fluid)
+            + "."
         )
 
         # Flow test, per blend that actually appears in today's Intake
@@ -3188,6 +3233,7 @@ with record_tab:
         # wrong recipe is worse than no note at all -- and a day can draw
         # on more than one blend. Blends not fed today are omitted: this
         # note documents the day, not the recipe library.
+        _flow_test_bits = []
         _blend_ids_fed = {
             r["source_id"] for r in st.session_state.intake_log if r["source_type"] == "blend"
         }
@@ -3203,11 +3249,20 @@ with record_tab:
             _ft_date = _ft.get("date")
             _date_bit = f" {_ft_date.isoformat()}" if _ft_date else ""
             _notes_bit = f" — {_ft.get('notes')}" if _ft.get("notes") else ""
-            _note_lines.append(
+            _flow_test_bits.append(
                 f"Flow test ({_blend_label}):{_date_bit} {_result_word}{_notes_bit}."
             )
 
-        _note_text = " ".join(_note_lines)
+        # Paragraphs, not one run-on line: the timeline reads as prose,
+        # but the three summary lines are the bit that gets skimmed, so
+        # each one gets its own line.
+        _note_blocks = []
+        if _timeline_bits:
+            _note_blocks.append(" ".join(_timeline_bits))
+        _note_blocks.append("\n\n".join(_summary_lines))
+        if _flow_test_bits:
+            _note_blocks.append(" ".join(_flow_test_bits))
+        _note_text = "\n\n".join(_note_blocks)
         st.code(_note_text, language=None)
 
     # --- One file: the day you can reopen, and the report you can file ---

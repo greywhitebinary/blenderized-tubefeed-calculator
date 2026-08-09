@@ -274,9 +274,27 @@ scope expansion agreed in the follow-up conversation:
   BTF via syringe: 0800 300 mL + 1200 100 mL Morning blend; 1500 350 mL
   Fridge batch; 2000 250 mL Peptamen 1.5; flushes 2×100 mL.
   Oral: 0830 1 small banana; 1030 125 mL apple juice.
-  Provides ~X kcal, X g CHO, X g protein (x.x g/kg), X g fat.
-  Fluid provided: ... Free water (CNF-estimated): ...
+
+  Feed regimen: Energy Xkcal, Protein Xg, CHO Xg, Fat Xg, Fluids Xml
+  (Xml from free water + Xml from water flushes).
+
+  Oral Intake: Energy Xkcal, Protein Xg, CHO Xg, Fat Xg, Fluids Xml.
+
+  Total daily intake: Energy Xkcal, Protein Xg, CHO Xg, Fat Xg, Fluids Xml.
   ```
+  Categories and their contributions, which is what charting actually
+  asks for (author, 2026-08-09). "Fluids" is counted the way each
+  category is counted clinically, not by one uniform rule: the feed line
+  is free water + flushes (everything down the tube is liquid, and tap
+  water stirred into a blend is free water once it's blended), so the
+  bracket adds up to the number in front of it. The oral line counts
+  only rows ticked "counts as fluid" -- the obvious drinks -- because
+  nobody charts the water in an apple. That convention exists because
+  food moisture was historically unmeasurable; the app can measure it
+  now, so it stays visible on its own line in the water ledger rather
+  than being silently folded into a charted fluid figure where it would
+  disagree with the nurse's I&O sheet. Total is the two lines added, not
+  a third definition.
 
 ### 3.6 Docs (same session as implementation, separate commit)
 

@@ -1193,7 +1193,10 @@ the repo/plans directory).**
   IS the policy for judgment calls like soup, flagged revisitable
   above). Two fluid numbers now exist: **Fluid provided** (full I&O-
   convention volume of counts-as-fluid ingredients, scaled to daily
-  intake, plus water flushes — drives the adequacy row and chart note)
+  intake, plus water flushes — drives the adequacy row, and the oral
+  half of it drives the chart note's "Oral Intake" fluid figure; the
+  note's feed line counts free water + flushes instead, see
+  `FEED_LOG_REWORK.md` §3.5)
   and **Free water (CNF-estimated)** (the old moisture-based figure,
   demoted to secondary/informational with its own completeness flag).
   The example recipe now includes "Water, municipal" (CNF Food_Code
