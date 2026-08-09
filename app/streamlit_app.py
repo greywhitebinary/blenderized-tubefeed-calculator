@@ -1788,15 +1788,30 @@ if load_example_clicked:
         # `st.session_state[key] = ...` for an already-existing widget key
         # is legal).
         #
-        # THE WHOLE NUTRITION TARGETS TAB IS LEFT EMPTY (author,
-        # 2026-08-08): no weight, no targets. The example used to arrive
-        # with 75 kg and three targets already filled in, which answered
-        # the adequacy column and the per-kg column before anyone had
-        # done anything. Loading a day with the totals shown and no
-        # percentages, then typing the numbers in, turns both columns on
-        # while you watch -- a better demonstration, and it matches the
-        # rule that this app never supplies a patient number the RD did
-        # not enter.
+        # Weight and targets, restored 2026-08-09. They were emptied on
+        # 2026-08-08 so the demo video could show the adequacy and per-kg
+        # columns switching on as the numbers were typed in live; the
+        # video is recorded, so the example goes back to arriving whole.
+        # These are the figures spoken in it, and they should stay in
+        # step with it: 165 lb, 2250 kcal, 100 g protein, 2250 mL water.
+        #
+        # This is example data, not a patient number the app invented --
+        # the rule it has to honour is that nothing is supplied for a
+        # REAL day, and a day the RD explicitly asked to load is exactly
+        # the case where filling it in is the point.
+        #
+        # Every other target is zeroed rather than left alone, because
+        # "Load example day" warns that it replaces the targets on
+        # screen; leaving a stale sodium target from someone's earlier
+        # work would quietly make that warning a lie.
+        st.session_state["patient_weight_input"] = 165.0
+        st.session_state["weight_unit"] = "lbs"
+        for _tname in empty_targets():
+            st.session_state[f"target_{_tname}"] = 0.0
+        st.session_state["target_energy_kcal"] = 2250.0
+        st.session_state["target_protein_g"] = 100.0
+        st.session_state["target_fluid_mL"] = 2250.0
+
         st.session_state["recipe_name_input"] = "Example — James W (H&N RT wk 5)"
         st.session_state["delivery_method_input"] = "Syringe bolus"
         st.rerun()
