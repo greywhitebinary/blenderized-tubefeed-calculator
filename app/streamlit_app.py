@@ -73,7 +73,6 @@ from src.calculator import (
 from src.measures import load_measure_lookup, get_measures_for_food
 from src.food_search import MIN_QUERY_LEN, build_index, search_foods
 from src.label_extract import (
-    APPROX_COST_PER_EXTRACTION_USD,
     MAX_EXTRACTIONS_PER_DAY,
     MAX_EXTRACTIONS_PER_SESSION,
     LabelExtractionError,
@@ -895,24 +894,22 @@ def render_add_food_ui(
             _session_left, _day_left = _label_calls_remaining()
             with st.expander("📷 Read the values from a photo instead of typing"):
                 st.caption(
-                    f"Reads the table and fills the form below for you to check. "
-                    f"Costs about {APPROX_COST_PER_EXTRACTION_USD * 100:.1f}¢ per photo, "
-                    f"billed to this app. **{_session_left} left this session** "
-                    f"({_day_left} left today across all users). "
+                    "Reads the table and fills the form below for you to check. "
+                    f"**{_session_left} left this session**, "
+                    f"{_day_left} left today across everyone. "
                     "Every value stays editable and nothing is saved until you press Add."
                 )
                 if _session_left <= 0 or _day_left <= 0:
                     _note(
-                        "Photo reading is used up for now — please type the values in "
-                        "below. The limit is there because every photo is billed to "
-                        "the person who runs this app."
+                        "Photo reading has reached its limit for now — please type "
+                        "the values in below."
                     )
                 else:
                     _photo = st.file_uploader(
-                        "Photo of the Canada Nutrition Facts table",
+                        "Photo of the Nutrition Facts table",
                         type=["jpg", "jpeg", "png", "webp"],
                         key=f"{key_prefix}_label_photo",
-                        help="A straight-on, close photo of the table reads best.",
+                        help="Photograph the table on the package, straight on and close.",
                     )
                     _seen_key = f"{key_prefix}_label_photo_seen"
                     if _photo is not None and st.session_state.get(_seen_key) != _photo.name:
