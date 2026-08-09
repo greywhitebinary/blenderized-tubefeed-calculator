@@ -118,7 +118,7 @@ def test_load_registry_missing_pack_raises_filenotfounderror():
     """This is deliberate, documented behaviour (src/nutrients.py's module
     docstring, CONTEXT.md §11): there is NO hardcoded fallback registry.
     A country pack that forgot to ship nutrients.csv must fail loudly
-    rather than silently render the Canadian panel under a different
+    rather than silently render the Canadian table under a different
     pack's name. Do not "fix" this -- a passing test here means the
     safety rail is working, not that something is broken.
     """

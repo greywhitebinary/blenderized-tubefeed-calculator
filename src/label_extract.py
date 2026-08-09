@@ -1,5 +1,5 @@
 """
-label_extract.py — read a Nutrition Facts panel from a photo.
+label_extract.py — read a Nutrition Facts table from a photo.
 
 WHAT THIS IS, AND WHAT IT IS NOT
 --------------------------------
@@ -34,7 +34,7 @@ THE FIELDS ARE DATA, NOT CODE
 -----------------------------
 Both the JSON schema and the prompt are built from the nutrient registry
 (`data/packs/<pack>/nutrients.csv`, the rows with `on_label=yes`). A
-static model class would hardcode today's Canadian panel into Python and
+static model class would hardcode today's Canadian table into Python and
 silently go stale the moment a pack changes or Canada revises the
 mandatory list. Same rule as everywhere else in this project: never
 hardcode a nutrient list.
@@ -132,7 +132,7 @@ class ExtractedLabel:
 
 
 def label_nutrients(pack: str = DEFAULT_PACK) -> list:
-    """The registry rows a Nutrition Facts panel can actually supply."""
+    """The registry rows a Nutrition Facts table can actually supply."""
     return [d for d in load_registry(pack) if d.on_label]
 
 
@@ -210,13 +210,13 @@ def build_output_schema(pack: str = DEFAULT_PACK) -> dict[str, Any]:
 
 
 def build_prompt(pack: str = DEFAULT_PACK) -> str:
-    """Instructions for reading the panel.
+    """Instructions for reading the table.
 
     The traps called out here are the ones that would produce a
     confident wrong number rather than an obvious failure.
     """
     lines = "\n".join(f"- {d.name}: {d.label}, in {d.unit}" for d in label_nutrients(pack))
-    return f"""Read this Nutrition Facts panel and report exactly what is printed.
+    return f"""Read this Nutrition Facts table and report exactly what is printed.
 
 Report these fields:
 {lines}
@@ -225,13 +225,13 @@ Rules:
 1. Report the amount PER SERVING, exactly as printed. Do not convert to
    per-100 g, and do not convert between units.
 2. Use the % Daily Value column for NOTHING. "Sodium 300 mg 13 %" means
-   sodium is 300, not 13. Ignore every percentage on the panel.
+   sodium is 300, not 13. Ignore every percentage on the table.
 3. If a nutrient has no line on this label, return null for it. Do not
    infer it, calculate it from other values, or assume it is zero. A
    missing line and a printed 0 are different facts and only the printed
    0 is a measurement.
 4. A printed "0 g" or "0 mg" IS a real value — report 0, not null.
-5. Canadian panels are often bilingual. "Valeur nutritive", "Lipides",
+5. Canadian tables are often bilingual. "Valeur nutritive", "Lipides",
    "Glucides", "Fibres", "Sucres", "Protéines", "Sodium", "Potassium",
    "Calcium", "Fer" are the same rows as their English equivalents.
 6. Serving size may be printed as "Per 250 mL", "Pour 250 mL", or

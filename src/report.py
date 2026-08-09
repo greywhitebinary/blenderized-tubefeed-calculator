@@ -42,7 +42,7 @@ Two report tables, split by nutrient tier (src/nutrients.py):
     show_in_report="yes" (this country's mandatory Nutrition Facts panel,
     filtered to the nutrients the author chose to display daily — sat
     fat/trans fat/cholesterol/sugars are still tracked and exported, just
-    not shown here) + the derived Fluid provided / Free water rows. This
+    not shown here) + the derived Fluids provided / Free water rows. This
     is the MAIN table.
   - generate_clinical_screen()  → tier="clinical" nutrients (a one-time
     ASPEN-style "does this blend need a multivitamin?" screen — not a
@@ -185,6 +185,23 @@ def _per_kg_cell(name: str, daily_val: float, patient_weight_kg: float | None):
     return round(daily_val / patient_weight_kg, PER_KG_DECIMALS[name])
 
 
+# Clinical reading order for the report tables (author, 2026-08-08),
+# matching the Nutrition Targets form. The registry is ordered like a
+# Nutrition Facts TABLE, which is how a label is laid out; a dietitian
+# reads energy and protein first and works down. Anything not named here
+# keeps its registry order underneath, so adding a nutrient to
+# nutrients.csv still lands somewhere sensible without touching this.
+REPORT_LEAD_ORDER = ("energy_kcal", "protein_g", "carbohydrate_g", "fat_g")
+
+
+def _ordered_label_defs(pack: str) -> list[NutrientDef]:
+    """tier="label" rows that get displayed, in clinical reading order."""
+    defs = [d for d in defs_for_tier("label", pack=pack) if d.show_in_report]
+    by_name = {d.name: d for d in defs}
+    lead = [by_name[n] for n in REPORT_LEAD_ORDER if n in by_name]
+    return lead + [d for d in defs if d.name not in REPORT_LEAD_ORDER]
+
+
 def _tier_rows(
     defs: list[NutrientDef],
     daily_totals: dict[str, float],
@@ -261,7 +278,7 @@ def generate_adequacy_report(
     data/packs/<pack>/nutrients.csv; sat fat/trans fat/cholesterol/sugars
     are tier="label" too but show_in_report="no", so they're computed and
     exported but not shown here), plus two derived fluid rows:
-    "Fluid provided" (primary — see fluid_provided_mL below) and "Free
+    "Fluids provided" (primary — see fluid_provided_mL below) and "Free
     water (estimated)" (secondary, informational only — no target
     comparison). tier="clinical" nutrients are NOT here — see
     generate_clinical_screen(). tier="engine" nutrients (water_g) never
@@ -308,13 +325,13 @@ def generate_adequacy_report(
         targets = {}
     coverage = nutrient_coverage or {}
 
-    label_defs = [d for d in defs_for_tier("label", pack=pack) if d.show_in_report]
+    label_defs = _ordered_label_defs(pack)
     rows = _tier_rows(label_defs, daily_totals, targets, coverage, patient_weight_kg)
 
     # Free water: a first-class computed output, not a single CNF nutrient
     # lookup -- see daily_totals' docstring note above for what it blends.
     # Demoted to secondary/informational (not compared against the fluid
-    # target -- that's "Fluid provided"'s job below): it carries its own
+    # target -- that's "Fluids provided"'s job below): it carries its own
     # completeness/coverage flag and no Target/% Target/Status of its own,
     # so it never renders a misleading adequacy verdict for a number that
     # structurally under-counts custom/label foods (no label carries
@@ -323,28 +340,29 @@ def generate_adequacy_report(
     water_decimals = water_def.decimals if water_def else 1
     free_water_mL = daily_totals.get("water_g", 0.0)
     _free_water_row: dict = {
-        "Nutrient": "Free water (estimated)",
+        "Nutrient": "Free water from foods and feeds",
         "Daily Total": round(free_water_mL, water_decimals),
         "Unit": "mL",
     }
     if patient_weight_kg:
         # Deliberately "—": the per-kg fluid figure an RD quotes is the
-        # I&O "Fluid provided" total below, not this estimate, which
+        # I&O "Fluids provided" total below, not this estimate, which
         # structurally under-counts label-entered foods.
         _free_water_row["Per kg"] = "—"
-    rows.append(
+    _water_rows = []
+    _water_rows.append(
         {
             **_free_water_row,
             "Target": "—",
             "% Target": "—",
-            "Status": "Informational — see Fluid provided",
-            "Source": "CNF food moisture (blend/oral rows) + formula-declared free water — no label carries moisture; secondary to Fluid provided",
+            "Status": "Informational — see Fluids provided",
+            "Source": "CNF food moisture (blend and oral rows) + formula-declared free water. Water flushes are counted in Fluids provided, not here. No label carries moisture, so label-entered foods contribute none.",
             "Coverage": _coverage_text("water_g", coverage),
             "_zero_coverage": _zero_coverage("water_g", coverage),
         }
     )
 
-    # Fluid provided: the PRIMARY fluid-adequacy row -- the Intake
+    # Fluids provided: the PRIMARY fluid-adequacy row -- the Intake
     # Record's full-volume I&O-convention total across every row (blend
     # rows via their own fluid fraction, formula/flush rows at full
     # volume, oral rows via their own counts_as_fluid toggle -- see
@@ -355,13 +373,13 @@ def generate_adequacy_report(
     fluid_target = targets.get("fluid_mL", 0.0)
     fluid_pct = (fluid_val / fluid_target * 100) if fluid_target > 0 else 0.0
     _fluid_row: dict = {
-        "Nutrient": "Fluid provided",
+        "Nutrient": "Fluids provided",
         "Daily Total": round(fluid_val, 0),
         "Unit": "mL",
     }
     if patient_weight_kg:
         _fluid_row["Per kg"] = round(fluid_val / patient_weight_kg, PER_KG_FLUID_DECIMALS)
-    rows.append(
+    _water_rows.append(
         {
             **_fluid_row,
             "Target": round(fluid_target, 0) if fluid_target > 0 else "—",
@@ -372,6 +390,17 @@ def generate_adequacy_report(
             "_zero_coverage": False,
         }
     )
+
+    # The two water rows sit with the macros, straight after Fat, so every
+    # table in the app reads energy / protein / carbohydrate / fat / water
+    # (author, 2026-08-08). They used to be appended at the end because
+    # they are derived rather than registry nutrients, which is an
+    # implementation fact the reader should not have to know. If Fat is
+    # ever hidden, they fall to the bottom rather than guessing a slot.
+    _fat_def = registry_by_name(pack).get("fat_g")
+    _fat_label = _fat_def.label if _fat_def else None
+    _after_fat = next((i + 1 for i, r in enumerate(rows) if r["Nutrient"] == _fat_label), len(rows))
+    rows[_after_fat:_after_fat] = _water_rows
 
     return _finalize(rows)
 
@@ -389,7 +418,7 @@ def generate_clinical_screen(
     main adequacy report. These nutrients (magnesium, phosphorus, zinc,
     vitamin D, vitamin B12 for the Canada pack) are tracked for clinical
     reasons — the author's EN spreadsheet, or ASPEN BTF guidance — not
-    because they're on a Canadian Nutrition Facts panel. A custom food
+    because they're on a Canadian Nutrition Facts table. A custom food
     entered from a label can NEVER supply these (see the Source column
     and each NutrientDef.on_label); a "Below target" here may partly
     reflect that structural gap rather than the recipe itself, and CNF
@@ -588,7 +617,7 @@ def generate_source_breakdown(
         pack:           Which data pack's nutrient registry to report
                         against (for column labels/decimals/order).
     """
-    label_defs = [d for d in defs_for_tier("label", pack=pack) if d.show_in_report]
+    label_defs = _ordered_label_defs(pack)
     rows = []
     for source_label in (_TUBE_FEED_LABEL, _FOOD_DRINK_LABEL, _TOTAL_LABEL):
         sub = intake_totals.subtotals.get(
@@ -599,7 +628,13 @@ def generate_source_breakdown(
             row[f"{d.label} ({d.unit})"] = round(
                 sub["nutrient_totals"].get(d.name, 0.0), d.decimals
             )
-        row["Fluid provided (mL)"] = round(sub["fluid_provided_mL"], 0)
+            # Fluids sits straight after Fat, same as the adequacy table
+            # and the targets form, so the reading order is the same
+            # wherever you look.
+            if d.name == "fat_g":
+                row["Fluids provided (mL)"] = round(sub["fluid_provided_mL"], 0)
+        if "Fluids provided (mL)" not in row:
+            row["Fluids provided (mL)"] = round(sub["fluid_provided_mL"], 0)
         rows.append(row)
     return pd.DataFrame(rows)
 

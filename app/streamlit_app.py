@@ -783,7 +783,7 @@ def render_add_food_ui(
                 }
 
     else:  # Custom food from label — a Canadian Nutrition Facts lookalike
-        st.caption("Enter values exactly as printed on the nutrition facts label.")
+        st.caption("Enter values exactly as printed on the Nutrition Facts table.")
 
         # Wipe the form after a custom food was added on the previous run.
         #
@@ -893,9 +893,9 @@ def render_add_food_ui(
         _photo_client = _label_api_client()
         if _photo_client is not None:
             _session_left, _day_left = _label_calls_remaining()
-            with st.expander("📷 Fill this in from a photo of the label"):
+            with st.expander("📷 Read the values from a photo instead of typing"):
                 st.caption(
-                    f"Reads the panel and fills the form below for you to check. "
+                    f"Reads the table and fills the form below for you to check. "
                     f"Costs about {APPROX_COST_PER_EXTRACTION_USD * 100:.1f}¢ per photo, "
                     f"billed to this app. **{_session_left} left this session** "
                     f"({_day_left} left today across all users). "
@@ -909,10 +909,10 @@ def render_add_food_ui(
                     )
                 else:
                     _photo = st.file_uploader(
-                        "Photo of the Canada Nutrition Facts panel",
+                        "Photo of the Canada Nutrition Facts table",
                         type=["jpg", "jpeg", "png", "webp"],
                         key=f"{key_prefix}_label_photo",
-                        help="A straight-on, close photo of the panel reads best.",
+                        help="A straight-on, close photo of the table reads best.",
                     )
                     _seen_key = f"{key_prefix}_label_photo_seen"
                     if _photo is not None and st.session_state.get(_seen_key) != _photo.name:
@@ -995,7 +995,7 @@ def render_add_food_ui(
         with label_col:
             with st.container(border=True, key=box_key):
                 # NOT "Canada Nutrition Facts". This heading is part of the
-                # visual replica of the printed panel, and a real Canadian
+                # visual replica of the printed table, and a real Canadian
                 # package prints exactly "Nutrition Facts / Valeur
                 # nutritive". Relabelling it would make the lookalike wrong
                 # in the one place it is meant to be literal -- the RD holds
@@ -2020,7 +2020,7 @@ with targets_tab:
     _registry_map = registry_by_name(DEFAULT_PACK)
 
     # Clinical entry order, not registry order (author, 2026-08-08).
-    # The registry is ordered like a Nutrition Facts panel, which is how
+    # The registry is ordered like a Nutrition Facts table, which is how
     # a LABEL is laid out, not how a dietitian sets targets. These five
     # are what gets decided first, so they come first; anything not named
     # here keeps its registry order underneath.
@@ -2033,7 +2033,7 @@ with targets_tab:
         col = cols[i % 2]
         if nutrient_name == "fluid_mL":
             # "Water", not "Fluid", on the target side: this is the water
-            # you decide to give. The report's "Fluid provided" row is the
+            # you decide to give. The report's "Fluids provided" row is the
             # separate I&O total of everything that counted as fluid.
             disp_label, unit, decimals = "Water", "mL", 0
         else:
@@ -2227,7 +2227,7 @@ with recipes_tab:
     else:
         st.caption(
             '"Counts as fluid" drives the Daily Intake Record tab\'s '
-            "Fluid provided row (full-volume I&O convention) — auto-checked for CNF "
+            "Fluids provided row (full-volume I&O convention) — auto-checked for CNF "
             "Beverages and mL-basis custom foods, always your call "
             "otherwise (e.g. soup has no validated rule of thumb)."
         )
@@ -3181,8 +3181,10 @@ with record_tab:
             f"Provides ~{_daily_kcal:.0f} kcal, {_daily_cho:.0f} g CHO, "
             f"{_daily_protein:.0f} g protein{_weight_bit}, {_daily_fat:.0f} g fat."
         )
-        _note_lines.append(f"Fluid provided: {intake_totals.fluid_provided_mL:.0f} mL/day.")
-        _note_lines.append(f"Free water (estimated): ~{intake_totals.free_water_mL:.0f} mL/day.")
+        _note_lines.append(f"Fluids provided: {intake_totals.fluid_provided_mL:.0f} mL/day.")
+        _note_lines.append(
+            f"Free water from foods and feeds: ~{intake_totals.free_water_mL:.0f} mL/day."
+        )
 
         # Flow test, per blend that actually appears in today's Intake
         # Record. Named, because "passed the syringe test" attached to the

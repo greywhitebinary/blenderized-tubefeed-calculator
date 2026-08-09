@@ -32,7 +32,7 @@ nutrients.csv columns:
                     tier's report table. Lets a tier's data be tracked
                     (computed, exported) without necessarily being displayed
                     — e.g. saturated fat/trans fat/cholesterol/sugars are
-                    tier="label" (on the Canadian panel, computed, exported)
+                    tier="label" (on the Canadian table, computed, exported)
                     but show_in_report="no" (the author chose "show what's
                     needed" over "show everything" for the main daily-tracked
                     table — see CONTEXT.md §9). Every tier="clinical" row is
@@ -143,7 +143,7 @@ def _load_registry_cached(pack: str) -> tuple[NutrientDef, ...]:
     # defines which nutrients the entire app tracks and how. A silent
     # fallback to a hardcoded Canadian list would defeat the whole
     # data-pack design — a US pack that forgot its nutrients.csv would
-    # silently show the Canadian panel instead of failing loudly. Do NOT
+    # silently show the Canadian table instead of failing loudly. Do NOT
     # "fix" this by adding a fallback; fail loudly instead.
     if not csv_path.exists():
         raise FileNotFoundError(

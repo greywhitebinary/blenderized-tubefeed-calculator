@@ -48,7 +48,7 @@ from src.report import (
 @pytest.fixture
 def label_defs():
     """The nutrients that belong in the MAIN daily adequacy table:
-    tier="label" (on Canada's mandatory Nutrition Facts panel) AND
+    tier="label" (on Canada's mandatory Nutrition Facts table) AND
     show_in_report=True (the author's "show what's needed" subset --
     e.g. saturated fat is tier="label" but show_in_report=False, so it's
     excluded here too, matching what generate_adequacy_report() itself

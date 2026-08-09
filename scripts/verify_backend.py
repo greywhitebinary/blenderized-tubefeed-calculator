@@ -173,22 +173,22 @@ def main() -> int:
         hidden_main == []
     ), f"expected nothing hidden for a full-coverage recipe, got {hidden_main}"
     assert (
-        "Fluid provided" in adequacy["Nutrient"].values
-    ), "adequacy report missing the Fluid provided row"
-    fluid_row = adequacy[adequacy["Nutrient"] == "Fluid provided"].iloc[0]
-    assert fluid_row["Unit"] == "mL", "Fluid provided row should be in mL"
+        "Fluids provided" in adequacy["Nutrient"].values
+    ), "adequacy report missing the Fluids provided row"
+    fluid_row = adequacy[adequacy["Nutrient"] == "Fluids provided"].iloc[0]
+    assert fluid_row["Unit"] == "mL", "Fluids provided row should be in mL"
     assert fluid_row["Daily Total"] == fluid_provided_test_mL, (
-        "Fluid provided row should carry the fluid_provided_mL value passed in, "
+        "Fluids provided row should carry the fluid_provided_mL value passed in, "
         f"got {fluid_row['Daily Total']} expected {fluid_provided_test_mL}"
     )
     assert (
-        "Free water (estimated)" in adequacy["Nutrient"].values
+        "Free water from foods and feeds" in adequacy["Nutrient"].values
     ), "adequacy report missing the secondary Free water row"
-    free_water_row = adequacy[adequacy["Nutrient"] == "Free water (estimated)"].iloc[0]
+    free_water_row = adequacy[adequacy["Nutrient"] == "Free water from foods and feeds"].iloc[0]
     assert free_water_row["Unit"] == "mL", "Free water row should be in mL"
     assert free_water_row["Target"] == "—", (
         "Free water is secondary/informational now — it should carry no target "
-        "of its own (Fluid provided is the row compared against the fluid target)"
+        "of its own (Fluids provided is the row compared against the fluid target)"
     )
 
     # 7. Formula comparison
@@ -309,9 +309,9 @@ def main() -> int:
             f"either tier=clinical or show_in_report=no, and must not "
             f"appear in the main daily-tracked table"
         )
-    assert "Fluid provided" in main_names and "Free water (estimated)" in main_names
+    assert "Fluids provided" in main_names and "Free water from foods and feeds" in main_names
     assert len(adequacy) == 11, (  # 9 displayed label rows + 2 fluid rows
-        f"expected 11 rows (9 displayed label-tier + Fluid provided + Free water), "
+        f"expected 11 rows (9 displayed label-tier + Fluids provided + Free water), "
         f"got {len(adequacy)}"
     )
     print(
@@ -455,7 +455,7 @@ def main() -> int:
     # The custom food supplies only energy_kcal + protein_g — no water_g
     # either (no label carries moisture), so the secondary Free water row
     # is zero-coverage too and gets hidden right along with the 7 label
-    # nutrients. Fluid provided is NOT hidden — it's not a CNF-coverage
+    # nutrients. Fluids provided is NOT hidden — it's not a CNF-coverage
     # concept (it's computed from the Intake Record's counts-as-fluid
     # ledger, passed in directly), so it's always shown.
     assert set(hidden_main_names) == {
@@ -466,14 +466,14 @@ def main() -> int:
         "Potassium",
         "Calcium",
         "Iron",
-        "Free water (estimated)",
+        "Free water from foods and feeds",
     }, f"expected 7 zero-coverage label nutrients + Free water hidden, got {hidden_main_names}"
     visible_names = set(hidden_adequacy["Nutrient"].values)
     assert visible_names == {
         "Energy",
         "Protein",
-        "Fluid provided",
-    }, f"expected only Energy/Protein/Fluid provided visible, got {visible_names}"
+        "Fluids provided",
+    }, f"expected only Energy/Protein/Fluids provided visible, got {visible_names}"
     for name in hidden_main_names:
         assert name not in visible_names, f"{name!r} should be hidden but is still visible"
 
@@ -829,7 +829,7 @@ def main() -> int:
         f"(expected {expected_protein:.1f})"
     )
     print(
-        f"    Fluid provided: {e2e_totals.fluid_provided_mL:.1f} mL "
+        f"    Fluids provided: {e2e_totals.fluid_provided_mL:.1f} mL "
         f"(expected {expected_fluid:.1f})"
     )
     print(

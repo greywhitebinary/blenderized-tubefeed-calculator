@@ -341,7 +341,7 @@ class TestCustomFoodFolding:
         what a real nutrition-facts label actually shows) -- coverage for
         those three nutrients should count BOTH ingredients as
         "supplying" (2/2), while a nutrient the custom food doesn't carry
-        (e.g. fibre_g, which no NFt panel gives a "custom food" a value
+        (e.g. fibre_g, which no NFt gives a "custom food" a value
         for here) should count only the CNF ingredient (1/2)."""
         ingredients = [
             Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 100.0),
