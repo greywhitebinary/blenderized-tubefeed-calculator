@@ -732,7 +732,12 @@ def render_add_food_ui(
                     m_idx = measure_opts.index(sel_measure)
                     grams_per = float(measures.iloc[m_idx]["grams"])
                     qty = st.number_input(
-                        "Quantity", min_value=0.0, value=1.0, step=0.5, key=f"{key_prefix}_qty"
+                        "Quantity",
+                        min_value=0.0,
+                        value=1.0,
+                        step=0.5,
+                        format="%g",
+                        key=f"{key_prefix}_qty",
                     )
                     calculated_grams = grams_per * qty
                     st.caption(f"= **{calculated_grams:.1f} g**")
@@ -743,6 +748,7 @@ def render_add_food_ui(
                             min_value=0.0,
                             value=round(calculated_grams, 1),
                             step=1.0,
+                            format="%g",
                             key=f"{key_prefix}_grams_direct",
                         )
                 else:
@@ -752,6 +758,7 @@ def render_add_food_ui(
                         min_value=0.0,
                         value=100.0,
                         step=1.0,
+                        format="%g",
                         key=f"{key_prefix}_grams_nomeasure",
                     )
             else:
@@ -2385,7 +2392,7 @@ with record_tab:
         _source_options, _source_map = _intake_source_options()
         tf_source_label = tf2.selectbox("Source", _source_options, key="tf_source_select")
         tf_amount = tf3.number_input(
-            "Volume (mL)", min_value=0.0, value=0.0, step=10.0, key="tf_amount_input"
+            "Volume (mL)", min_value=0.0, value=0.0, step=10.0, format="%g", key="tf_amount_input"
         )
         if st.button("Add tube feed row", key="tf_add_btn"):
             if tf_amount > 0:
@@ -2435,6 +2442,7 @@ with record_tab:
                 min_value=0.0,
                 value=0.0,
                 step=10.0,
+                format="%g",
                 key="flush_single_amount",
             )
         elif _flush_mode == "With feeds (calculated)":
@@ -2447,6 +2455,7 @@ with record_tab:
                 min_value=0.0,
                 value=60.0,
                 step=10.0,
+                format="%g",
                 key="flush_per",
             )
             _per_feed = _wf2.number_input(
@@ -2468,6 +2477,7 @@ with record_tab:
                 min_value=0.0,
                 value=100.0,
                 step=10.0,
+                format="%g",
                 key="flush_med_amount",
             )
             _flush_label = "Med flushes"
@@ -2646,10 +2656,10 @@ with recipes_tab:
         _density_rows.append(
             {
                 "Blend": _blend["name"],
-                "kcal/mL": round(_b_profile.kcal_per_mL, 3),
+                "kcal/mL": round(_b_profile.kcal_per_mL, 2),
                 "protein g/mL": round(_b_profile.protein_per_mL, 3),
                 "Free-water fraction": round(_b_profile.free_water_fraction, 3),
-                "Measured volume (mL)": _b_profile.measured_final_volume_mL,
+                "Measured volume (mL)": round(_b_profile.measured_final_volume_mL),
                 "Coverage": f"{_n_full}/{len(_b_coverage)} nutrients fully covered",
                 "Note": "",
             }
@@ -2748,13 +2758,12 @@ with record_tab:
             adequacy_display["Per kg"] = adequacy_display["Per kg"].astype(str)
         st.dataframe(
             adequacy_display.style
-            # The Styler (needed for status colouring) would otherwise
-            # render Daily Total at pandas' default 6-decimal precision;
-            # %g shows each value at its registry-rounded precision with
-            # no trailing zeros (author feedback 2026-07-20).
-            .map(color_status, subset=["Status"]).format(
-                lambda v: f"{v:g}", subset=["Daily Total"]
-            ),
+            # Daily Total / Target / % Target arrive from report.py
+            # already formatted as text at each nutrient's own registry
+            # precision (see _fmt there), which is what stops Energy's
+            # 0 dp being dragged to "2204.0" by Protein's 1 dp sharing
+            # the column. The Styler only colours Status now.
+            .map(color_status, subset=["Status"]),
             width="stretch",
             hide_index=True,
         )
@@ -2777,9 +2786,7 @@ with record_tab:
                 clinical_display["Target"] = clinical_display["Target"].astype(str)
                 clinical_display["% Target"] = clinical_display["% Target"].astype(str)
                 st.dataframe(
-                    clinical_display.style.map(color_status, subset=["Status"]).format(
-                        lambda v: f"{v:g}", subset=["Daily Total"]
-                    ),
+                    clinical_display.style.map(color_status, subset=["Status"]),
                     width="stretch",
                     hide_index=True,
                 )
@@ -3078,6 +3085,7 @@ with recipes_tab:
             min_value=0.0,
             value=max(selected_profile.measured_final_volume_mL, 1200.0),
             step=50.0,
+            format="%g",
             help="An independent what-if volume for this comparison only -- "
             "it doesn't need to match the Intake Record (Daily Intake Record tab).",
         )

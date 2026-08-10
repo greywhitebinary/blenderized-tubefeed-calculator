@@ -120,6 +120,23 @@ def _adequacy_status(daily_total: float, target: float, target_type: str = "esti
         return "Meeting target"
 
 
+def _fmt(value: float, decimals: int) -> str:
+    """A number rendered at ITS OWN precision, as text.
+
+    A pandas numeric column formats to a single width, so one nutrient
+    with a decimal drags every other value in the column along with it:
+    Energy (0 dp in the registry) rendered as "2204.0" purely because
+    Protein (1 dp) shared the column (author, 2026-08-10). Nobody quotes
+    a day as 2204.0 kcal. Returning text is what lets each row keep the
+    decimals the registry actually gives it.
+
+    The report frames are display/export artefacts -- one row per
+    nutrient, never summed or sorted downstream -- so text costs nothing
+    here. The reloadable Intake sheet stays numeric.
+    """
+    return f"{value:.{max(decimals, 0)}f}"
+
+
 def _source_text(nutrient_def: NutrientDef) -> str:
     """'Can a custom food entered from a label supply this nutrient?'"""
     return _SOURCE_ON_LABEL if nutrient_def.on_label else _SOURCE_CNF_ONLY
@@ -226,7 +243,7 @@ def _tier_rows(
 
         row: dict = {
             "Nutrient": d.label,
-            "Daily Total": round(daily_val, d.decimals),
+            "Daily Total": _fmt(daily_val, d.decimals),
             "Unit": d.unit,
         }
         # Column only exists when a weight was entered -- an all-"—"
@@ -236,8 +253,8 @@ def _tier_rows(
         rows.append(
             {
                 **row,
-                "Target": round(target_val, d.decimals) if target_val > 0 else "—",
-                "% Target": round(pct, 0) if target_val > 0 else "—",
+                "Target": _fmt(target_val, d.decimals) if target_val > 0 else "—",
+                "% Target": _fmt(pct, 0) if target_val > 0 else "—",
                 "Status": status,
                 "Source": _source_text(d),
                 "Coverage": _coverage_text(d.name, coverage),
@@ -336,12 +353,14 @@ def generate_adequacy_report(
     # so it never renders a misleading adequacy verdict for a number that
     # structurally under-counts custom/label foods (no label carries
     # moisture) and formula rows without a free_water_per_mL value.
-    water_def = registry_by_name(pack).get("water_g")
-    water_decimals = water_def.decimals if water_def else 1
+    # 0 dp, NOT water_g's registry decimals (1). The registry describes it
+    # as a nutrient in grams, where 1 dp is right; this row displays it as
+    # mL, and it was the only millilitre figure in the app carrying a
+    # decimal (author, 2026-08-10). Nobody quotes free water as 1340.4 mL.
     free_water_mL = daily_totals.get("water_g", 0.0)
     _free_water_row: dict = {
         "Nutrient": "Free water from foods and feeds",
-        "Daily Total": round(free_water_mL, water_decimals),
+        "Daily Total": _fmt(free_water_mL, 0),
         "Unit": "mL",
     }
     if patient_weight_kg:
@@ -374,7 +393,7 @@ def generate_adequacy_report(
     fluid_pct = (fluid_val / fluid_target * 100) if fluid_target > 0 else 0.0
     _fluid_row: dict = {
         "Nutrient": "Fluids provided",
-        "Daily Total": round(fluid_val, 0),
+        "Daily Total": _fmt(fluid_val, 0),
         "Unit": "mL",
     }
     if patient_weight_kg:
@@ -382,8 +401,8 @@ def generate_adequacy_report(
     _water_rows.append(
         {
             **_fluid_row,
-            "Target": round(fluid_target, 0) if fluid_target > 0 else "—",
-            "% Target": round(fluid_pct, 0) if fluid_target > 0 else "—",
+            "Target": _fmt(fluid_target, 0) if fluid_target > 0 else "—",
+            "% Target": _fmt(fluid_pct, 0) if fluid_target > 0 else "—",
             "Status": _adequacy_status(fluid_val, fluid_target, "estimate"),
             "Source": "Full volume of counts-as-fluid ingredients (I&O convention) + flushes",
             "Coverage": "—",
@@ -480,7 +499,7 @@ def generate_formula_comparison(
             },
             {
                 "Metric": "kcal/mL",
-                "BTF": round(profile.kcal_per_mL, 3),
+                "BTF": round(profile.kcal_per_mL, 2),
                 "Formula": COMMERCIAL_FORMULAS[formula_name]["kcal_per_mL"],
                 "Difference": round(
                     profile.kcal_per_mL - COMMERCIAL_FORMULAS[formula_name]["kcal_per_mL"],
@@ -506,7 +525,7 @@ def generate_density_summary(profile: NutrientProfile) -> pd.DataFrame:
         [
             {
                 "Metric": "Energy density",
-                "Value": f"{profile.kcal_per_mL:.3f} kcal/mL",
+                "Value": f"{profile.kcal_per_mL:.2f} kcal/mL",
                 "Note": "Primary lens — patient tolerates limited mL/day",
             },
             {
@@ -569,7 +588,7 @@ def generate_comparator_table(
             "Energy (kcal)": round(profile.kcal_per_mL * daily_volume_mL, 0),
             "Protein (g)": round(profile.protein_per_mL * daily_volume_mL, 1),
             "Free water (mL)": round(profile.free_water_fraction * daily_volume_mL, 0),
-            "kcal/mL": round(profile.kcal_per_mL, 3),
+            "kcal/mL": round(profile.kcal_per_mL, 2),
             "Protein g/mL": round(profile.protein_per_mL, 3),
         }
     ]
@@ -625,16 +644,14 @@ def generate_source_breakdown(
         )
         row: dict = {"Source": source_label}
         for d in label_defs:
-            row[f"{d.label} ({d.unit})"] = round(
-                sub["nutrient_totals"].get(d.name, 0.0), d.decimals
-            )
+            row[f"{d.label} ({d.unit})"] = _fmt(sub["nutrient_totals"].get(d.name, 0.0), d.decimals)
             # Fluids sits straight after Fat, same as the adequacy table
             # and the targets form, so the reading order is the same
             # wherever you look.
             if d.name == "fat_g":
-                row["Fluids provided (mL)"] = round(sub["fluid_provided_mL"], 0)
+                row["Fluids provided (mL)"] = _fmt(sub["fluid_provided_mL"], 0)
         if "Fluids provided (mL)" not in row:
-            row["Fluids provided (mL)"] = round(sub["fluid_provided_mL"], 0)
+            row["Fluids provided (mL)"] = _fmt(sub["fluid_provided_mL"], 0)
         rows.append(row)
     return pd.DataFrame(rows)
 

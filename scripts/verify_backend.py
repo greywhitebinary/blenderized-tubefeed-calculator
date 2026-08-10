@@ -177,7 +177,10 @@ def main() -> int:
     ), "adequacy report missing the Fluids provided row"
     fluid_row = adequacy[adequacy["Nutrient"] == "Fluids provided"].iloc[0]
     assert fluid_row["Unit"] == "mL", "Fluids provided row should be in mL"
-    assert fluid_row["Daily Total"] == fluid_provided_test_mL, (
+    # Report cells are formatted text now (report.py::_fmt), so each row
+    # keeps its own registry precision instead of a shared column width --
+    # compare on the number, not the rendering.
+    assert float(fluid_row["Daily Total"]) == fluid_provided_test_mL, (
         "Fluids provided row should carry the fluid_provided_mL value passed in, "
         f"got {fluid_row['Daily Total']} expected {fluid_provided_test_mL}"
     )
