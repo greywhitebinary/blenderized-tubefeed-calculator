@@ -856,10 +856,13 @@ author can compare their fixes or unblock themselves if stuck for too long.
   means deliberately settled, not abandoned.
   - Parked, not cancelled: the volume-needed planning aid in the Daily
     Intake Record; the Excel export usefulness review.
-  - **Delivered 2026-08-09: the two-section chart note** — the
-    chronological record, then three summary lines by category (Feed
-    regimen / Oral Intake / Total daily intake). See
-    `FEED_LOG_REWORK.md` §3.5 for how "Fluids" is counted per category.
+  - **Delivered 2026-08-09, reshaped 2026-08-10: the chart note.** Now
+    the Delivery method field verbatim as line 1, then three lines by
+    category (Feed regimen / Oral Intake / Total daily intake). The
+    chronological timeline and the flow-test line were both removed —
+    too long to paste into an EHR, and the Intake Record above already
+    is that list. Delivery method is seeded empty with a greyed example
+    so the format teaches itself. See `FEED_LOG_REWORK.md` §3.5.
   - **Layout revised 2026-08-09 at the author's direction** (the "as new
     features land" case, not a break in the pin): onboarding row (demo
     video, Load example day) above the patient/day label, "Open a saved

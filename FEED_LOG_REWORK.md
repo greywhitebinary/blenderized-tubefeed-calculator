@@ -268,20 +268,23 @@ scope expansion agreed in the follow-up conversation:
 - Comparator, flow test, Excel export: keep; export gains an Intake Record
   sheet (all rows, chronological) and per-blend sheets. Dilution what-if:
   keep, operating on the selected blend.
-- Chart note: the record read aloud chronologically (tube and oral
-  interleaved by time) + totals, e.g.:
+- Chart note: the delivery-method line, then totals by category, e.g.:
   ```
-  BTF via syringe: 0800 300 mL + 1200 100 mL Morning blend; 1500 350 mL
-  Fridge batch; 2000 250 mL Peptamen 1.5; flushes 2×100 mL.
-  Oral: 0830 1 small banana; 1030 125 mL apple juice.
-
+  BTF using 24Fr PEG, via syringe bolus.
   Feed regimen: Energy Xkcal, Protein Xg, CHO Xg, Fat Xg, Fluids Xml
   (Xml from free water + Xml from water flushes).
-
   Oral Intake: Energy Xkcal, Protein Xg, CHO Xg, Fat Xg, Fluids Xml.
-
   Total daily intake: Energy Xkcal, Protein Xg, CHO Xg, Fat Xg, Fluids Xml.
   ```
+  **The chronological timeline this note used to open with is gone
+  (author, 2026-08-10)**, along with the flow-test line. The Intake
+  Record above already IS that list, and repeating it as prose made the
+  note too long to paste into an EHR. The first line is the Delivery
+  method field verbatim, which is why that field is now seeded empty
+  with a greyed example of the whole shape rather than "Syringe bolus".
+  The flow test is still shown in Feed Recipes and saved to the
+  workbook, it just isn't in the pasted note.
+
   Categories and their contributions, which is what charting asks for
   (author, 2026-08-09). "Fluids" is counted per category the way the
   clinic counts it, not by one uniform rule: the feed line is free water

@@ -40,15 +40,16 @@ assert not at.exception, at.exception
 assert at.session_state["blends"][first_id]["flow_test"]["result"] == "Passed"
 print("OK: widget writes land on the blend's own flow_test")
 
-# 3. The chart note names the blend the flow test belongs to.
+# 3. The flow test is NOT in the chart note (2026-08-10). The note is the
+# delivery-method line plus totals by category, nothing else. Attribution
+# to the right recipe is still guarded -- by the per-blend widgets above
+# and by the recipe-file round-trip in section 5.
 note_blocks = [c.value for c in at.code]
-note = next((n for n in note_blocks if "Flow test" in n), None)
-assert note is not None, f"no chart note containing a flow test; code blocks: {len(note_blocks)}"
-blend_name = at.session_state["blends"][first_id]["name"] or f"Blend {first_id}"
-assert f"Flow test ({blend_name})" in note, f"blend not named in note:\n{note}"
-assert "passed" in note
-assert "60 mL syringe" in note
-print(f"OK: chart note names the blend -> ...{note[note.index('Flow test'):][:90]}...")
+assert note_blocks, "no chart note rendered"
+assert all(
+    "Flow test" not in (n or "") for n in note_blocks
+), f"flow test is back in the chart note:\n{note_blocks}"
+print("OK: chart note carries no flow test")
 
 # 4. A blend that was NOT fed today must not appear in the day's note.
 unfed_id = at.session_state["next_blend_id"]
@@ -60,7 +61,7 @@ at.session_state["blends"][unfed_id] = {
 }
 at.run()
 assert not at.exception, at.exception
-note2 = next(n for n in [c.value for c in at.code] if "Flow test" in n)
+note2 = "\n".join(c.value or "" for c in at.code)
 assert "Never fed blend" not in note2, "a blend not fed today leaked into the day's chart note"
 print("OK: a blend not fed today stays out of the day's chart note")
 

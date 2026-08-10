@@ -1775,7 +1775,7 @@ if load_example_clicked:
         st.session_state["target_fluid_mL"] = 2250.0
 
         st.session_state["recipe_name_input"] = "Example — James W (H&N RT wk 5)"
-        st.session_state["delivery_method_input"] = "Syringe bolus"
+        st.session_state["delivery_method_input"] = "BTF using 24Fr PEG, via syringe bolus"
         st.rerun()
     else:
         st.error("Could not find example foods in CNF.")
@@ -1866,63 +1866,6 @@ def _intake_row_label(row: dict) -> str:
     t_str = t.strftime("%H:%M") if t else "(no time)"
     name = _intake_source_name(row)
     return f"{t_str} — {name} — {row['amount']:.0f} {row['unit']}"
-
-
-def _format_tube_feed_bits(rows: list[dict]) -> list[str]:
-    """Group tube-feed rows for the chart note (FEED_LOG_REWORK.md
-    section 3.5's own example format): consecutive rows against the same
-    blend/formula read as "0800 300 mL + 1200 100 mL Morning blend", not
-    two disconnected sentences. Flush rows are grouped as
-    "flushes N×amount mL" when every flush shares the same amount, else
-    listed individually (e.g. one 100 mL + one 150 mL flush).
-    """
-    bits = []
-    blend_formula_rows = [r for r in rows if r["source_type"] in ("blend", "formula")]
-    flush_rows = [r for r in rows if r["source_type"] == "flush"]
-
-    seen_keys: list[tuple] = []
-    groups: dict[tuple, list[dict]] = {}
-    for r in blend_formula_rows:
-        key = (r["source_type"], r["source_id"])
-        if key not in groups:
-            groups[key] = []
-            seen_keys.append(key)
-        groups[key].append(r)
-
-    for key in seen_keys:
-        group_rows = groups[key]
-        source_type, source_id = key
-        if source_type == "blend":
-            name = st.session_state.blends.get(source_id, {}).get("name", "(deleted blend)")
-        else:
-            name = source_id
-        amounts_text = " + ".join(
-            f"{(r['time'].strftime('%H%M') if r['time'] else '(no time)')} {r['amount']:.0f} mL"
-            for r in group_rows
-        )
-        bits.append(f"{amounts_text} {name}")
-
-    if flush_rows:
-        amounts = {r["amount"] for r in flush_rows}
-        if len(amounts) == 1 and len(flush_rows) > 1:
-            bits.append(f"flushes {len(flush_rows)}×{flush_rows[0]['amount']:.0f} mL")
-        else:
-            for r in flush_rows:
-                t = r["time"].strftime("%H%M") if r["time"] else "(no time)"
-                bits.append(f"{t} {r['amount']:.0f} mL flush")
-
-    return bits
-
-
-def _format_oral_bits(rows: list[dict]) -> list[str]:
-    """Chart-note phrasing for oral rows, e.g. '0830 1 small banana' or
-    '1030 125 mL apple juice' (design doc section 3.5's own example)."""
-    bits = []
-    for r in rows:
-        t = r["time"].strftime("%H%M") if r["time"] else "(no time)"
-        desc = r.get("food_description") or "(unknown food)"
-        bits.append(f"{t} {r['amount']:.0f} {r['unit']} {desc}")
-    return bits
 
 
 def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
@@ -2403,12 +2346,18 @@ with record_tab:
     # Seed the default only the very first time this key ever exists (see
     # the same comment by "recipe_name_input" above) -- avoids the
     # Session-State-vs-value= warning when Load Example presets this key.
+    # Seeded EMPTY, not "Syringe bolus": the placeholder only shows in an
+    # empty field, and a greyed example teaches the format without anyone
+    # having to load the example day first. This line is the chart note's
+    # opening line verbatim, so it needs to show the whole shape.
     if "delivery_method_input" not in st.session_state:
-        st.session_state["delivery_method_input"] = "Syringe bolus"
+        st.session_state["delivery_method_input"] = ""
     delivery_method = st.text_input(
         "Delivery method (chart-note wording only)",
-        help="Free text — syringe, gravity, etc. Doesn't affect any "
-        "calculation; every row's own amount is what's summed.",
+        placeholder="Eg: BTF using [feeding tube type, include tube diameter if known], "
+        "via [feeding method]",
+        help="Free text — this becomes the first line of the chart note. "
+        "Doesn't affect any calculation; every row's own amount is what's summed.",
         key="delivery_method_input",
     )
 
@@ -3180,8 +3129,10 @@ with recipes_tab:
 with record_tab:
     st.divider()
 
-    # --- Chart note: the Intake Record read aloud chronologically (tube
-    # and oral interleaved by time) + totals (design doc section 3.5). ---
+    # --- Chart note: the delivery-method line, then totals by category
+    # (author, 2026-08-10). The chronological timeline it used to open
+    # with is gone -- the Intake Record above IS that list, and repeating
+    # it as prose made the note too long to paste into an EHR. ---
     st.subheader("Chart Note")
     st.caption("Copy-paste into your own chart. No patient-identifying fields.")
 
@@ -3193,16 +3144,6 @@ with record_tab:
             r for r in _ordered_note_rows if r["source_type"] in ("blend", "formula", "flush")
         ]
         _oral_note_rows = [r for r in _ordered_note_rows if r["source_type"] == "oral"]
-
-        _timeline_bits = []
-        if _tube_note_rows:
-            _timeline_bits.append(
-                f"BTF via {delivery_method}: "
-                + "; ".join(_format_tube_feed_bits(_tube_note_rows))
-                + "."
-            )
-        if _oral_note_rows:
-            _timeline_bits.append("Oral: " + "; ".join(_format_oral_bits(_oral_note_rows)) + ".")
 
         # --- The three summary lines, in the author's charting format
         # (2026-08-09): feed regimen, oral intake, total -- each one
@@ -3231,7 +3172,11 @@ with record_tab:
         _tube_fluid = _tube_free_water + _flush_mL
         _oral_fluid = _oral_family.get("fluid_provided_mL", 0.0)
 
+        # The delivery-method field is the opening line verbatim, so a
+        # blank one drops the line rather than emitting a bare full stop.
         _summary_lines = []
+        if delivery_method.strip():
+            _summary_lines.append(delivery_method.strip().rstrip(".") + ".")
         if _tube_note_rows:
             _summary_lines.append(
                 "Feed regimen: "
@@ -3247,41 +3192,10 @@ with record_tab:
             + "."
         )
 
-        # Flow test, per blend that actually appears in today's Intake
-        # Record. Named, because "passed the syringe test" attached to the
-        # wrong recipe is worse than no note at all -- and a day can draw
-        # on more than one blend. Blends not fed today are omitted: this
-        # note documents the day, not the recipe library.
-        _flow_test_bits = []
-        _blend_ids_fed = {
-            r["source_id"] for r in st.session_state.intake_log if r["source_type"] == "blend"
-        }
-        for _bid in sorted(_blend_ids_fed):
-            _fed_blend = st.session_state.blends.get(_bid)
-            if not _fed_blend:
-                continue
-            _ft = _fed_blend.get("flow_test") or {}
-            if _ft.get("result") not in ("Passed", "Needs thinning"):
-                continue
-            _result_word = "passed" if _ft["result"] == "Passed" else "needs thinning"
-            _blend_label = _fed_blend.get("name") or f"Blend {_bid}"
-            _ft_date = _ft.get("date")
-            _date_bit = f" {_ft_date.isoformat()}" if _ft_date else ""
-            _notes_bit = f" — {_ft.get('notes')}" if _ft.get("notes") else ""
-            _flow_test_bits.append(
-                f"Flow test ({_blend_label}):{_date_bit} {_result_word}{_notes_bit}."
-            )
-
-        # Paragraphs, not one run-on line: the timeline reads as prose,
-        # but the three summary lines are the bit that gets skimmed, so
-        # each one gets its own line.
-        _note_blocks = []
-        if _timeline_bits:
-            _note_blocks.append(" ".join(_timeline_bits))
-        _note_blocks.append("\n\n".join(_summary_lines))
-        if _flow_test_bits:
-            _note_blocks.append(" ".join(_flow_test_bits))
-        _note_text = "\n\n".join(_note_blocks)
+        # The flow-test line was dropped here too (author, 2026-08-10) --
+        # it is still shown in the Feed Recipes tab and saved to the
+        # workbook, it just isn't part of the pasted note.
+        _note_text = "\n".join(_summary_lines)
         st.code(_note_text, language=None)
 
     # --- One file: the day you can reopen, and the report you can file ---
