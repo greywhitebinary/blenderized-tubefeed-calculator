@@ -285,6 +285,13 @@ scope expansion agreed in the follow-up conversation:
   The flow test is still shown in Feed Recipes and saved to the
   workbook, it just isn't in the pasted note.
 
+  On a day with only ONE category, the Feed regimen / Oral Intake line
+  and the total would be the same numbers twice, so only "Total daily
+  intake" is written (author, 2026-08-10) — every note then ends on the
+  same label whatever the day held, which is what someone scanning back
+  through a series of them looks for. The water split rides along on
+  that line when there is tube feed to split.
+
   Categories and their contributions, which is what charting asks for
   (author, 2026-08-09). "Fluids" is counted per category the way the
   clinic counts it, not by one uniform rule: the feed line is free water

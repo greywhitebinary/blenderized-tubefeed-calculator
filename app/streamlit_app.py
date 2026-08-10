@@ -3174,23 +3174,30 @@ with record_tab:
 
         # The delivery-method field is the opening line verbatim, so a
         # blank one drops the line rather than emitting a bare full stop.
+        _water_split = (
+            f" ({_tube_free_water:.0f}ml from free water "
+            f"+ {_flush_mL:.0f}ml from water flushes)"
+        )
+        _total_line = "Total daily intake: " + _macro_bits(
+            intake_totals.nutrient_totals, _tube_fluid + _oral_fluid
+        )
+
         _summary_lines = []
         if delivery_method.strip():
             _summary_lines.append(delivery_method.strip().rstrip(".") + ".")
-        if _tube_note_rows:
+        if _tube_note_rows and _oral_note_rows:
             _summary_lines.append(
-                "Feed regimen: "
-                + _macro_bits(_tube_sub, _tube_fluid)
-                + f" ({_tube_free_water:.0f}ml from free water "
-                f"+ {_flush_mL:.0f}ml from water flushes)."
+                "Feed regimen: " + _macro_bits(_tube_sub, _tube_fluid) + _water_split + "."
             )
-        if _oral_note_rows:
             _summary_lines.append("Oral Intake: " + _macro_bits(_oral_sub, _oral_fluid) + ".")
-        _summary_lines.append(
-            "Total daily intake: "
-            + _macro_bits(intake_totals.nutrient_totals, _tube_fluid + _oral_fluid)
-            + "."
-        )
+            _summary_lines.append(_total_line + ".")
+        else:
+            # One category only, so the category line and the total would
+            # be the same numbers twice. Keep the total: every note then
+            # ends on the same label whatever the day held, which is what
+            # someone scanning back through a series of them looks for.
+            # The water split rides along when there is tube feed to split.
+            _summary_lines.append(_total_line + (_water_split if _tube_note_rows else "") + ".")
 
         # The flow-test line was dropped here too (author, 2026-08-10) --
         # it is still shown in the Feed Recipes tab and saved to the
