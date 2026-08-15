@@ -1303,11 +1303,28 @@ st.markdown(
        dropdowns, radios and checkboxes keep the flat pink, untouched. Fill and
        outline are two separate cues, so this survives colour-blindness.
 
+       Every input type needs the SAME two-part treatment: paint the fill and
+       the outline on the outer rounded element, then force the inner ones
+       transparent. Miss the second half and the inner <input> keeps painting
+       Streamlit's pink straight over the white (which is what sent the
+       Search foods box back to pink); do the second half with white instead
+       of transparent and the square inner element clips the outer's rounded
+       corners. stTextInputRootElement / stTextAreaRootElement are Streamlit's
+       own handles for the outer element -- more precise than the BaseWeb
+       attribute, which is kept alongside as a fallback.
+
        2px is the number to tune if the outline reads loud. */
+    [data-testid="stTextInputRootElement"],
+    [data-testid="stTextAreaRootElement"],
     [data-testid="stTextInput"] [data-baseweb="input"],
     [data-testid="stTextArea"] textarea {
         background-color: #ffffff !important;
         border: 2px solid #A4243A !important;
+    }
+    [data-testid="stTextInput"] [data-baseweb="base-input"],
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] [data-baseweb="base-input"] {
+        background-color: transparent !important;
     }
     /* Number inputs are built differently and MUST be targeted by their
        container. Streamlit hands BaseWeb a Root override zeroing all four
@@ -1330,7 +1347,8 @@ st.markdown(
        resting state, so focus would be invisible. Restore it as a soft ring.
        The number input carries focus as a `.focused` class on its container
        as well as :focus-within, so match both. */
-    [data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
+    [data-testid="stTextInputRootElement"]:focus-within,
+    [data-testid="stTextAreaRootElement"]:focus-within,
     [data-testid="stTextArea"] textarea:focus,
     [data-testid="stNumberInputContainer"]:focus-within,
     [data-testid="stNumberInputContainer"].focused {
@@ -1399,14 +1417,16 @@ st.markdown(
        margin-top in 0.2rem steps and leave top alone. */
     [data-testid="stElementToolbar"] {
         opacity: 0.55 !important;
-        top: -2rem !important;
+        top: -1.7rem !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
     }
     [data-testid="stElementToolbar"]:hover,
     [data-testid="stElementToolbar"]:focus-within {
         opacity: 1 !important;
     }
     [data-testid="stDataFrame"] {
-        margin-top: 1.4rem;
+        margin-top: 0.5rem;
     }
     </style>
     """,
@@ -2948,9 +2968,13 @@ with record_tab:
                 .map(color_status, subset=["Status"]),
                 width="stretch",
                 hide_index=True,
-                # Status carries "Informational — see Fluids provided" (36
-                # characters) on the free-water row; the default width clips it.
-                column_config={"Status": st.column_config.TextColumn(width="medium")},
+                # Both carry a long value on the free-water row that the
+                # default width clips: "Free water from foods and feeds" (30)
+                # and "Informational — see Fluids provided" (35).
+                column_config={
+                    "Nutrient": st.column_config.TextColumn(width="medium"),
+                    "Status": st.column_config.TextColumn(width="medium"),
+                },
             )
         st.caption(
             "Free water counts moisture from CNF foods plus formula-declared "
@@ -2961,8 +2985,16 @@ with record_tab:
         with st.expander("Where these numbers came from"):
             st.dataframe(
                 adequacy_display[["Nutrient", *_PROVENANCE_COLS]],
-                width="content",
+                width="stretch",
                 hide_index=True,
+                # Source runs to 69 characters on the Fluids provided row
+                # ("Full volume of counts-as-fluid ingredients (I&O
+                # convention) + flushes"), so it needs the widest setting --
+                # this table has only three columns and room to give.
+                column_config={
+                    "Nutrient": st.column_config.TextColumn(width="medium"),
+                    "Source": st.column_config.TextColumn(width="large"),
+                },
             )
         if hidden_main_names:
             st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
