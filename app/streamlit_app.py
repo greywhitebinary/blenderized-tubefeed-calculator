@@ -1981,7 +1981,7 @@ if load_example_clicked:
         st.session_state["target_fluid_mL"] = 2250.0
 
         st.session_state["recipe_name_input"] = "Example — James W (H&N RT wk 5)"
-        st.session_state["delivery_method_input"] = "BTF using 24Fr PEG, via syringe bolus"
+        st.session_state["delivery_method_input"] = "BTF using 24Fr PEG tube via syringe bolus"
         st.rerun()
     else:
         st.error("Could not find example foods in CNF.")
