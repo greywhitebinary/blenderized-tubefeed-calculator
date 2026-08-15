@@ -2975,17 +2975,27 @@ with record_tab:
                 # 0 dp being dragged to "2204.0" by Protein's 1 dp sharing
                 # the column. The Styler only colours Status now.
                 .map(color_status, subset=["Status"]),
-                # "content", not "stretch": stretch fits the columns into the
-                # container, so any cell longer than its share is ellipsised
-                # -- which is what clipped "Free water from foods and feeds"
-                # and "Informational — see Fluids provided". content sizes
-                # each column to what it actually holds and lets the table
-                # scroll sideways instead, capped at Streamlit's
-                # maxColumnAutoWidth (31.25rem); both strings measure well
-                # under that. This self-sizes, so unlike hardcoded pixel
-                # widths it keeps working if the root font size changes.
-                width="content",
+                # stretch + explicit pixel widths is the only combination
+                # that both guarantees the long cells fit and still scrolls.
+                # width="content" was tried and is wrong here: it leaves the
+                # columns at their measured size without filling the
+                # container, so the table renders narrow with dead space to
+                # its right and can never scroll. The named buckets are no
+                # help either -- small/medium/large are the raw pixel
+                # constants 75/200/400, and medium clipped both columns.
+                #
+                # Sized for the longest value each column carries, both on
+                # the free-water row: "Free water from foods and feeds" (31
+                # chars) and "Informational — see Fluids provided" (35).
+                # These are PIXELS and the cell font is rem-based, so if the
+                # root font-size knob at the top of the style block ever
+                # changes, bump these to match.
+                width="stretch",
                 hide_index=True,
+                column_config={
+                    "Nutrient": st.column_config.TextColumn(width=320),
+                    "Status": st.column_config.TextColumn(width=360),
+                },
             )
         st.caption(
             "Free water counts moisture from CNF foods plus formula-declared "
@@ -2996,11 +3006,18 @@ with record_tab:
         with st.expander("Where these numbers came from"):
             st.dataframe(
                 adequacy_display[["Nutrient", *_PROVENANCE_COLS]],
-                # Same reasoning as the main table above. Source runs to 69
-                # characters on the Fluids provided row, which content sizing
-                # handles on its own.
-                width="content",
+                # Widths measured off a rendered screenshot, not guessed:
+                # Source's longest value ("Full volume of counts-as-fluid
+                # ingredients (I&O convention) + flushes", 69 chars) draws
+                # about 500px. An earlier 680 here overflowed the expander
+                # and pushed the Coverage column out of view entirely, so
+                # these are sized to leave Coverage its share.
+                width="stretch",
                 hide_index=True,
+                column_config={
+                    "Nutrient": st.column_config.TextColumn(width=270),
+                    "Source": st.column_config.TextColumn(width=520),
+                },
             )
         if hidden_main_names:
             st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
