@@ -1339,7 +1339,16 @@ st.markdown(
         background-color: #ffffff !important;
         border: 2px solid #A4243A !important;
     }
-    [data-testid="stNumberInput"] [data-baseweb="input"],
+    /* Every nested wrapper, by attribute AND by structure. The pink sits on
+       one of BaseWeb's inner divs and which one has moved between releases;
+       naming only [data-baseweb="input"] left it painting over the white, so
+       the Nutrition Targets tab -- which is nothing BUT number inputs -- still
+       looked entirely pink. The step buttons are <button> elements, so these
+       div selectors leave their pale pink alone, which is what we want. */
+    [data-testid="stNumberInputContainer"] [data-baseweb="input"],
+    [data-testid="stNumberInputContainer"] [data-baseweb="base-input"],
+    [data-testid="stNumberInputContainer"] > div,
+    [data-testid="stNumberInputContainer"] > div > div,
     [data-testid="stNumberInputField"] {
         background-color: transparent !important;
     }
@@ -2968,12 +2977,15 @@ with record_tab:
                 .map(color_status, subset=["Status"]),
                 width="stretch",
                 hide_index=True,
-                # Both carry a long value on the free-water row that the
-                # default width clips: "Free water from foods and feeds" (30)
-                # and "Informational — see Fluids provided" (35).
+                # Exact pixels, not "medium" -- the named sizes are fixed
+                # buckets and "medium" still clipped these two. Sized for the
+                # longest value each column carries, both on the free-water
+                # row: "Free water from foods and feeds" (31 chars) and
+                # "Informational — see Fluids provided" (35). Bump these two
+                # numbers if the app's root font size is ever raised again.
                 column_config={
-                    "Nutrient": st.column_config.TextColumn(width="medium"),
-                    "Status": st.column_config.TextColumn(width="medium"),
+                    "Nutrient": st.column_config.TextColumn(width=300),
+                    "Status": st.column_config.TextColumn(width=340),
                 },
             )
         st.caption(
@@ -2989,11 +3001,11 @@ with record_tab:
                 hide_index=True,
                 # Source runs to 69 characters on the Fluids provided row
                 # ("Full volume of counts-as-fluid ingredients (I&O
-                # convention) + flushes"), so it needs the widest setting --
-                # this table has only three columns and room to give.
+                # convention) + flushes"). Only three columns here, so there
+                # is room to size it for that worst case outright.
                 column_config={
-                    "Nutrient": st.column_config.TextColumn(width="medium"),
-                    "Source": st.column_config.TextColumn(width="large"),
+                    "Nutrient": st.column_config.TextColumn(width=300),
+                    "Source": st.column_config.TextColumn(width=620),
                 },
             )
         if hidden_main_names:
