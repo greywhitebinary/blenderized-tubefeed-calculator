@@ -2975,18 +2975,17 @@ with record_tab:
                 # 0 dp being dragged to "2204.0" by Protein's 1 dp sharing
                 # the column. The Styler only colours Status now.
                 .map(color_status, subset=["Status"]),
-                width="stretch",
+                # "content", not "stretch": stretch fits the columns into the
+                # container, so any cell longer than its share is ellipsised
+                # -- which is what clipped "Free water from foods and feeds"
+                # and "Informational — see Fluids provided". content sizes
+                # each column to what it actually holds and lets the table
+                # scroll sideways instead, capped at Streamlit's
+                # maxColumnAutoWidth (31.25rem); both strings measure well
+                # under that. This self-sizes, so unlike hardcoded pixel
+                # widths it keeps working if the root font size changes.
+                width="content",
                 hide_index=True,
-                # Exact pixels, not "medium" -- the named sizes are fixed
-                # buckets and "medium" still clipped these two. Sized for the
-                # longest value each column carries, both on the free-water
-                # row: "Free water from foods and feeds" (31 chars) and
-                # "Informational — see Fluids provided" (35). Bump these two
-                # numbers if the app's root font size is ever raised again.
-                column_config={
-                    "Nutrient": st.column_config.TextColumn(width=300),
-                    "Status": st.column_config.TextColumn(width=340),
-                },
             )
         st.caption(
             "Free water counts moisture from CNF foods plus formula-declared "
@@ -2997,16 +2996,11 @@ with record_tab:
         with st.expander("Where these numbers came from"):
             st.dataframe(
                 adequacy_display[["Nutrient", *_PROVENANCE_COLS]],
-                width="stretch",
+                # Same reasoning as the main table above. Source runs to 69
+                # characters on the Fluids provided row, which content sizing
+                # handles on its own.
+                width="content",
                 hide_index=True,
-                # Source runs to 69 characters on the Fluids provided row
-                # ("Full volume of counts-as-fluid ingredients (I&O
-                # convention) + flushes"). Only three columns here, so there
-                # is room to size it for that worst case outright.
-                column_config={
-                    "Nutrient": st.column_config.TextColumn(width=300),
-                    "Source": st.column_config.TextColumn(width=620),
-                },
             )
         if hidden_main_names:
             st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
