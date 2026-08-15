@@ -1969,10 +1969,18 @@ They are not suggestions.
   fields (`st.text_input`, `st.number_input`, `st.text_area`) get a white
   fill and a maroon outline; dropdowns/radios/checkboxes keep the flat
   pink `secondaryBackgroundColor`, untouched — don't add either style to
-  the other input family. Paint the fill on the outer `[data-baseweb=
-  "input"]` wrapper ONLY and keep the inner elements transparent — filling
-  all three levels makes the square `<input>` clip the wrapper's rounded
-  corners. Page width: `layout="wide"` stays, but the main container is
+  the other input family. **`st.text_input` / `st.text_area` and
+  `st.number_input` need DIFFERENT selectors** — this cost two attempts.
+  Text inputs carry their radius and border on `[data-baseweb="input"]`;
+  number inputs do not, because Streamlit hands BaseWeb a Root override
+  zeroing all four radii and all four border widths and puts the radius,
+  the border and `overflow: hidden` on
+  `[data-testid="stNumberInputContainer"]` instead. Style the container
+  for number inputs; styling `[data-baseweb="input"]` there draws a
+  square box inside a rounded clipping parent and the corners come out
+  visibly cut off. Leave the `+/-` step buttons their pale pink — white
+  where you type, pink where you click is the same convention as the
+  dropdowns. Page width: `layout="wide"` stays, but the main container is
   capped at `max-width: 60rem` and **left-justified**, not centred; a
   table that genuinely needs the full screen breaks out via
   `st.container(key="fullbleed_*")`, which the CSS matches on

@@ -375,7 +375,13 @@ def generate_adequacy_report(
             "Target": "—",
             "% Target": "—",
             "Status": "Informational — see Fluids provided",
-            "Source": "CNF food moisture (blend and oral rows) + formula-declared free water. Water flushes are counted in Fluids provided, not here. No label carries moisture, so label-entered foods contribute none.",
+            # Short enough to READ in the cell. This used to carry all three
+            # sentences of the explanation, which no column width can fit --
+            # a grid cell cannot wrap, so it truncated at ~40 characters and
+            # the provenance was invisible precisely where it mattered. The
+            # full wording now sits in a caption under the table, where prose
+            # wraps (author, 2026-08-14). Nothing was dropped, only moved.
+            "Source": "CNF food moisture + formula free water",
             "Coverage": _coverage_text("water_g", coverage),
             "_zero_coverage": _zero_coverage("water_g", coverage),
         }

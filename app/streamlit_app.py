@@ -1303,35 +1303,37 @@ st.markdown(
        dropdowns, radios and checkboxes keep the flat pink, untouched. Fill and
        outline are two separate cues, so this survives colour-blindness.
 
-       Paint the fill on the OUTER rounded wrapper only, and force the inner
-       elements transparent. Painting all three levels white (the first attempt)
-       made the square inner <input> cover the wrapper's rounded corners, so
-       boxes came out with their corners visibly clipped -- one paint layer
-       keeps whatever border-radius Streamlit's theme set. 2px is the number to
-       tune if the outline reads loud. */
+       2px is the number to tune if the outline reads loud. */
     [data-testid="stTextInput"] [data-baseweb="input"],
-    [data-testid="stNumberInput"] [data-baseweb="input"],
     [data-testid="stTextArea"] textarea {
         background-color: #ffffff !important;
-    }
-    [data-testid="stTextInput"] [data-baseweb="base-input"],
-    [data-testid="stTextInput"] input,
-    [data-testid="stNumberInput"] [data-baseweb="base-input"],
-    [data-testid="stNumberInput"] input,
-    [data-testid="stNumberInput"] [data-testid="stNumberInputStepUp"],
-    [data-testid="stNumberInput"] [data-testid="stNumberInputStepDown"] {
-        background-color: transparent !important;
-    }
-    [data-testid="stTextInput"] [data-baseweb="input"],
-    [data-testid="stNumberInput"] [data-baseweb="input"],
-    [data-testid="stTextArea"] textarea {
         border: 2px solid #A4243A !important;
     }
+    /* Number inputs are built differently and MUST be targeted by their
+       container. Streamlit hands BaseWeb a Root override zeroing all four
+       border-radii AND all four border widths, then puts the radius, the
+       border and `overflow: hidden` on stNumberInputContainer instead. An
+       earlier pass styled [data-baseweb="input"] here, which drew a square
+       2px box inside a rounded clipping parent -- so every +/- box rendered
+       with its corners visibly cut off while text inputs looked fine. The
+       step buttons keep Streamlit's pale pink on purpose: white where you
+       type, pink where you click is the same convention as the dropdowns. */
+    [data-testid="stNumberInputContainer"] {
+        background-color: #ffffff !important;
+        border: 2px solid #A4243A !important;
+    }
+    [data-testid="stNumberInput"] [data-baseweb="input"],
+    [data-testid="stNumberInputField"] {
+        background-color: transparent !important;
+    }
     /* Streamlit signals keyboard focus by turning the border maroon -- now the
-       resting state, so focus would be invisible. Restore it as a soft ring. */
+       resting state, so focus would be invisible. Restore it as a soft ring.
+       The number input carries focus as a `.focused` class on its container
+       as well as :focus-within, so match both. */
     [data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
-    [data-testid="stNumberInput"] [data-baseweb="input"]:focus-within,
-    [data-testid="stTextArea"] textarea:focus {
+    [data-testid="stTextArea"] textarea:focus,
+    [data-testid="stNumberInputContainer"]:focus-within,
+    [data-testid="stNumberInputContainer"].focused {
         box-shadow: 0 0 0 3px rgba(164, 36, 58, 0.25) !important;
     }
 
@@ -1386,19 +1388,25 @@ st.markdown(
 
        top is pinned to one value for both states because Streamlit animates
        it from -1rem to -2.65rem on hover; with the toolbar always visible
-       that became a visible jump. The matching margin-top on the table
-       reserves that strip so the toolbar cannot land on the caption above it.
-       Tune the two 2.2rem values together. */
+       that became a visible jump.
+
+       These are two DIFFERENT quantities, not one knob -- setting them equal
+       (the first attempt) left far too much white space above every table.
+       `top` is fixed by the toolbar's own height, or it overlaps the table it
+       sits above. `margin-top` only has to cover the SHORTFALL between that
+       height and the gap Streamlit already leaves after a caption, so it is
+       the smaller number. If the toolbar ends up touching the caption, raise
+       margin-top in 0.2rem steps and leave top alone. */
     [data-testid="stElementToolbar"] {
         opacity: 0.55 !important;
-        top: -2.2rem !important;
+        top: -2rem !important;
     }
     [data-testid="stElementToolbar"]:hover,
     [data-testid="stElementToolbar"]:focus-within {
         opacity: 1 !important;
     }
     [data-testid="stDataFrame"] {
-        margin-top: 2.2rem;
+        margin-top: 1.4rem;
     }
     </style>
     """,
@@ -2919,12 +2927,19 @@ with record_tab:
         # on every render.
         if "Per kg" in adequacy_display.columns:
             adequacy_display["Per kg"] = adequacy_display["Per kg"].astype(str)
-        # Breaks out of the page cap: six columns, and it is the table the RD
-        # reads most, so a hidden column costs more here than anywhere else
-        # (author feedback 2026-08-14).
+        # Provenance (Source / Coverage) moves to its own expander below
+        # (author feedback 2026-08-14). Nine columns competed for width here
+        # and the text ones lost -- Source in particular truncated on exactly
+        # the rows whose provenance is least obvious. It is still one click
+        # away, and generate_adequacy_report() still RETURNS all nine, so the
+        # Excel export below is untouched.
+        _PROVENANCE_COLS = ["Source", "Coverage"]
+        _main_cols = [c for c in adequacy_display.columns if c not in _PROVENANCE_COLS]
+        # Breaks out of the page cap: it is the table the RD reads most, so a
+        # hidden column costs more here than anywhere else.
         with st.container(key="fullbleed_adequacy"):
             st.dataframe(
-                adequacy_display.style
+                adequacy_display[_main_cols].style
                 # Daily Total / Target / % Target arrive from report.py
                 # already formatted as text at each nutrient's own registry
                 # precision (see _fmt there), which is what stops Energy's
@@ -2932,6 +2947,21 @@ with record_tab:
                 # the column. The Styler only colours Status now.
                 .map(color_status, subset=["Status"]),
                 width="stretch",
+                hide_index=True,
+                # Status carries "Informational — see Fluids provided" (36
+                # characters) on the free-water row; the default width clips it.
+                column_config={"Status": st.column_config.TextColumn(width="medium")},
+            )
+        st.caption(
+            "Free water counts moisture from CNF foods plus formula-declared "
+            "free water. Water flushes are counted under Fluids provided, not "
+            "here. Foods entered from a label contribute none, because no "
+            "label carries moisture."
+        )
+        with st.expander("Where these numbers came from"):
+            st.dataframe(
+                adequacy_display[["Nutrient", *_PROVENANCE_COLS]],
+                width="content",
                 hide_index=True,
             )
         if hidden_main_names:
