@@ -1264,19 +1264,36 @@ st.markdown(
 
        60rem, not 1200px, so this scales with the font-size knob at the top of
        this block instead of fighting it. Tune this one number. It has no
-       effect on a phone, where the viewport is already narrower than the cap. */
+       effect on a phone, where the viewport is already narrower than the cap.
+
+       LEFT-justified, not centred (author feedback 2026-08-14). Streamlit
+       centres the block with margin:auto, which put the capped reading column
+       in the middle of the screen while a full-width table was centred on the
+       VIEWPORT -- so the wide tables started further left than every heading
+       above them and read as misaligned rather than wide. One shared left
+       edge for everything is what makes the mixed widths look deliberate. */
     .stApp [data-testid="stMainBlockContainer"],
     .stApp .block-container {
         max-width: 60rem;
+        margin-left: 0 !important;
+        margin-right: auto !important;
     }
 
-    /* Full-bleed break-out. Any st.container(key="fullbleed_*") escapes the
-       cap and uses the viewport. 95vw not 100vw: vw includes the scrollbar,
-       and 100 would give the page a horizontal scrollbar of its own. */
-    [class*="st-key-fullbleed"] {
-        width: 95vw;
-        max-width: 95vw;
-        margin-left: calc(50% - 47.5vw);
+    /* Break-out for tables too wide to read inside the cap. Any
+       st.container(key="fullbleed_*") keeps the shared left edge and simply
+       extends to the right -- no negative margins, which is what made the
+       first attempt straddle the page.
+
+       Only above 64rem: below that the viewport is already narrower than the
+       cap, so there is nothing to break out of and the table should just be
+       the width of the phone. The 8rem keeps the right edge clear of the
+       viewport even at the widest block-container padding, so the PAGE never
+       gets a horizontal scrollbar of its own. */
+    @media (min-width: 64rem) {
+        [class*="st-key-fullbleed"] {
+            width: calc(100vw - 8rem);
+            max-width: calc(100vw - 8rem);
+        }
     }
 
     /* Type-vs-pick convention (author feedback 2026-08-14). Every box carried
@@ -1286,17 +1303,24 @@ st.markdown(
        dropdowns, radios and checkboxes keep the flat pink, untouched. Fill and
        outline are two separate cues, so this survives colour-blindness.
 
-       Three selectors per widget because the pink is painted on Streamlit's
-       BaseWeb wrapper, not on the <input> itself, and which wrapper carries it
-       has moved between releases. 2px is the number to tune if it reads loud. */
+       Paint the fill on the OUTER rounded wrapper only, and force the inner
+       elements transparent. Painting all three levels white (the first attempt)
+       made the square inner <input> cover the wrapper's rounded corners, so
+       boxes came out with their corners visibly clipped -- one paint layer
+       keeps whatever border-radius Streamlit's theme set. 2px is the number to
+       tune if the outline reads loud. */
     [data-testid="stTextInput"] [data-baseweb="input"],
-    [data-testid="stTextInput"] [data-baseweb="base-input"],
-    [data-testid="stTextInput"] input,
     [data-testid="stNumberInput"] [data-baseweb="input"],
-    [data-testid="stNumberInput"] [data-baseweb="base-input"],
-    [data-testid="stNumberInput"] input,
     [data-testid="stTextArea"] textarea {
         background-color: #ffffff !important;
+    }
+    [data-testid="stTextInput"] [data-baseweb="base-input"],
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] [data-baseweb="base-input"],
+    [data-testid="stNumberInput"] input,
+    [data-testid="stNumberInput"] [data-testid="stNumberInputStepUp"],
+    [data-testid="stNumberInput"] [data-testid="stNumberInputStepDown"] {
+        background-color: transparent !important;
     }
     [data-testid="stTextInput"] [data-baseweb="input"],
     [data-testid="stNumberInput"] [data-baseweb="input"],
@@ -1352,6 +1376,29 @@ st.markdown(
     }
     [data-testid="stTabsScrollLeft"] {
         background-image: linear-gradient(to left, rgba(255, 255, 255, 0), #ffffff 25%) !important;
+    }
+
+    /* Table toolbar: search, download CSV, fullscreen, column visibility
+       (author feedback 2026-08-14). Streamlit ships these at opacity:0 and
+       reveals them only on :hover -- which means that on a phone, where there
+       is no hover at all, four useful controls are completely undiscoverable.
+       Park them permanently at 55% and go solid on interaction.
+
+       top is pinned to one value for both states because Streamlit animates
+       it from -1rem to -2.65rem on hover; with the toolbar always visible
+       that became a visible jump. The matching margin-top on the table
+       reserves that strip so the toolbar cannot land on the caption above it.
+       Tune the two 2.2rem values together. */
+    [data-testid="stElementToolbar"] {
+        opacity: 0.55 !important;
+        top: -2.2rem !important;
+    }
+    [data-testid="stElementToolbar"]:hover,
+    [data-testid="stElementToolbar"]:focus-within {
+        opacity: 1 !important;
+    }
+    [data-testid="stDataFrame"] {
+        margin-top: 2.2rem;
     }
     </style>
     """,
@@ -2872,17 +2919,21 @@ with record_tab:
         # on every render.
         if "Per kg" in adequacy_display.columns:
             adequacy_display["Per kg"] = adequacy_display["Per kg"].astype(str)
-        st.dataframe(
-            adequacy_display.style
-            # Daily Total / Target / % Target arrive from report.py
-            # already formatted as text at each nutrient's own registry
-            # precision (see _fmt there), which is what stops Energy's
-            # 0 dp being dragged to "2204.0" by Protein's 1 dp sharing
-            # the column. The Styler only colours Status now.
-            .map(color_status, subset=["Status"]),
-            width="stretch",
-            hide_index=True,
-        )
+        # Breaks out of the page cap: six columns, and it is the table the RD
+        # reads most, so a hidden column costs more here than anywhere else
+        # (author feedback 2026-08-14).
+        with st.container(key="fullbleed_adequacy"):
+            st.dataframe(
+                adequacy_display.style
+                # Daily Total / Target / % Target arrive from report.py
+                # already formatted as text at each nutrient's own registry
+                # precision (see _fmt there), which is what stops Energy's
+                # 0 dp being dragged to "2204.0" by Protein's 1 dp sharing
+                # the column. The Styler only colours Status now.
+                .map(color_status, subset=["Status"]),
+                width="stretch",
+                hide_index=True,
+            )
         if hidden_main_names:
             st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
 

@@ -1969,11 +1969,18 @@ They are not suggestions.
   fields (`st.text_input`, `st.number_input`, `st.text_area`) get a white
   fill and a maroon outline; dropdowns/radios/checkboxes keep the flat
   pink `secondaryBackgroundColor`, untouched — don't add either style to
-  the other input family. Page width: `layout="wide"` stays, but the
-  main container is capped at `max-width: 60rem`; a table that genuinely
-  needs the full screen breaks out via `st.container(key="fullbleed_*")`,
-  which the CSS matches on `[class*="st-key-fullbleed"]` — reuse that key
-  prefix rather than inventing a new break-out mechanism. Mobile tab
+  the other input family. Paint the fill on the outer `[data-baseweb=
+  "input"]` wrapper ONLY and keep the inner elements transparent — filling
+  all three levels makes the square `<input>` clip the wrapper's rounded
+  corners. Page width: `layout="wide"` stays, but the main container is
+  capped at `max-width: 60rem` and **left-justified**, not centred; a
+  table that genuinely needs the full screen breaks out via
+  `st.container(key="fullbleed_*")`, which the CSS matches on
+  `[class*="st-key-fullbleed"]` and widens rightward from that shared left
+  edge — reuse that key prefix, and do not reintroduce negative margins,
+  which made the wide tables straddle the page. Table toolbars are forced
+  visible at 55% opacity because Streamlit hides them behind `:hover`,
+  which does not exist on a phone. Mobile tab
   strip: labels drop to `1rem` only below 640px (desktop stays 1.25rem
   bold, unchanged) and the scroll chevrons are recoloured maroon so they
   read as a control. A future style-block edit should preserve these
