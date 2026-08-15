@@ -551,6 +551,14 @@ def _note(message: str) -> None:
     )
 
 
+def _narrow(left: int = 1, right: int = 2):
+    """Column pair with an empty spacer -- keeps a short field from running
+    the full page width. Streamlit stacks columns on a narrow viewport, so
+    on a phone the field goes back to full width by itself."""
+    col, _spacer = st.columns([left, right])
+    return col
+
+
 @st.cache_resource(show_spinner=False)
 def _label_call_ledger() -> dict:
     """A call counter SHARED by every visitor to this app instance.
@@ -663,14 +671,18 @@ def render_add_food_ui(
             zip(fg_df["CNF_Food_Group_Code"], fg_df["CNF_Food_Group_Description_EN"])
         )
 
-        gc1, gc2 = st.columns([1, 2])
-        selected_group = gc1.selectbox("Food group", group_options, key=f"{key_prefix}_group")
-        search_term = gc2.text_input(
-            "Search foods",
-            "",
-            placeholder="e.g., chicken, rice, oil",
-            key=f"{key_prefix}_search",
-        )
+        # The search row gets its own card: after adding a food the RD scrolls
+        # back up to type the next one, and a flat stack of identical rows gives
+        # the eye nothing to aim at (author feedback 2026-08-14).
+        with st.container(border=True):
+            gc1, gc2 = st.columns([1, 2])
+            selected_group = gc1.selectbox("Food group", group_options, key=f"{key_prefix}_group")
+            search_term = gc2.text_input(
+                "Search foods",
+                "",
+                placeholder="e.g., chicken, rice, oil",
+                key=f"{key_prefix}_search",
+            )
 
         food_code: int | None = None
         food_desc: str | None = None
@@ -726,12 +738,16 @@ def render_add_food_ui(
                         f"{r['Measure_Description_and_Unit_EN']}  ({r['grams']:.1f} g)"
                         for _, r in measures.iterrows()
                     ]
-                    sel_measure = st.selectbox(
+                    # Measure and quantity on one line, with a spacer so neither runs the
+                    # full width -- a household measure is a short phrase and a quantity is
+                    # usually "1" (author feedback 2026-08-14).
+                    mc1, mc2, _spacer = st.columns([3, 1, 2])
+                    sel_measure = mc1.selectbox(
                         "Household measure", measure_opts, key=f"{key_prefix}_measure"
                     )
                     m_idx = measure_opts.index(sel_measure)
                     grams_per = float(measures.iloc[m_idx]["grams"])
-                    qty = st.number_input(
+                    qty = mc2.number_input(
                         "Quantity",
                         min_value=0.0,
                         value=1.0,
@@ -740,10 +756,10 @@ def render_add_food_ui(
                         key=f"{key_prefix}_qty",
                     )
                     calculated_grams = grams_per * qty
-                    st.caption(f"= **{calculated_grams:.1f} g**")
+                    mc2.caption(f"= **{calculated_grams:.1f} g**")
 
                     if st.checkbox("Enter grams directly", key=f"{key_prefix}_grams_override"):
-                        calculated_grams = st.number_input(
+                        calculated_grams = _narrow().number_input(
                             "Grams",
                             min_value=0.0,
                             value=round(calculated_grams, 1),
@@ -753,7 +769,7 @@ def render_add_food_ui(
                         )
                 else:
                     _note("No household measures for this food.")
-                    calculated_grams = st.number_input(
+                    calculated_grams = _narrow().number_input(
                         "Grams",
                         min_value=0.0,
                         value=100.0,
@@ -1238,6 +1254,105 @@ st.markdown(
     .stApp h3,
     [data-testid="stAppViewContainer"] h3,
     [data-testid="stHeadingWithActionElements"] h3 { font-size: 1.05rem !important; }
+
+    /* Desktop page width (author feedback 2026-08-14). layout="wide" removes
+       Streamlit's width limit entirely, which is right for the report tables
+       and wrong for everything else: on a large monitor a number box holding
+       "1.0" ran the full screen and caption paragraphs ran past a readable
+       line length. Cap the column here; the few tables that genuinely need
+       the whole screen break out of it below.
+
+       60rem, not 1200px, so this scales with the font-size knob at the top of
+       this block instead of fighting it. Tune this one number. It has no
+       effect on a phone, where the viewport is already narrower than the cap. */
+    .stApp [data-testid="stMainBlockContainer"],
+    .stApp .block-container {
+        max-width: 60rem;
+    }
+
+    /* Full-bleed break-out. Any st.container(key="fullbleed_*") escapes the
+       cap and uses the viewport. 95vw not 100vw: vw includes the scrollbar,
+       and 100 would give the page a horizontal scrollbar of its own. */
+    [class*="st-key-fullbleed"] {
+        width: 95vw;
+        max-width: 95vw;
+        margin-left: calc(50% - 47.5vw);
+    }
+
+    /* Type-vs-pick convention (author feedback 2026-08-14). Every box carried
+       the same pale-pink secondaryBackgroundColor, so a search line and the
+       dropdown under it were indistinguishable and there was no landmark to
+       scroll back to. Typed fields get a white fill and a maroon outline;
+       dropdowns, radios and checkboxes keep the flat pink, untouched. Fill and
+       outline are two separate cues, so this survives colour-blindness.
+
+       Three selectors per widget because the pink is painted on Streamlit's
+       BaseWeb wrapper, not on the <input> itself, and which wrapper carries it
+       has moved between releases. 2px is the number to tune if it reads loud. */
+    [data-testid="stTextInput"] [data-baseweb="input"],
+    [data-testid="stTextInput"] [data-baseweb="base-input"],
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] [data-baseweb="input"],
+    [data-testid="stNumberInput"] [data-baseweb="base-input"],
+    [data-testid="stNumberInput"] input,
+    [data-testid="stTextArea"] textarea {
+        background-color: #ffffff !important;
+    }
+    [data-testid="stTextInput"] [data-baseweb="input"],
+    [data-testid="stNumberInput"] [data-baseweb="input"],
+    [data-testid="stTextArea"] textarea {
+        border: 2px solid #A4243A !important;
+    }
+    /* Streamlit signals keyboard focus by turning the border maroon -- now the
+       resting state, so focus would be invisible. Restore it as a soft ring. */
+    [data-testid="stTextInput"] [data-baseweb="input"]:focus-within,
+    [data-testid="stNumberInput"] [data-baseweb="input"]:focus-within,
+    [data-testid="stTextArea"] textarea:focus {
+        box-shadow: 0 0 0 3px rgba(164, 36, 58, 0.25) !important;
+    }
+
+    /* Mobile tab strip (author feedback 2026-08-14). The desktop sizing above
+       is deliberate and unchanged; below 640px those same 1.25rem bold labels
+       are oversized for the screen. The strip still scrolls -- that is fine and
+       the labels stay full length -- the text just should not shout. Tune the
+       1rem. */
+    @media (max-width: 640px) {
+        button[role="tab"] p,
+        button[data-testid="stTab"] p,
+        button[data-baseweb="tab"] p {
+            font-size: 1rem !important;
+        }
+        button[role="tab"],
+        button[data-testid="stTab"],
+        button[data-baseweb="tab"] {
+            margin-right: 0.75rem;
+        }
+    }
+
+    /* Tab scroll arrows: make them read as a control. Streamlit's own styling
+       is a ~2rem button with a 60%-faded grey chevron over a gradient that
+       only turns opaque 40% of the way across, so tab text bleeds under the
+       arrow. Use the app's maroon, widen to a thumb-sized target, enlarge the
+       chevron, and bring the gradient opaque at 25% so the icon always sits on
+       solid ground. #fff is Streamlit's default light background -- no
+       backgroundColor is set in .streamlit/config.toml, and the app already
+       hardcodes light-theme colours elsewhere (see _note). */
+    [data-testid="stTabsScrollLeft"],
+    [data-testid="stTabsScrollRight"] {
+        color: #A4243A !important;
+        width: 2.75rem !important;
+    }
+    [data-testid="stTabsScrollLeft"] svg,
+    [data-testid="stTabsScrollRight"] svg {
+        width: 1.5rem !important;
+        height: 1.5rem !important;
+    }
+    [data-testid="stTabsScrollRight"] {
+        background-image: linear-gradient(to right, rgba(255, 255, 255, 0), #ffffff 25%) !important;
+    }
+    [data-testid="stTabsScrollLeft"] {
+        background-image: linear-gradient(to left, rgba(255, 255, 255, 0), #ffffff 25%) !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -1795,7 +1910,7 @@ with top_l:
     # default value but also had its value set via Session State" warning.
     if "recipe_name_input" not in st.session_state:
         st.session_state["recipe_name_input"] = "My BTF day"
-    recipe_name = st.text_input("Patient / day label", key="recipe_name_input")
+    recipe_name = _narrow(1, 1).text_input("Patient / day label", key="recipe_name_input")
 
 st.title(f"🥕🥦🥤 {recipe_name or 'BTF day'} 💉💧🍌")
 st.caption(
@@ -1905,7 +2020,7 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
     requires, this uses the sanctioned inline-expander fallback instead.
     """
     st.caption("Log a single food or drink the client had by mouth.")
-    oral_time = st.time_input("Time (optional)", value=None, key="oral_time_input")
+    oral_time = _narrow(1, 4).time_input("Time (optional)", value=None, key="oral_time_input")
     new_food = render_add_food_ui(
         fn_df,
         na_df,
@@ -2140,7 +2255,7 @@ with recipes_tab:
             )
         st.rerun()
 
-    selected_blend["name"] = st.text_input(
+    selected_blend["name"] = _narrow(1, 1).text_input(
         "Blend name", selected_blend["name"], key=f"blend_name_{selected_blend_id}"
     )
 
@@ -2188,7 +2303,7 @@ with recipes_tab:
     st.subheader("Blend details")
     st.session_state.pop("load_example", False)
 
-    measured_volume = st.number_input(
+    measured_volume = _narrow(1, 3).number_input(
         "**Measured final volume (mL)**",
         min_value=0.0,
         value=float(selected_blend["measured_volume_mL"]),
@@ -2359,7 +2474,7 @@ with record_tab:
     # opening line verbatim, so it needs to show the whole shape.
     if "delivery_method_input" not in st.session_state:
         st.session_state["delivery_method_input"] = ""
-    delivery_method = st.text_input(
+    delivery_method = _narrow(1, 1).text_input(
         "Delivery method (chart-note wording only)",
         placeholder="Eg: BTF using [feeding tube type, include tube diameter if known], "
         "via [feeding method]",
@@ -2472,7 +2587,7 @@ with record_tab:
                 f"{_per_flush:.0f} mL = **{_flush_total:.0f} mL**"
             )
         else:
-            _flush_total = st.number_input(
+            _flush_total = _narrow(1, 3).number_input(
                 "Med flushes (mL/day — a rough figure is fine)",
                 min_value=0.0,
                 value=100.0,
@@ -2696,7 +2811,7 @@ with recipes_tab:
             st.caption("Add ingredients and a measured volume to the blend above.")
         else:
             st.dataframe(
-                generate_density_summary(selected_profile), width="stretch", hide_index=True
+                generate_density_summary(selected_profile), width="content", hide_index=True
             )
 
 with record_tab:
@@ -2721,7 +2836,8 @@ with record_tab:
             f'"{TUBE_FEED_LABEL}" vs "{FOOD_DRINK_LABEL}" vs "{TOTAL_LABEL}" — combined '
             "numbers, with the split still visible."
         )
-        st.dataframe(generate_source_breakdown(intake_totals), width="stretch", hide_index=True)
+        with st.container(key="fullbleed_source_breakdown"):
+            st.dataframe(generate_source_breakdown(intake_totals), width="stretch", hide_index=True)
 
         # --- Water ledger: every source on its own line (author, 2026-07-30) ---
         _water_ledger = generate_water_ledger(intake_totals.water_sources)
@@ -2733,7 +2849,7 @@ with record_tab:
                 "it *is* the recipe. Water flushes are water given as water, so "
                 "they sit on their own and add on top."
             )
-            st.dataframe(_water_ledger, width="stretch", hide_index=True)
+            st.dataframe(_water_ledger, width="content", hide_index=True)
 
         st.subheader("Daily Totals & Adequacy")
         st.caption(
@@ -2874,7 +2990,7 @@ with recipes_tab:
                     ]
                 )
                 dil_df["Change"] = dil_df["After dilution"] - dil_df["Original"]
-                st.dataframe(dil_df, width="stretch", hide_index=True)
+                st.dataframe(dil_df, width="content", hide_index=True)
 
                 tk = targets.get("energy_kcal", 0.0)
                 tp = targets.get("protein_g", 0.0)
@@ -3080,7 +3196,7 @@ with recipes_tab:
     if selected_profile is None:
         _note("Add ingredients and a measured volume to the blend above " "to use the comparator.")
     else:
-        compare_volume_mL = st.number_input(
+        compare_volume_mL = _narrow(1, 3).number_input(
             "Compare at daily volume (mL)",
             min_value=0.0,
             value=max(selected_profile.measured_final_volume_mL, 1200.0),
@@ -3132,7 +3248,8 @@ with recipes_tab:
         comparator_df = generate_comparator_table(
             selected_profile, compare_volume_mL, selected_formulas
         )
-        st.dataframe(comparator_df, width="stretch", hide_index=True)
+        with st.container(key="fullbleed_formula_comparator"):
+            st.dataframe(comparator_df, width="stretch", hide_index=True)
 
 with record_tab:
     st.divider()
