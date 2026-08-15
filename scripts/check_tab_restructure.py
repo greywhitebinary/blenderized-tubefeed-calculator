@@ -70,7 +70,7 @@ def main() -> None:
     # The example day produces a chart note and a non-empty adequacy table.
     # Anchored on the headings, not the timeline text, which varies.
     note_text = "\n".join(c.value or "" for c in at.code)
-    for heading in ("Feed regimen:", "Oral Intake:", "Total daily intake:"):
+    for heading in ("Feed regimen:", "Oral intake:", "Total daily intake:"):
         assert heading in note_text, f"chart note missing {heading!r}"
     assert len(at.dataframe) > 0
     print("chart note + tables OK")

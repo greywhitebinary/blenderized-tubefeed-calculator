@@ -19,7 +19,9 @@ readers without a conversion step:
                        version.
   Sheet "Ingredients"  one row per ingredient, each tagged with the
                        recipe id and name it belongs to, then food code,
-                       description, amount, unit, counts-as-fluid.
+                       description, amount, unit, counts-as-fluid, and the
+                       household measure it was entered/edited in (blank
+                       when there isn't one).
 
 A recipe is not a flat table — it has one set of facts about the batch
 and a repeating list of ingredients — so two sheets is simply how a
@@ -114,6 +116,13 @@ _INGREDIENT_COLUMNS = [
     "Amount",
     "Unit",
     "Counts as fluid",
+    # The CNF household measure this amount was entered/edited in, e.g.
+    # "1 cup" and the grams in one of it -- carried through so a printed
+    # recipe reads in the kitchen unit, not just grams (Change 4,
+    # 2026-08-15). Blank for rows with no measure, same as every other
+    # optional column here.
+    "Measure label",
+    "Measure grams",
 ]
 
 # Per-ingredient outcomes from resolve_ingredients().
@@ -146,6 +155,10 @@ class ResolvedIngredient:
         grams:            Amount used.
         unit:             "g" or "mL", as entered.
         counts_as_fluid:  Whether this ingredient counts toward fluid.
+        measure_label:    CNF household-measure description ("1 cup"), or
+                          None if this row has no measure (Change 5,
+                          2026-08-15).
+        measure_grams:    Grams in ONE of measure_label, or None.
         candidates:       For AMBIGUOUS rows, the (code, description)
                           options for a human to choose between.
         source_text:      What was actually in the file, kept for display
@@ -158,6 +171,8 @@ class ResolvedIngredient:
     grams: float
     unit: str = "g"
     counts_as_fluid: bool = False
+    measure_label: str | None = None
+    measure_grams: float | None = None
     candidates: list[tuple[int, str]] = field(default_factory=list)
     source_text: str = ""
 
@@ -244,6 +259,12 @@ def recipes_to_workbook_bytes(
                     # Written as Yes/No rather than TRUE/FALSE: this file is
                     # meant to be read and edited by a person in Excel.
                     "Counts as fluid": "Yes" if ing.get("counts_as_fluid") else "No",
+                    # Blank rather than 0 with no measure -- same reasoning
+                    # as day_io.py's Ingredients sheet.
+                    "Measure label": ing.get("measure_label") or "",
+                    "Measure grams": (
+                        float(ing["measure_grams"]) if ing.get("measure_grams") else ""
+                    ),
                 }
             )
 
@@ -504,6 +525,12 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
                 "grams": amount,
                 "unit": unit,
                 "counts_as_fluid": _coerce_bool(row.get("Counts as fluid")),
+                # .get() on an absent column returns None -- an older
+                # recipe file (or a v1 file, which never had this column
+                # at all) simply has no household measure. No
+                # format-version branch (Change 4, 2026-08-15).
+                "measure_label": _coerce_str(row.get("Measure label")) or None,
+                "measure_grams": _coerce_float(row.get("Measure grams")),
             }
         )
 
@@ -562,6 +589,11 @@ def resolve_ingredients(
             "unit": ing.get("unit", "g"),
             "counts_as_fluid": ing.get("counts_as_fluid", False),
             "source_text": ing.get("food_description", ""),
+            # .get(), unlike the bracket access on "grams" above: existing
+            # parsed-recipe dicts predate this change and have no such
+            # keys at all (Change 5, 2026-08-15).
+            "measure_label": ing.get("measure_label"),
+            "measure_grams": ing.get("measure_grams"),
         }
         code = ing.get("food_code")
 

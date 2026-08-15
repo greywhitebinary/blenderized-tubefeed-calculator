@@ -245,6 +245,16 @@ def day_to_workbook_bytes(
                     "Amount": float(ing.get("grams", 0.0) or 0.0),
                     "Unit": ing.get("unit", "g") or "g",
                     "Counts as fluid": "Yes" if ing.get("counts_as_fluid") else "No",
+                    # Blank rather than 0 when there's no household
+                    # measure, so a plain gram-only row doesn't pick up a
+                    # phantom "0 g per 1" in the sheet (Change 4,
+                    # 2026-08-15). .get(), not ["measure_grams"] -- older
+                    # in-memory ingredient dicts (before this change)
+                    # won't have the key at all.
+                    "Measure label": ing.get("measure_label") or "",
+                    "Measure grams": (
+                        float(ing["measure_grams"]) if ing.get("measure_grams") else ""
+                    ),
                 }
             )
 
@@ -263,6 +273,9 @@ def day_to_workbook_bytes(
             "Amount": float(row.get("amount", 0.0) or 0.0),
             "Unit": row.get("unit", "mL") or "mL",
             "Counts as fluid": "Yes" if row.get("counts_as_fluid") else "No",
+            # Same blank-not-zero rule as the Ingredients sheet above.
+            "Measure label": row.get("measure_label") or "",
+            "Measure grams": float(row["measure_grams"]) if row.get("measure_grams") else "",
         }
         for row in intake_log
     ]
@@ -277,6 +290,8 @@ def day_to_workbook_bytes(
             "Amount",
             "Unit",
             "Counts as fluid",
+            "Measure label",
+            "Measure grams",
         ],
     )
 
@@ -315,6 +330,8 @@ def day_to_workbook_bytes(
                 "Amount",
                 "Unit",
                 "Counts as fluid",
+                "Measure label",
+                "Measure grams",
             ],
         ).to_excel(writer, sheet_name=INGREDIENTS_SHEET, index=False)
         intake_df.to_excel(writer, sheet_name=INTAKE_SHEET, index=False)
@@ -440,6 +457,12 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
                     "grams": amount,
                     "unit": _coerce_str(row.get("Unit")) or "g",
                     "counts_as_fluid": _coerce_bool(row.get("Counts as fluid")),
+                    # .get() on an absent column returns None -- a v1/v2
+                    # file saved before this change simply has no
+                    # household measure, exactly like a CNF food with none
+                    # (Change 4, 2026-08-15). No format-version branch.
+                    "measure_label": _coerce_str(row.get("Measure label")) or None,
+                    "measure_grams": _coerce_float(row.get("Measure grams")),
                 }
             )
 
@@ -517,6 +540,8 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
                 "amount": amount,
                 "unit": _coerce_str(row.get("Unit")) or "mL",
                 "counts_as_fluid": _coerce_bool(row.get("Counts as fluid")),
+                "measure_label": _coerce_str(row.get("Measure label")) or None,
+                "measure_grams": _coerce_float(row.get("Measure grams")),
             }
         )
 

@@ -400,6 +400,8 @@ def _confirm_recipe_import(entries) -> None:
                         "grams": row.grams,
                         "unit": row.unit,
                         "counts_as_fluid": row.counts_as_fluid,
+                        "measure_label": row.measure_label,
+                        "measure_grams": row.measure_grams,
                     }
                 )
         _clear()
@@ -633,8 +635,12 @@ def render_add_food_ui(
     """Render the CNF-search / custom-food-from-label add-a-food UI.
 
     Returns a dict {food_code, food_description, grams, unit,
-    counts_as_fluid} on the render where the Add button is clicked and the
-    entry is valid, else None. `key_prefix` must be unique per call site
+    counts_as_fluid, measure_label, measure_grams} on the render where the
+    Add button is clicked and the entry is valid, else None. measure_label
+    is the raw CNF household-measure description ("1 cup") and
+    measure_grams is grams-per-ONE-of-that-measure; both are None for a
+    custom food from a label, or a CNF food with no household measures.
+    `key_prefix` must be unique per call site
     (e.g. "blend_3" vs "oral_dialog") so two simultaneous instances of this
     component never collide on widget keys.
 
@@ -688,6 +694,12 @@ def render_add_food_ui(
         food_desc: str | None = None
         calculated_grams = 0.0
         sel_group_code = None
+        # Household measure, carried through to the returned dict (Change
+        # 1, 2026-08-15) so grams stays the thing calculated with while the
+        # RD can keep reading/editing in cups. None when no measure was
+        # picked (no CNF measures for this food).
+        measure_label: str | None = None
+        measure_grams: float | None = None
 
         # Three-layer search (src/food_search.py): all words in any order,
         # then a curated synonym, then per-word typo tolerance. It replaced
@@ -747,6 +759,11 @@ def render_add_food_ui(
                     )
                     m_idx = measure_opts.index(sel_measure)
                     grams_per = float(measures.iloc[m_idx]["grams"])
+                    # The raw CNF string, not measure_opts' "  (158.0 g)"
+                    # suffix -- that suffix is a dropdown affordance, not
+                    # part of the label an RD or caregiver should read back.
+                    measure_label = str(measures.iloc[m_idx]["Measure_Description_and_Unit_EN"])
+                    measure_grams = grams_per
                     qty = mc2.number_input(
                         "Quantity",
                         min_value=0.0,
@@ -804,6 +821,8 @@ def render_add_food_ui(
                     "grams": float(calculated_grams),
                     "unit": "g",
                     "counts_as_fluid": final_fluid,
+                    "measure_label": measure_label,
+                    "measure_grams": measure_grams,
                 }
 
     else:  # Custom food from label — a Canadian Nutrition Facts lookalike
@@ -1143,6 +1162,10 @@ def render_add_food_ui(
                         "grams": float(cgrams),
                         "unit": basis,
                         "counts_as_fluid": _custom_final_fluid,
+                        # No CNF household measure exists for a food typed
+                        # from a label -- always grams (or mL) only.
+                        "measure_label": None,
+                        "measure_grams": None,
                     }
                     # Only a flag: every field above has already been
                     # instantiated this run, so clearing them here would
@@ -1460,7 +1483,8 @@ init_state()
 _STALE_WIDGET_KEY_PREFIXES = (
     "blend_",  # blend_selector, blend_name_{id}, blend_{id}_* (add-food UI)
     "vol_",  # vol_{blend_id} -- measured volume number_input
-    "grams_",  # grams_{ing_id} -- ingredient grams number_input
+    "grams_",  # grams_{ing_id}[_measure] -- ingredient amount number_input
+    "unit_",  # unit_{ing_id} -- ingredient g/household-measure toggle
     "fluid_",  # fluid_{ing_id} -- ingredient counts-as-fluid checkbox
     "del_",  # del_{ing_id}, del_intake_{id} -- row delete buttons
     "flow_date_",  # flow_date_{blend_id} -- flow-test date_input
@@ -1779,6 +1803,14 @@ if load_example_clicked:
             )
         ]
         banana_grams = float(small.iloc[0]["grams"]) if len(small) > 0 else 100.0
+        # The real measure_label/measure_grams now carry "1 small" instead
+        # of it being hand-glued onto food_description below (Change 3,
+        # 2026-08-15) -- that glue is what broke the Excel export's " — "
+        # split on this very row (see _intake_source_name()'s docstring).
+        banana_measure_label = (
+            str(small.iloc[0]["Measure_Description_and_Unit_EN"]) if len(small) > 0 else None
+        )
+        banana_measure_grams = banana_grams if len(small) > 0 else None
 
         _rows = [
             # Tube feed -- blend (full batch across 4 bolus feeds)
@@ -1951,10 +1983,12 @@ if load_example_clicked:
                 "time": dtime(8, 30),
                 "source_type": "oral",
                 "source_id": banana,
-                "food_description": "Banana, raw — 1 small",
+                "food_description": "Banana, raw",
                 "amount": banana_grams,
                 "unit": "g",
                 "counts_as_fluid": False,
+                "measure_label": banana_measure_label,
+                "measure_grams": banana_measure_grams,
             },
         ]
         st.session_state.next_intake_id = len(_rows) + 1
@@ -2051,7 +2085,10 @@ def _intake_source_name(row: dict) -> str:
     column can call this directly instead of re-parsing the formatted
     "{time} — {name} — {amount} {unit}" label on " — ". That split broke
     on any food name that itself contains " — ", including this app's own
-    example day ("Banana, raw — 1 small" exported as just "Banana, raw").
+    example day, which used to hand-glue "Banana, raw — 1 small" into
+    food_description for lack of anywhere else to put "1 small". The real
+    household measure now lives in measure_label/measure_grams (Change 3,
+    2026-08-15), so food_description is back to being just the food name.
     """
     source_type = row["source_type"]
     if source_type == "blend":
@@ -2071,6 +2108,14 @@ def _intake_row_label(row: dict) -> str:
     t = row.get("time")
     t_str = t.strftime("%H:%M") if t else "(no time)"
     name = _intake_source_name(row)
+    measure_label = row.get("measure_label")
+    measure_grams = row.get("measure_grams")
+    # Read-only "2 × 1 small" form of the entry-side quantity/toggle
+    # (plan's "Display format" section) -- quantity is derived, never
+    # stored, so this is always in step with the grams actually recorded.
+    if measure_label and measure_grams:
+        qty = row["amount"] / measure_grams
+        name = f"{name} ({qty:g} × {measure_label})"
     return f"{t_str} — {name} — {row['amount']:.0f} {row['unit']}"
 
 
@@ -2126,6 +2171,12 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
                 "amount": new_food["grams"],
                 "unit": new_food["unit"],
                 "counts_as_fluid": new_food["counts_as_fluid"],
+                # render_add_food_ui()'s dict is re-keyed by hand here
+                # (grams -> amount), which means it drops anything not
+                # named explicitly -- these two must be listed, not
+                # spread (Change 3, 2026-08-15).
+                "measure_label": new_food["measure_label"],
+                "measure_grams": new_food["measure_grams"],
             }
         )
         st.rerun()
@@ -2416,19 +2467,72 @@ with recipes_tab:
         )
         for i, ing in enumerate(selected_blend["ingredients"]):
             unit = ing.get("unit", "g")
+            measure_label = ing.get("measure_label")
+            measure_grams = ing.get("measure_grams")
             cols = st.columns([4, 2, 2, 1])
             cols[0].write(f"{i + 1}. {ing['food_description']}")
-            new_amount = cols[1].number_input(
-                f"Amount for {ing['food_description']}",
-                value=float(ing["grams"]),
-                min_value=0.0,
-                step=1.0,
-                format="%g",
-                key=f"grams_{ing['id']}",
-                label_visibility="collapsed",
-            )
-            cols[1].caption(unit)
-            selected_blend["ingredients"][i]["grams"] = new_amount
+
+            # Everything stacks inside this one amount column so the row
+            # stays four columns wide and survives a phone (author call,
+            # plan's Change 2) -- the toggle only appears when this food
+            # actually has a household measure to offer.
+            measure_mode = False
+            if measure_label and measure_grams:
+                chosen_unit = cols[1].segmented_control(
+                    "Unit",
+                    ["g", measure_label],
+                    default="g",
+                    required=True,
+                    key=f"unit_{ing['id']}",
+                    label_visibility="collapsed",
+                )
+                measure_mode = chosen_unit == measure_label
+
+            if measure_mode:
+                # The number box holds the QUANTITY in this measure, not
+                # grams -- "2 of 1 cup", never a pluralised "2 cups" (that
+                # breaks on "1 small"). Its own widget key, distinct from
+                # grams mode's: switching the toggle must re-seed the box
+                # from `value=` below rather than Streamlit handing back
+                # the OTHER unit's leftover state under a shared key (the
+                # §11 widget-state gotcha). Both keys start with "grams_",
+                # so the existing prefix in _STALE_WIDGET_KEY_PREFIXES
+                # already covers this one too.
+                derived_qty = ing["grams"] / measure_grams
+                new_qty = cols[1].number_input(
+                    f"Amount for {ing['food_description']}",
+                    value=derived_qty,
+                    min_value=0.0,
+                    step=0.5,
+                    format="%g",
+                    key=f"grams_{ing['id']}_measure",
+                    label_visibility="collapsed",
+                )
+                # THE DRIFT GUARD (2026-08-15). This box shows a ROUNDED
+                # quantity -- 300 g / 158 g-per-cup displays as 1.9 -- so
+                # writing it back to grams on EVERY rerun, including the
+                # rerun where the RD touched nothing, would walk the
+                # stored grams down a little each time (1.9 * 158 =
+                # 300.2, which re-derives to 1.9 again, forever) with
+                # nothing on screen ever showing it. Only write grams back
+                # when the widget's value actually differs from the
+                # derived quantity (float tolerance, not ==); unchanged
+                # means leave the stored grams byte-for-byte alone.
+                if abs(new_qty - derived_qty) > 1e-6:
+                    selected_blend["ingredients"][i]["grams"] = new_qty * measure_grams
+                cols[1].caption(f"= **{selected_blend['ingredients'][i]['grams']:.1f} {unit}**")
+            else:
+                new_amount = cols[1].number_input(
+                    f"Amount for {ing['food_description']}",
+                    value=float(ing["grams"]),
+                    min_value=0.0,
+                    step=1.0,
+                    format="%g",
+                    key=f"grams_{ing['id']}",
+                    label_visibility="collapsed",
+                )
+                cols[1].caption(unit)
+                selected_blend["ingredients"][i]["grams"] = new_amount
             new_fluid_flag = cols[2].checkbox(
                 "Counts as fluid",
                 value=bool(ing.get("counts_as_fluid", False)),
@@ -3231,6 +3335,10 @@ with recipes_tab:
                             "grams": float(added_mL),
                             "unit": "mL",
                             "counts_as_fluid": True,
+                            # A raw mL amount from the dilution slider, not
+                            # a CNF household measure -- no label to carry.
+                            "measure_label": None,
+                            "measure_grams": None,
                         }
                     )
                     _copy["measured_volume_mL"] = _new_volume_mL
@@ -3450,7 +3558,7 @@ with record_tab:
             _summary_lines.append(
                 "Feed regimen: " + _macro_bits(_tube_sub, _tube_fluid) + _water_split + "."
             )
-            _summary_lines.append("Oral Intake: " + _macro_bits(_oral_sub, _oral_fluid) + ".")
+            _summary_lines.append("Oral intake: " + _macro_bits(_oral_sub, _oral_fluid) + ".")
             _summary_lines.append(_total_line + ".")
         else:
             # One category only, so the category line and the total would
