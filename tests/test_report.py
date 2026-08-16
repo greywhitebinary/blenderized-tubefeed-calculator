@@ -31,14 +31,20 @@ to test directly.
 
 import pytest
 
+from src.calculator import compute_ingredient_breakdown
+from src.models import Ingredient
 from src.nutrients import defs_for_tier, registry_by_name
 from src.report import (
     _adequacy_status,
     _coverage_text,
+    _ordered_label_defs,
     _zero_coverage,
+    format_ingredient_breakdown,
     generate_adequacy_report,
     generate_clinical_screen,
 )
+
+from tests.conftest import FOOD_CHICKEN, FOOD_RICE, CUSTOM_PROTEIN_SHAKE
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -354,3 +360,102 @@ def test_nutrient_with_no_target_set_shows_no_target_status_and_blank_dashes(lab
         assert row["Status"] == "No target"
         assert row["Target"] == "—"
         assert row["% Target"] == "—"
+
+
+# ---------------------------------------------------------------------------
+# format_ingredient_breakdown() -- Change 1.4's Nutrition view formatting
+# (plan you-know-the-line-vectorized-milner.md)
+# ---------------------------------------------------------------------------
+
+
+def test_columns_match_the_adequacy_tables_label_tier_in_the_same_order(nutrient_amount_df):
+    """The Nutrition view's nutrient columns must be the same nine
+    nutrients, in the same clinical reading order, that the Adequacy
+    table leads with (_ordered_label_defs() -- energy/protein/carb/fat
+    first, per REPORT_LEAD_ORDER, then registry order) -- so a figure
+    means the same thing and sits in the same place wherever an RD
+    looks for it. Uses _ordered_label_defs() itself, not the label_defs
+    fixture (plain registry order, unordered by REPORT_LEAD_ORDER), since
+    that's the exact function format_ingredient_breakdown() calls."""
+    ingredients = [Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 200.0)]
+    breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
+    display = format_ingredient_breakdown(breakdown)
+
+    expected_cols = ["Ingredient", "Amount"] + [
+        f"{d.label} ({d.unit})" for d in _ordered_label_defs("canada")
+    ]
+    assert list(display.columns) == expected_cols
+
+
+def test_each_nutrient_keeps_its_own_registry_decimals(nutrient_amount_df):
+    """Energy (0 dp in the Canada registry) must render with no decimal
+    point even though other columns (e.g. protein, 1 dp) carry one --
+    same "own precision, as text" rule _fmt() enforces for the Adequacy
+    table (see report.py's _fmt() docstring)."""
+    ingredients = [Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 200.0)]
+    breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
+    display = format_ingredient_breakdown(breakdown)
+
+    row = display.iloc[0]
+    assert row["Energy (kcal)"] == "330"  # 165 kcal/100g x 200 g, 0 dp
+    assert row["Protein (g)"] == "62.0"  # 31 g/100g x 200 g, 1 dp
+
+
+def test_total_row_reconciles_with_the_unformatted_breakdown_sum(nutrient_amount_df):
+    """The trailing Total row is computed from the RAW breakdown numbers,
+    not by re-parsing the formatted text -- so it must equal the exact
+    column sum of compute_ingredient_breakdown()'s own DataFrame."""
+    ingredients = [
+        Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 200.0),
+        Ingredient(FOOD_RICE, "Rice, white, cooked", 150.0),
+    ]
+    breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
+    display = format_ingredient_breakdown(breakdown)
+
+    total_row = display.iloc[-1]
+    assert total_row["Ingredient"] == "Total"
+    assert total_row["Energy (kcal)"] == f"{breakdown['energy_kcal'].sum():.0f}"
+    assert total_row["Protein (g)"] == f"{breakdown['protein_g'].sum():.1f}"
+    assert total_row["Amount"] == "350 g"  # 200 + 150, both default "g"
+
+
+def test_custom_food_row_is_not_silently_zero_in_the_display_table(
+    nutrient_amount_df, custom_foods
+):
+    """The same clinical-safety case as
+    TestComputeIngredientBreakdown.test_custom_food_row_is_not_silently_zero,
+    carried through the display-formatting step: a label-entered food's
+    row must show its real numbers, not zeros, after _fmt() formatting."""
+    ingredients = [
+        Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 100.0),
+        Ingredient(CUSTOM_PROTEIN_SHAKE, "Protein shake (label)", 50.0),
+    ]
+    breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df, custom_foods)
+    display = format_ingredient_breakdown(breakdown)
+
+    shake_row = display[display["Ingredient"] == "Protein shake (label)"].iloc[0]
+    assert shake_row["Energy (kcal)"] == "125"  # 250 kcal/100g x 50 g
+    assert shake_row["Protein (g)"] == "5.0"  # 10 g/100g x 50 g
+
+
+def test_amount_column_respects_units_by_food_code(nutrient_amount_df):
+    """A food entered in mL (a custom liquid, or a CNF beverage) prints
+    its Amount with "mL", not the default "g" -- from the caller-supplied
+    units_by_food_code mapping, since compute_ingredient_breakdown()
+    itself works in grams only (Ingredient carries no unit field)."""
+    ingredients = [Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 100.0)]
+    breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
+    display = format_ingredient_breakdown(breakdown, units_by_food_code={FOOD_CHICKEN: "mL"})
+
+    assert display.iloc[0]["Amount"] == "100 mL"
+
+
+def test_empty_breakdown_returns_empty_display_with_correct_columns(nutrient_amount_df):
+    """An empty blend (no ingredients yet) must not crash the formatter --
+    it should return an empty table with the right header, same
+    convention as compute_ingredient_breakdown() itself."""
+    empty = compute_ingredient_breakdown([], nutrient_amount_df)
+    display = format_ingredient_breakdown(empty)
+    assert len(display) == 0
+    assert "Ingredient" in display.columns
+    assert "Amount" in display.columns

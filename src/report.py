@@ -430,6 +430,106 @@ def generate_adequacy_report(
     return _finalize(rows)
 
 
+def format_ingredient_breakdown(
+    breakdown_df: pd.DataFrame,
+    pack: str = DEFAULT_PACK,
+    units_by_food_code: dict[int, str] | None = None,
+) -> pd.DataFrame:
+    """Format src.calculator.compute_ingredient_breakdown()'s per-
+    ingredient DataFrame for display — the Nutrition view's table
+    (Change 1.4, plan you-know-the-line-vectorized-milner.md).
+
+    Same "registry owns the label and decimals" idiom as
+    generate_adequacy_report(): each nutrient column keeps ITS OWN
+    display precision (via _fmt(), as text) rather than one width for
+    the whole numeric column, so Energy's 0 dp is never dragged to
+    "2204.0" by Protein's 1 dp sharing a column.
+
+    Columns: Ingredient, Amount, then one column per tier="label"
+    nutrient with show_in_report="yes" — the SAME nine nutrients and
+    reading order the Adequacy table leads with (_ordered_label_defs()),
+    so a nutrient's figure here and its figure there are never at two
+    different precisions or in two different orders. tier="clinical"/
+    "engine" nutrients are not columns here, same scope as the Adequacy
+    table's main columns.
+
+    A "Total" row is appended, column-summed from the UNFORMATTED
+    breakdown_df (not by re-parsing the formatted text) — this is the
+    row that should equal calculate_profile()'s / compute_nutrient_
+    totals()'s whole-blend numbers; see
+    tests/test_calculator.py::TestComputeIngredientBreakdown for the
+    reconciliation this depends on holding upstream.
+
+    Args:
+        breakdown_df:       compute_ingredient_breakdown()'s return value
+                             (food_code, food_description, grams, plus one
+                             column per tracked nutrient).
+        pack:                Which data pack's nutrient registry to
+                             format against.
+        units_by_food_code: food_code -> "g"/"mL", for the Amount column.
+                             compute_ingredient_breakdown() works in grams
+                             only (src/models.py's Ingredient carries no
+                             unit) — the app's session-state ingredient
+                             dicts are what know a row was entered in mL,
+                             so the caller passes that mapping in rather
+                             than this module reaching into app state.
+                             A food_code missing from this dict (or no
+                             dict at all) defaults to "g", matching how
+                             an ingredient with no recorded unit is
+                             treated everywhere else in the app.
+
+    Returns:
+        DataFrame, one row per ingredient in breakdown_df's order, plus a
+        trailing Total row. Empty DataFrame (no rows) for an empty
+        breakdown_df.
+    """
+    units_by_food_code = units_by_food_code or {}
+    defs = _ordered_label_defs(pack)
+    nutrient_cols = [f"{d.label} ({d.unit})" for d in defs]
+
+    if len(breakdown_df) == 0:
+        return pd.DataFrame(columns=["Ingredient", "Amount", *nutrient_cols])
+
+    rows = []
+    for _, r in breakdown_df.iterrows():
+        unit = units_by_food_code.get(int(r["food_code"]), "g")
+        row: dict = {
+            "Ingredient": r["food_description"],
+            "Amount": f"{r['grams']:.0f} {unit}",
+        }
+        for d in defs:
+            row[f"{d.label} ({d.unit})"] = _fmt(float(r.get(d.name, 0.0)), d.decimals)
+        rows.append(row)
+
+    # Total row's Amount: grams and mL summed separately, never added
+    # together as one number -- a gram and a millilitre are not the same
+    # quantity for a blend carrying oil and solids.
+    #
+    # This total stays even though the Ingredients section's standalone
+    # "Total ingredient weight" caption was removed (author, 2026-08-15).
+    # Different thing: here it is one column sum in a table where every
+    # other column is also a sum, so it reads as arithmetic rather than as
+    # an unexplained figure sitting next to the measured volume.
+    _total_g = sum(
+        r["grams"]
+        for _, r in breakdown_df.iterrows()
+        if units_by_food_code.get(int(r["food_code"]), "g") == "g"
+    )
+    _total_mL = sum(
+        r["grams"]
+        for _, r in breakdown_df.iterrows()
+        if units_by_food_code.get(int(r["food_code"]), "g") == "mL"
+    )
+    amount_total = f"{_total_g:.0f} g" + (f" + {_total_mL:.0f} mL" if _total_mL > 0 else "")
+
+    total_row: dict = {"Ingredient": "Total", "Amount": amount_total}
+    for d in defs:
+        total_row[f"{d.label} ({d.unit})"] = _fmt(float(breakdown_df[d.name].sum()), d.decimals)
+    rows.append(total_row)
+
+    return pd.DataFrame(rows)
+
+
 def generate_clinical_screen(
     daily_totals: dict[str, float],
     targets: dict[str, float] | None = None,

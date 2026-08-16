@@ -18,6 +18,8 @@ This module lets the RD enter "1 cup rice" instead of "158 g rice" —
 but grams are always the canonical unit internally.
 """
 
+import re
+
 import pandas as pd
 
 try:
@@ -35,6 +37,41 @@ except ImportError:
 
 # Measure_Type_Code 6 = User-defined household measures
 HOUSEHOLD_MEASURE_TYPE = 6
+
+# ---------------------------------------------------------------------------
+# Change 1.5 (plan you-know-the-line-vectorized-milner.md): drop the plain
+# gram weights out of the household-measure list.
+# ---------------------------------------------------------------------------
+# CNF's own Measure_Type=6 filter above already narrows to "household
+# measures", but 38 of those rows are themselves nothing but a bare gram
+# figure -- "125 g", "90 g", "55 g". With plain "g" already offered
+# separately (meaning "type any weight"), a bare-gram measure is not a
+# genuine kitchen measure at all -- it's the exact same choice as "g" with
+# one arbitrary number baked in, sitting in the dropdown as if it were a
+# third, different kind of thing (see CONTEXT for item 3 of the Feed
+# Recipes rework: "the unit dropdown mixes unlike things"). Filtering
+# these out loses nothing: any weight is still typeable under "g".
+#
+# Matches a bare number (optional decimal, optional space before "g") and
+# NOTHING else -- "1/2 foot", "250 ml chopped or diced", and the four
+# "yield from ... ear" labels (verbose, but genuine measures -- CNF tags
+# them User-defined too, per CNF's own Measure_Type_Code) all keep at
+# least one non-numeric, non-gram word, so none of them match.
+_BARE_GRAM_WEIGHT = re.compile(r"^\d+(\.\d+)?\s*g$")
+
+
+def is_bare_gram_weight(description: str | None) -> bool:
+    """True for a measure description that is nothing but a number of
+    grams (e.g. "125 g") -- see the module-level note above. A
+    documented rule, not an app-layer string hack, so it has one
+    definition and one test (tests/test_measures.py).
+
+    Guards against a missing description (a left-joined Measure_Code with
+    no matching Measure_Name row) rather than raising on `.strip()`.
+    """
+    if not isinstance(description, str):
+        return False
+    return bool(_BARE_GRAM_WEIGHT.match(description.strip()))
 
 
 def load_measure_lookup() -> pd.DataFrame:
@@ -67,6 +104,12 @@ def load_measure_lookup() -> pd.DataFrame:
             "Measure_Description_and_Unit_EN",
         ]
     ].rename(columns={"Measure_Weight_Conversion": "grams"})
+
+    # Change 1.5: drop bare gram-weight labels -- see is_bare_gram_weight()
+    # above. Filtered here, once, so every caller (the ingredient rows, the
+    # add-food search, get_measures_for_food()) sees the same narrowed list
+    # without re-implementing the rule.
+    result = result[~result["Measure_Description_and_Unit_EN"].apply(is_bare_gram_weight)]
 
     return result
 

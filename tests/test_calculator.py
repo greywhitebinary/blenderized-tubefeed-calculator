@@ -21,6 +21,7 @@ import pytest
 from src.calculator import (
     compute_nutrient_totals,
     compute_nutrient_totals_and_coverage,
+    compute_ingredient_breakdown,
     calculate_profile,
     dilute,
     label_to_per_100g,
@@ -355,3 +356,135 @@ class TestCustomFoodFolding:
         assert coverage["protein_g"] == (2, 2)
         assert coverage["sodium_mg"] == (2, 2)
         assert coverage["fibre_g"] == (1, 2)  # only chicken supplies fibre data
+
+
+# ---------------------------------------------------------------------------
+# compute_ingredient_breakdown() -- Change 1.4, the per-ingredient pivot
+# (plan you-know-the-line-vectorized-milner.md)
+# ---------------------------------------------------------------------------
+
+
+class TestComputeIngredientBreakdown:
+    def test_one_row_per_ingredient_with_its_own_scaled_amounts(self, nutrient_amount_df):
+        """200 g chicken + 150 g rice: each food's row carries its OWN
+        scaled contribution, not the blend total.
+        chicken: energy=165*2=330.0, protein=31*2=62.0
+        rice:    energy=130*1.5=195.0, protein=2.7*1.5=4.05
+        """
+        ingredients = [
+            Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 200.0),
+            Ingredient(FOOD_RICE, "Rice, white, cooked", 150.0),
+        ]
+        breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
+
+        assert list(breakdown["food_code"]) == [FOOD_CHICKEN, FOOD_RICE]
+        chicken_row = breakdown[breakdown["food_code"] == FOOD_CHICKEN].iloc[0]
+        rice_row = breakdown[breakdown["food_code"] == FOOD_RICE].iloc[0]
+        assert chicken_row["grams"] == pytest.approx(200.0)
+        assert chicken_row["energy_kcal"] == pytest.approx(330.0)
+        assert chicken_row["protein_g"] == pytest.approx(62.0)
+        assert rice_row["grams"] == pytest.approx(150.0)
+        assert rice_row["energy_kcal"] == pytest.approx(195.0)
+        assert rice_row["protein_g"] == pytest.approx(4.05)
+
+    def test_duplicate_food_code_consolidates_into_one_row(self, nutrient_amount_df):
+        """The same food added twice (e.g. 100 g water, then another
+        50 g water) becomes ONE row with grams summed -- this table
+        answers "how much did each FOOD contribute", not "how much did
+        each entry contribute" (that's the Recipe view's job)."""
+        ingredients = [
+            Ingredient(FOOD_WATER, "Water", 100.0),
+            Ingredient(FOOD_WATER, "Water", 50.0),
+        ]
+        breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
+
+        assert len(breakdown) == 1
+        assert breakdown.iloc[0]["grams"] == pytest.approx(150.0)
+        assert breakdown.iloc[0]["water_g"] == pytest.approx(150.0)  # 100 g/100g moisture
+
+    def test_absent_food_gets_a_row_of_zeros_not_a_missing_row(self, nutrient_amount_df):
+        """A food_code with no CNF nutrient rows still gets its own
+        breakdown row (grams intact) -- just with zeros, matching
+        compute_nutrient_totals()'s "contributes nothing, doesn't raise"
+        behaviour for the same case."""
+        ingredients = [
+            Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 200.0),
+            Ingredient(FOOD_ABSENT, "Mystery food, not in CNF fixture", 50.0),
+        ]
+        breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
+
+        absent_row = breakdown[breakdown["food_code"] == FOOD_ABSENT].iloc[0]
+        assert absent_row["grams"] == pytest.approx(50.0)
+        assert absent_row["energy_kcal"] == pytest.approx(0.0)
+
+    def test_empty_ingredient_list_returns_empty_dataframe(self, nutrient_amount_df):
+        breakdown = compute_ingredient_breakdown([], nutrient_amount_df)
+        assert len(breakdown) == 0
+        assert list(breakdown.columns) == ["food_code", "food_description", "grams"]
+
+    def test_custom_food_row_is_not_silently_zero(self, nutrient_amount_df, custom_foods):
+        """THE case the plan calls out by name: a custom food (negative
+        food_code, entered from a nutrition-facts label) never appears in
+        the CNF merge at all, so a naive per-ingredient pivot of `merged`
+        alone would render its row as all zeros. Pin that it does NOT --
+        the custom food's own row must carry its scaled contribution."""
+        ingredients = [
+            Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 100.0),
+            Ingredient(CUSTOM_PROTEIN_SHAKE, "Protein shake (label)", 50.0),
+        ]
+        breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df, custom_foods)
+
+        shake_row = breakdown[breakdown["food_code"] == CUSTOM_PROTEIN_SHAKE].iloc[0]
+        assert shake_row["grams"] == pytest.approx(50.0)
+        # 250 kcal, 10 g protein, 120 mg sodium per 100 g (conftest.py) x 0.5
+        assert shake_row["energy_kcal"] == pytest.approx(125.0)
+        assert shake_row["protein_g"] == pytest.approx(5.0)
+        assert shake_row["sodium_mg"] == pytest.approx(60.0)
+        # A nutrient the label doesn't disclose stays 0 for this row, not
+        # a crash and not the CNF-side value from some other food.
+        assert shake_row["fibre_g"] == pytest.approx(0.0)
+
+    def test_breakdown_sums_reconcile_with_compute_nutrient_totals(
+        self, nutrient_amount_df, custom_foods
+    ):
+        """THE test the plan requires: two ways of computing the same
+        numbers must never disagree. Column-sum the per-ingredient
+        breakdown for every tracked nutrient and check it against
+        compute_nutrient_totals() for the identical ingredient list --
+        CNF foods AND a custom food together, so the reconciliation
+        covers the fold-in path the plan flags as most likely to drift.
+        """
+        ingredients = [
+            Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 200.0),
+            Ingredient(FOOD_RICE, "Rice, white, cooked", 150.0),
+            Ingredient(FOOD_WATER, "Water", 100.0),
+            Ingredient(CUSTOM_PROTEIN_SHAKE, "Protein shake (label)", 50.0),
+        ]
+        totals = compute_nutrient_totals(ingredients, nutrient_amount_df, custom_foods)
+        breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df, custom_foods)
+
+        for nutrient_name, total in totals.items():
+            assert breakdown[nutrient_name].sum() == pytest.approx(total), (
+                f"{nutrient_name}: breakdown sum {breakdown[nutrient_name].sum()} "
+                f"!= compute_nutrient_totals() {total}"
+            )
+
+    def test_reconciliation_holds_with_a_duplicated_custom_food(
+        self, nutrient_amount_df, custom_foods
+    ):
+        """Same reconciliation, but the custom food appears TWICE (two
+        separate label-entry rows of the same product) -- exercises the
+        "consolidate grams, then scale once" fold-in path rather than the
+        single-instance case above, since a bug here could sum correctly
+        for one instance and silently double- or under-count for two."""
+        ingredients = [
+            Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 100.0),
+            Ingredient(CUSTOM_PROTEIN_SHAKE, "Protein shake (label)", 50.0),
+            Ingredient(CUSTOM_PROTEIN_SHAKE, "Protein shake (label)", 25.0),
+        ]
+        totals = compute_nutrient_totals(ingredients, nutrient_amount_df, custom_foods)
+        breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df, custom_foods)
+
+        assert len(breakdown) == 2  # chicken + the consolidated shake row
+        for nutrient_name, total in totals.items():
+            assert breakdown[nutrient_name].sum() == pytest.approx(total)

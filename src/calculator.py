@@ -224,6 +224,111 @@ def compute_nutrient_totals_and_coverage(
     return nutrient_totals, coverage
 
 
+def compute_ingredient_breakdown(
+    ingredients: list[Ingredient],
+    nutrient_amount_df: pd.DataFrame,
+    custom_foods: dict[int, dict[str, float]] | None = None,
+) -> pd.DataFrame:
+    """Per-ingredient nutrient breakdown — Change 1.4 (plan
+    you-know-the-line-vectorized-milner.md): the Nutrition view is a pivot
+    of data _scale_ingredients() already computes and then sums away at
+    its step 5. This is the SAME merge-and-scale core, grouped by
+    Food_Code AND Nutrient_Code instead of by Nutrient_Code alone, so a
+    per-ingredient total can never drift from compute_nutrient_totals()'s
+    whole-blend total — both are sums over the identical `merged` rows,
+    just partitioned differently before summing.
+
+    Two ingredient instances sharing a Food_Code (e.g. the RD adds water
+    twice) are consolidated into ONE row here, grams summed — this table
+    answers "how much did each FOOD contribute", not "how much did each
+    entry contribute" (the Recipe view above is the row-per-instance one).
+
+    CRITICAL — custom foods (negative food_code, entered from a nutrition
+    facts label) never appear in `merged` at all: _scale_ingredients()'s
+    inner join on Food_Code drops them, because they have no CNF row.
+    Fold them in AFTER the CNF groupby, from `custom_foods`, exactly the
+    way _scale_ingredients() folds them into its totals dict at its own
+    step 6 — scaled by this food's TOTAL grams across every instance
+    (matching how the consolidation above already summed grams), which is
+    the same number _scale_ingredients() would reach by scaling and
+    summing each instance separately (scaling is linear, so summing grams
+    first is identical to summing scaled contributions after). Skipping
+    this step would silently render every label-entered food's row as all
+    zeros — the worst outcome the plan calls out for a clinical tool.
+
+    Args:
+        ingredients:         List of Ingredient (food_code, description, grams).
+        nutrient_amount_df:  The CNF Nutrient_Amount DataFrame (from data_loader).
+        custom_foods:        Optional dict of food_code -> per-100g nutrient dict
+                              (Appendix A9), same convention as compute_nutrient_totals().
+
+    Returns:
+        DataFrame with columns "food_code", "food_description", "grams",
+        plus one column per tracked nutrient (internal names, e.g.
+        "energy_kcal") — same convention as nutrient_totals dicts
+        elsewhere in this module. One row per distinct food_code, in the
+        order that food_code first appears in `ingredients`. Empty
+        DataFrame (no rows, but the three base columns present) for an
+        empty ingredient list.
+
+        Column-summing any nutrient here reproduces
+        compute_nutrient_totals()'s total for that nutrient exactly — see
+        tests/test_calculator.py's TestComputeIngredientBreakdown for the
+        reconciliation test that pins this.
+    """
+    if not ingredients:
+        return pd.DataFrame(columns=["food_code", "food_description", "grams"])
+
+    _totals, merged = _scale_ingredients(ingredients, nutrient_amount_df, custom_foods)
+
+    # Consolidate to one row per distinct food_code, order = first seen
+    # (so the table reads in the same order as the Recipe view above it).
+    food_order: list[int] = []
+    grams_by_food: dict[int, float] = {}
+    description_by_food: dict[int, str] = {}
+    for ing in ingredients:
+        if ing.food_code not in grams_by_food:
+            food_order.append(ing.food_code)
+            grams_by_food[ing.food_code] = 0.0
+            description_by_food[ing.food_code] = ing.food_description
+        grams_by_food[ing.food_code] += ing.grams
+
+    # Group the SAME `merged` join _scale_ingredients() computed by
+    # (Food_Code, Nutrient_Code) instead of Nutrient_Code alone -- this is
+    # the entire "per-ingredient" step; nothing here re-derives amounts
+    # from nutrient_amount_df a second time.
+    if len(merged) > 0:
+        per_food_nutrient = merged.groupby(["Food_Code", "Nutrient_Code"])["scaled_amount"].sum()
+    else:
+        per_food_nutrient = pd.Series(dtype=float)
+
+    tracked_names = list(NUTRIENT_CODES.keys())
+    rows: list[dict] = []
+    for food_code in food_order:
+        row: dict = {
+            "food_code": food_code,
+            "food_description": description_by_food[food_code],
+            "grams": grams_by_food[food_code],
+        }
+        for name in tracked_names:
+            code = NUTRIENT_CODES[name]
+            row[name] = float(per_food_nutrient.get((food_code, code), 0.0))
+        rows.append(row)
+
+    # Fold in custom foods (Appendix A9) -- see this function's docstring
+    # for why this step is not optional.
+    if custom_foods:
+        for row in rows:
+            fc = row["food_code"]
+            if fc < 0 and fc in custom_foods:
+                grams = grams_by_food[fc]
+                for nutrient_name, per_100g_value in custom_foods[fc].items():
+                    if nutrient_name in row:
+                        row[nutrient_name] += per_100g_value * (grams / 100.0)
+
+    return pd.DataFrame(rows)
+
+
 def calculate_profile(
     recipe: Recipe,
     nutrient_amount_df: pd.DataFrame,

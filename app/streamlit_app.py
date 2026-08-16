@@ -67,6 +67,7 @@ from src.models import Ingredient
 from src.calculator import (
     label_to_per_100g,
     compute_nutrient_totals_and_coverage,
+    compute_ingredient_breakdown,
     dilute,
     required_daily_volume,
     COMMERCIAL_FORMULAS,
@@ -104,6 +105,7 @@ from src.report import (
     generate_density_summary,
     generate_source_breakdown,
     generate_water_ledger,
+    format_ingredient_breakdown,
 )
 from src.nutrients import defs_for_tier, registry_by_name, DEFAULT_PACK
 from src.intake import (
@@ -1460,6 +1462,43 @@ st.markdown(
     [data-testid="stDataFrame"] {
         margin-top: 0.5rem;
     }
+
+    /* Zebra banding (Change 1.6, author request 2026-08-15): Excel-style
+       alternating row tints for the two hand-built lists this app has --
+       the Ingredients rows (Feed Recipes tab) and the "Everything given"
+       intake list (Daily Intake Record tab, 19 rows on the example day).
+       Neither is an actual <table>, so this is CSS over the
+       st.container(key=...) -> .st-key-<key> hook already used for the
+       full-bleed tables above, with the row id folded into the key so
+       every row gets its own selector.
+
+       Both classes get the SAME padding, so striped and unstriped rows
+       stay aligned -- only zebrarow gets a fill colour. */
+    [class*="st-key-zebrarow"],
+    [class*="st-key-plainrow"] {
+        padding: 0.35rem 0.5rem;
+        border-radius: 0.35rem;
+    }
+    [class*="st-key-zebrarow"] {
+        /* #f8f9fb is not a new colour -- it's the grey Streamlit already
+           paints behind the report tables' header rows (sampled off a
+           rendered screenshot; body rows are #ffffff, grid lines #e4e5e8).
+           Reusing it means the app has one grey doing all of its neutral
+           work, in the hand-built lists and the tables alike.
+
+           Grey, not pink, deliberately: in this app maroon and pale pink
+           already carry meaning (maroon outline = "type here", pale pink
+           = "pick from a list"). An Ingredients row already holds white
+           outlined boxes and a pink unit dropdown -- a fourth pink tone
+           behind them would put four shades of pink in one row and the
+           band would compete with colour that means something. Grey sits
+           outside that vocabulary and can only read as furniture.
+
+           Deliberately subtle (about 3% off white -- 2-5% is the usual
+           range for banding-as-furniture). If it disappears on the
+           deploy, #f4f4f6 is the same idea a shade stronger. */
+        background-color: #f8f9fb;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -2459,101 +2498,273 @@ with recipes_tab:
     if not selected_blend["ingredients"]:
         _note("Add ingredients above to get started.")
     else:
-        st.caption(
-            '"Counts as fluid" drives the Daily Intake Record tab\'s '
-            "Fluids provided row (full-volume I&O convention) — auto-checked for CNF "
-            "Beverages and mL-basis custom foods, always your call "
-            "otherwise (e.g. soup has no validated rule of thumb)."
+        # Recipe / Nutrition switcher (Change 1.1, plan
+        # you-know-the-line-vectorized-milner.md). Same ingredient list,
+        # two readings: a roomy editable recipe for whoever is in the
+        # kitchen, or a per-ingredient nutrient pivot for the dietitian --
+        # see compute_ingredient_breakdown()'s docstring for why the
+        # second one can never disagree with the whole-blend totals
+        # shown elsewhere. st.segmented_control ships in 1.58 (verified).
+        # required=True keeps a segment always selected -- clicking the
+        # already-selected one would otherwise deselect to None.
+        # Keyed per blend so switching blends doesn't carry the previous
+        # blend's view choice along.
+        _view = st.segmented_control(
+            "Ingredients view",
+            options=["Recipe", "Nutrition"],
+            default="Recipe",
+            required=True,
+            key=f"ingr_view_{selected_blend_id}",
+            label_visibility="collapsed",
         )
-        for i, ing in enumerate(selected_blend["ingredients"]):
-            unit = ing.get("unit", "g")
-            measure_label = ing.get("measure_label")
-            measure_grams = ing.get("measure_grams")
-            cols = st.columns([4, 2, 2, 1])
-            cols[0].write(f"{i + 1}. {ing['food_description']}")
 
-            # Everything stacks inside this one amount column so the row
-            # stays four columns wide and survives a phone (author call,
-            # plan's Change 2) -- the toggle only appears when this food
-            # actually has a household measure to offer.
-            measure_mode = False
-            if measure_label and measure_grams:
-                chosen_unit = cols[1].segmented_control(
-                    "Unit",
-                    ["g", measure_label],
-                    default="g",
-                    required=True,
-                    key=f"unit_{ing['id']}",
-                    label_visibility="collapsed",
-                )
-                measure_mode = chosen_unit == measure_label
-
-            if measure_mode:
-                # The number box holds the QUANTITY in this measure, not
-                # grams -- "2 of 1 cup", never a pluralised "2 cups" (that
-                # breaks on "1 small"). Its own widget key, distinct from
-                # grams mode's: switching the toggle must re-seed the box
-                # from `value=` below rather than Streamlit handing back
-                # the OTHER unit's leftover state under a shared key (the
-                # §11 widget-state gotcha). Both keys start with "grams_",
-                # so the existing prefix in _STALE_WIDGET_KEY_PREFIXES
-                # already covers this one too.
-                derived_qty = ing["grams"] / measure_grams
-                new_qty = cols[1].number_input(
-                    f"Amount for {ing['food_description']}",
-                    value=derived_qty,
-                    min_value=0.0,
-                    step=0.5,
-                    format="%g",
-                    key=f"grams_{ing['id']}_measure",
-                    label_visibility="collapsed",
-                )
-                # THE DRIFT GUARD (2026-08-15). This box shows a ROUNDED
-                # quantity -- 300 g / 158 g-per-cup displays as 1.9 -- so
-                # writing it back to grams on EVERY rerun, including the
-                # rerun where the RD touched nothing, would walk the
-                # stored grams down a little each time (1.9 * 158 =
-                # 300.2, which re-derives to 1.9 again, forever) with
-                # nothing on screen ever showing it. Only write grams back
-                # when the widget's value actually differs from the
-                # derived quantity (float tolerance, not ==); unchanged
-                # means leave the stored grams byte-for-byte alone.
-                if abs(new_qty - derived_qty) > 1e-6:
-                    selected_blend["ingredients"][i]["grams"] = new_qty * measure_grams
-                cols[1].caption(f"= **{selected_blend['ingredients'][i]['grams']:.1f} {unit}**")
-            else:
-                new_amount = cols[1].number_input(
-                    f"Amount for {ing['food_description']}",
-                    value=float(ing["grams"]),
-                    min_value=0.0,
-                    step=1.0,
-                    format="%g",
-                    key=f"grams_{ing['id']}",
-                    label_visibility="collapsed",
-                )
-                cols[1].caption(unit)
-                selected_blend["ingredients"][i]["grams"] = new_amount
-            new_fluid_flag = cols[2].checkbox(
-                "Counts as fluid",
-                value=bool(ing.get("counts_as_fluid", False)),
-                key=f"fluid_{ing['id']}",
+        if _view == "Recipe":
+            st.caption(
+                '"Counts as fluid" drives the Daily Intake Record tab\'s '
+                "Fluids provided row (full-volume I&O convention) — auto-checked for CNF "
+                "Beverages and mL-basis custom foods, always your call "
+                "otherwise (e.g. soup has no validated rule of thumb)."
             )
-            selected_blend["ingredients"][i]["counts_as_fluid"] = new_fluid_flag
-            if cols[3].button("❌", key=f"del_{ing['id']}"):
-                selected_blend["ingredients"].pop(i)
-                st.rerun()
+            for i, ing in enumerate(selected_blend["ingredients"]):
+                unit = ing.get("unit", "g")
 
-        total_g = sum(
-            ing["grams"] for ing in selected_blend["ingredients"] if ing.get("unit", "g") == "g"
-        )
-        total_mL = sum(
-            ing["grams"] for ing in selected_blend["ingredients"] if ing.get("unit", "g") == "mL"
-        )
-        if total_mL > 0:
-            st.caption(f"Total ingredient weight: **{total_g:.0f} g** + **{total_mL:.0f} mL**")
-        else:
-            st.caption(f"Total ingredient weight: **{total_g:.0f} g**")
+                # Banded rows (Change 1.6, author request 2026-08-15) --
+                # both the striped and unstriped containers get the SAME
+                # padding so rows stay aligned; only the striped one gets a
+                # fill colour (see the .st-key-zebrarow/.plainrow CSS
+                # above). Grey, not pink -- pink already means "pick from a
+                # list" in this row (the unit dropdown), so a pink band
+                # would read as a fourth meaningful colour rather than as
+                # furniture (see the CSS comment for the full reasoning).
+                _band = "zebrarow" if i % 2 else "plainrow"
+                with st.container(key=f"{_band}_ingr_{ing['id']}"):
+                    # Line 1 -- name + delete (Change 1.2). The name gets
+                    # its own full-width line now instead of a 30%-wide
+                    # column, so a long CNF description (up to 45 chars,
+                    # e.g. "Chicken, feet, boiled") has room to sit on one
+                    # line rather than wrapping and changing the row's
+                    # height depending on which unit happens to be chosen.
+                    name_col, del_col = st.columns([11, 1])
+                    name_col.markdown(f"**{i + 1}. {ing['food_description']}**")
+                    if del_col.button("❌", key=f"del_{ing['id']}"):
+                        selected_blend["ingredients"].pop(i)
+                        st.rerun()
 
+                    # Line 2 -- amount, unit, computed value, fluid toggle.
+                    # Four columns, each with one job, instead of the unit
+                    # dropdown sharing a narrow column with the amount box
+                    # (the old layout gave the unit dropdown too little
+                    # room for CNF's longest labels).
+                    amt_col, unit_col, computed_col, fluid_col = st.columns([1, 4, 2, 3])
+
+                    # Which units this row offers comes from the FOOD, via
+                    # CNF -- NOT from what happened to be captured when the
+                    # row was created (author feedback 2026-08-15). Reading
+                    # it off the stored measure_label made the option
+                    # appear only on rows added by searching: an identical
+                    # banana from the example day, a reloaded file or an
+                    # imported recipe offered nothing, so the capability
+                    # looked random. CNF knows this banana's measures
+                    # either way, so ask CNF. A food with none (chicken
+                    # breast has zero) simply offers grams, exactly as
+                    # before.
+                    #
+                    # measure_label/measure_grams still get stored, but
+                    # their job changed: they are now the REMEMBERED CHOICE
+                    # that seeds this dropdown and prints in the export,
+                    # not the gate on whether the RD may switch units at
+                    # all.
+                    _measures = (
+                        get_measures_for_food(int(ing["food_code"]), lookup)
+                        if ing.get("food_code") is not None
+                        else None
+                    )
+                    _by_label: dict[str, float] = (
+                        {
+                            str(r["Measure_Description_and_Unit_EN"]): float(r["grams"])
+                            for _, r in _measures.iterrows()
+                        }
+                        if _measures is not None and len(_measures) > 0
+                        else {}
+                    )
+                    _unit_options = [unit, *_by_label]
+                    _remembered = ing.get("measure_label")
+                    _default_idx = (
+                        _unit_options.index(_remembered) if _remembered in _by_label else 0
+                    )
+
+                    chosen_unit = unit_col.selectbox(
+                        f"Unit for {ing['food_description']}",
+                        _unit_options,
+                        index=_default_idx,
+                        key=f"unit_{ing['id']}",
+                        label_visibility="collapsed",
+                    )
+                    measure_grams = _by_label.get(chosen_unit)
+
+                    if measure_grams:
+                        # The box holds the QUANTITY in the chosen measure,
+                        # not grams -- "2 of 1 cup", never a pluralised
+                        # "2 cups", which breaks on "1 small".
+                        #
+                        # The widget key carries the chosen unit. Switching
+                        # units must re-seed the box from `value=` rather
+                        # than have Streamlit hand back the previous unit's
+                        # leftover number under a shared key -- that would
+                        # silently reinterpret "1 x 250 ml mashed" as
+                        # "1 x 1 small" and change the amount. Streamlit
+                        # drops state for widgets that stop being
+                        # rendered, so the re-seed is reliable (verified).
+                        # Still prefixed "grams_", so
+                        # _STALE_WIDGET_KEY_PREFIXES already covers it.
+                        # Rounded for the BOX only -- an exact ratio reads
+                        # "2.3544554455445548", which is noise in a
+                        # quantity field. Grams below stay the
+                        # authoritative figure and the "=" column prints
+                        # them in full, so nothing is lost. The guard must
+                        # compare against this same rounded value, or the
+                        # rounding itself would look like an edit.
+                        derived_qty = round(ing["grams"] / measure_grams, 2)
+                        new_qty = amt_col.number_input(
+                            f"Amount for {ing['food_description']}",
+                            value=derived_qty,
+                            min_value=0.0,
+                            step=0.5,
+                            format="%g",
+                            key=f"grams_{ing['id']}_{chosen_unit}",
+                            label_visibility="collapsed",
+                        )
+                        # THE DRIFT GUARD (2026-08-15). This box shows a
+                        # ROUNDED quantity -- 300 g / 158 g-per-cup
+                        # displays as 1.9 -- so writing it back to grams on
+                        # EVERY rerun, including the rerun where the RD
+                        # touched nothing, would walk the stored grams down
+                        # a little each time (1.9 * 158 = 300.2, which
+                        # re-derives to 1.9 again, forever) with nothing on
+                        # screen ever showing it. Only write grams back
+                        # when the widget's value actually differs from
+                        # the derived quantity (float tolerance, not ==);
+                        # unchanged means leave the stored grams
+                        # byte-for-byte alone.
+                        if abs(new_qty - derived_qty) > 1e-6:
+                            selected_blend["ingredients"][i]["grams"] = new_qty * measure_grams
+                        selected_blend["ingredients"][i]["measure_label"] = chosen_unit
+                        selected_blend["ingredients"][i]["measure_grams"] = measure_grams
+                        computed_col.markdown(
+                            f"= **{selected_blend['ingredients'][i]['grams']:.1f} {unit}**"
+                        )
+                    else:
+                        new_amount = amt_col.number_input(
+                            f"Amount for {ing['food_description']}",
+                            value=float(ing["grams"]),
+                            min_value=0.0,
+                            step=1.0,
+                            format="%g",
+                            key=f"grams_{ing['id']}",
+                            label_visibility="collapsed",
+                        )
+                        selected_blend["ingredients"][i]["grams"] = new_amount
+                        # Showing grams is a display choice, so forget the
+                        # remembered measure -- the export should print
+                        # what the row currently reads, not a unit the RD
+                        # moved away from.
+                        selected_blend["ingredients"][i]["measure_label"] = None
+                        selected_blend["ingredients"][i]["measure_grams"] = None
+
+                    new_fluid_flag = fluid_col.checkbox(
+                        "Counts as fluid",
+                        value=bool(ing.get("counts_as_fluid", False)),
+                        key=f"fluid_{ing['id']}",
+                    )
+                    selected_blend["ingredients"][i]["counts_as_fluid"] = new_fluid_flag
+
+            # --- Recipe card (Change 1.3): the "hand it to a caregiver"
+            # artefact, kept out of the edit rows above so neither job
+            # clutters the other. Measure-first, grams in brackets
+            # (author's choice); st.code so it gets Streamlit's own copy
+            # button, the same idiom the Chart Note (Daily Intake Record
+            # tab) already uses.
+            st.caption("Copy this to hand to whoever is actually blending.")
+            _card_lines = [selected_blend["name"] or f"Blend {selected_blend_id}"]
+            for ing in selected_blend["ingredients"]:
+                _label = ing.get("measure_label")
+                _measure_grams = ing.get("measure_grams")
+                _unit = ing.get("unit", "g")
+                if _label and _measure_grams:
+                    # "1 medium (18cm to 20cm long) Banana, raw  (118 g)" --
+                    # measure-first, grams in brackets.
+                    #
+                    # NO leading "1 x" when the quantity is one: CNF labels
+                    # already carry their own count ("1 medium", "250 ml"),
+                    # so prefixing the quantity printed "1 1 medium ..."
+                    # (author, 2026-08-15). Any other quantity keeps an
+                    # explicit multiplier, which is the honest way to say
+                    # "two of these" without pluralising a label that would
+                    # break on "1 small". :g trims a trailing ".0".
+                    _qty = round(ing["grams"] / _measure_grams, 2)
+                    _amount = _label if _qty == 1 else f"{_qty:g} × {_label}"
+                    _card_lines.append(
+                        f"  {_amount} {ing['food_description']}  " f"({ing['grams']:.0f} {_unit})"
+                    )
+                else:
+                    # No household measure recorded for this row -- reads
+                    # in grams (or mL), same convention as the "250 mL
+                    # water" line in the plan's own example.
+                    _card_lines.append(f"  {ing['grams']:.0f} {_unit} {ing['food_description']}")
+            # No "Total" line, deliberately (author, 2026-08-15). A total
+            # ingredient weight was scaffolding from the original build
+            # with no recorded purpose: nothing consumes it, the nutrient
+            # maths uses per-ingredient grams and the density maths uses
+            # the measured volume. Printed next to "Measured final volume
+            # (mL)" it also invited reading grams as millilitres, which is
+            # wrong for a blend carrying oil and solids.
+            st.code("\n".join(_card_lines), language=None)
+
+        else:  # _view == "Nutrition" (Change 1.4)
+            # compute_ingredient_breakdown() is the SAME merge-and-scale
+            # core as compute_nutrient_totals()/calculate_profile(),
+            # grouped by ingredient instead of summed away -- see its
+            # docstring in src/calculator.py for why this can never
+            # disagree with the whole-blend numbers shown elsewhere in
+            # this tab, and for how custom (label-entered) foods are
+            # folded in even though they never appear in the CNF join.
+            _ingr_objs = [
+                Ingredient(ing["food_code"], ing["food_description"], ing["grams"])
+                for ing in selected_blend["ingredients"]
+            ]
+            _units_by_food_code = {
+                int(ing["food_code"]): ing.get("unit", "g")
+                for ing in selected_blend["ingredients"]
+                if ing.get("food_code") is not None
+            }
+            _breakdown = compute_ingredient_breakdown(_ingr_objs, na, st.session_state.custom_foods)
+            _nutrition_display = format_ingredient_breakdown(
+                _breakdown, units_by_food_code=_units_by_food_code
+            )
+            # Breaks out of the page cap so the nutrient columns can
+            # spill sideways (the author's "spill over the way long
+            # tables do") instead of truncating.
+            with st.container(key="fullbleed_ingr_nutrition"):
+                st.dataframe(
+                    _nutrition_display,
+                    # stretch + explicit pixel widths, same combination
+                    # the Adequacy table uses (see fullbleed_adequacy
+                    # above) -- width="content" was tried there and
+                    # leaves the table narrow and unable to scroll.
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Ingredient": st.column_config.TextColumn(width=220),
+                        "Amount": st.column_config.TextColumn(width=100),
+                    },
+                )
+
+        # "Total ingredient weight" used to print here. Removed 2026-08-15:
+        # it dated from the original scaffold with no recorded purpose,
+        # nothing downstream consumed it, and sitting a gram figure right
+        # under "Measured final volume (mL)" invited reading the two as the
+        # same quantity. "Fluid from ingredients" below stays -- that one
+        # feeds the Daily Intake Record's fluid accounting.
         _blend_fluid_mL = (
             blend_fluid_fraction(
                 selected_blend["ingredients"], selected_blend["measured_volume_mL"]
@@ -2821,14 +3032,22 @@ with record_tab:
         _tube_rows = [r for r in _ordered_rows if r["source_type"] in ("blend", "formula", "flush")]
         _oral_rows = [r for r in _ordered_rows if r["source_type"] == "oral"]
 
-        def _render_intake_row(row: dict) -> None:
-            rc1, rc2 = st.columns([6, 1])
-            rc1.write(_intake_row_label(row))
-            if rc2.button("❌", key=f"del_intake_{row['id']}"):
-                st.session_state.intake_log = [
-                    r for r in st.session_state.intake_log if r["id"] != row["id"]
-                ]
-                st.rerun()
+        def _render_intake_row(row: dict, index: int) -> None:
+            # Banded rows (Change 1.6, author request 2026-08-15) -- same
+            # .st-key-zebrarow/.plainrow CSS hook as the Ingredients list.
+            # `index` is a running count across BOTH the Tube Feed and
+            # Food & Drink groups below (not restarted per group), so the
+            # stripe reads as one continuous 19-row list, matching the
+            # "Everything given" framing above the expander.
+            _band = "zebrarow" if index % 2 else "plainrow"
+            with st.container(key=f"{_band}_intake_{row['id']}"):
+                rc1, rc2 = st.columns([6, 1])
+                rc1.write(_intake_row_label(row))
+                if rc2.button("❌", key=f"del_intake_{row['id']}"):
+                    st.session_state.intake_log = [
+                        r for r in st.session_state.intake_log if r["id"] != row["id"]
+                    ]
+                    st.rerun()
 
         # Collapsed once the day gets long (author, 2026-08-01). A real
         # day is mostly flushes -- the example day is 19 rows, 11 of them
@@ -2900,14 +3119,17 @@ with record_tab:
             _summary += " — " + ", ".join(_parts)
 
         with st.expander(_summary, expanded=_n_rows <= ROW_LIST_COLLAPSE_THRESHOLD):
+            _row_idx = 0
             if _tube_rows:
                 st.markdown(f"*{TUBE_FEED_LABEL}*")
                 for _row in _tube_rows:
-                    _render_intake_row(_row)
+                    _render_intake_row(_row, _row_idx)
+                    _row_idx += 1
             if _oral_rows:
                 st.markdown(f"*{FOOD_DRINK_LABEL}*")
                 for _row in _oral_rows:
-                    _render_intake_row(_row)
+                    _render_intake_row(_row, _row_idx)
+                    _row_idx += 1
 
 
 with recipes_tab:
