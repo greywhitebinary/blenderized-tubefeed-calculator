@@ -38,6 +38,7 @@ from src.nutrients import defs_for_tier, registry_by_name
 from src.report import (
     EDITING_MARKER,
     _adequacy_status,
+    _formula_daily,
     _coverage_text,
     _ordered_label_defs,
     _zero_coverage,
@@ -507,6 +508,80 @@ def test_two_blends_produce_two_rows_named_and_ordered_as_given(nutrient_amount_
     # Different recipes -> different densities -> different Energy figures,
     # confirming the second row isn't just a copy of the first.
     assert df.iloc[0]["Energy (kcal)"] != df.iloc[1]["Energy (kcal)"]
+
+
+def test_the_columns_are_the_four_macros_plus_free_water_and_energy_density(
+    nutrient_amount_df,
+):
+    """Column set fixed by the author 2026-08-16: the four macros at the
+    chosen volume, free water, and kcal/mL. "Protein g/mL" was dropped for
+    being the only density shown and a restatement of Protein (g); no
+    other per-mL column replaced it, because kcal/mL is the one density
+    that does not fall out of the daily figures.
+
+    Hand-checked against conftest's foods. 200 g of rice in a 500 mL blend
+    is 56.0 g carbohydrate and 0.6 g fat (28.0 and 0.3 per 100 g), so at a
+    1000 mL daily volume the table doubles the density: 112.0 g and 1.2 g.
+    Chicken carries no carbohydrate at all, which is what makes the two
+    rows tell a story rather than just differ.
+    """
+    chicken = calculate_profile(
+        Recipe(
+            name="Chicken blend",
+            ingredients=[Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 200.0)],
+            measured_final_volume_mL=500.0,
+        ),
+        nutrient_amount_df,
+    )
+    rice = calculate_profile(
+        Recipe(
+            name="Rice blend",
+            ingredients=[Ingredient(FOOD_RICE, "Rice, white, cooked", 200.0)],
+            measured_final_volume_mL=500.0,
+        ),
+        nutrient_amount_df,
+    )
+
+    df = generate_comparator_table(
+        [("Chicken blend", chicken), ("Rice blend", rice)],
+        daily_volume_mL=1000.0,
+        formula_names=[],
+    )
+
+    assert list(df.columns) == [
+        "Name",
+        "Energy (kcal)",
+        "Protein (g)",
+        "Carbohydrate (g)",
+        "Fat (g)",
+        "Free water (mL)",
+        "kcal/mL",
+    ]
+    assert "Protein g/mL" not in df.columns
+
+    assert df.iloc[1]["Carbohydrate (g)"] == pytest.approx(112.0)
+    assert df.iloc[1]["Fat (g)"] == pytest.approx(1.2)
+    # 3.6 g fat per 100 g of chicken -> 7.2 g in 200 g -> doubled to 1000 mL.
+    assert df.iloc[0]["Fat (g)"] == pytest.approx(14.4)
+    assert df.iloc[0]["Carbohydrate (g)"] == pytest.approx(0.0)
+
+
+def test_a_formula_column_the_csv_leaves_blank_shows_a_dash_not_a_zero(
+    nutrient_amount_df,
+):
+    """The never-fabricate-a-0 contract, tested on _formula_daily directly
+    because all 33 shipped formulas currently disclose every macro, so no
+    real row can exercise it. A blank column means the manufacturer did
+    not say, which is a different claim from "contains none" -- printing
+    0.0 g of fat against a feed would be the app inventing a label value.
+    """
+    disclosed = {"fat_per_mL": 0.04}
+    silent: dict = {}
+
+    assert _formula_daily(disclosed, "fat_per_mL", 1000.0) == pytest.approx(40.0)
+    assert _formula_daily(silent, "fat_per_mL", 1000.0) == "—"
+    # A disclosed ZERO is a real claim and must survive as a number.
+    assert _formula_daily({"fat_per_mL": 0.0}, "fat_per_mL", 1000.0) == 0.0
 
 
 def test_blend_with_no_measured_volume_is_skipped_not_raised(nutrient_amount_df):

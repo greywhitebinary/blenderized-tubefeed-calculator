@@ -116,6 +116,20 @@ class NutrientProfile:
         return self.nutrient_totals.get("protein_g", 0.0) / self.measured_final_volume_mL
 
     @property
+    def carbohydrate_per_mL(self) -> float:
+        """Carbohydrate density: grams of carbohydrate per mL of blend."""
+        if self.measured_final_volume_mL <= 0:
+            return 0.0
+        return self.nutrient_totals.get("carbohydrate_g", 0.0) / self.measured_final_volume_mL
+
+    @property
+    def fat_per_mL(self) -> float:
+        """Fat density: grams of fat per mL of blend."""
+        if self.measured_final_volume_mL <= 0:
+            return 0.0
+        return self.nutrient_totals.get("fat_g", 0.0) / self.measured_final_volume_mL
+
+    @property
     def free_water_fraction(self) -> float:
         """Free-water fraction: (food water + added water) / blend volume.
 

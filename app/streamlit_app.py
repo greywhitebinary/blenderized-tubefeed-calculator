@@ -3940,8 +3940,13 @@ with recipes_tab:
             compare_volume_mL,
             selected_formulas,
         )
-        with st.container(key="fullbleed_formula_comparator"):
-            st.dataframe(comparator_df, width="stretch", hide_index=True)
+        # NOT a fullbleed break-out (author, 2026-08-16). The break-out
+        # exists for tables that genuinely cannot be read inside the 60rem
+        # cap -- Adequacy, with its long nutrient names and nine columns.
+        # This one is a name and six short numbers, so stretching it to
+        # the viewport spread those numbers across the whole screen and
+        # made a small table look like the biggest thing on the page.
+        st.dataframe(comparator_df, width="stretch", hide_index=True)
         # The marker is meaningless without this sentence, so the caption
         # is not decoration here -- it is the legend. "at the top of this
         # tab" rather than "above" because the comparator sits a long way

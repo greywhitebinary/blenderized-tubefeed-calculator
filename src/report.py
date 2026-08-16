@@ -667,6 +667,30 @@ def generate_density_summary(profile: NutrientProfile) -> pd.DataFrame:
     )
 
 
+def _formula_daily(
+    formula: dict,
+    per_mL_key: str,
+    daily_volume_mL: float,
+    decimals: int = 1,
+) -> float | str:
+    """A formula's disclosed per-mL value taken out to a daily volume, or
+    "—" when formulas.csv leaves that column blank for this feed.
+
+    The "—" is the same never-fabricate-a-0 contract used everywhere a
+    formula's label is silent (Part 2.6, and _FORMULA_COLUMN_TO_NUTRIENT
+    in src/intake.py): a blank column means the manufacturer did not
+    disclose it, which is not the same claim as "contains none". All 33
+    Canadian formulas currently disclose carbohydrate, fat and free water,
+    so this reads as dead code today; it exists because a pack added later
+    may not, and a silently fabricated 0 in a macro column is exactly the
+    error this project treats as unacceptable.
+    """
+    per_mL = formula.get(per_mL_key)
+    if per_mL is None:
+        return "—"
+    return round(per_mL * daily_volume_mL, decimals)
+
+
 # Leads the comparator row for the blend the RD has open in the editor.
 # A PREFIX, not a "(open above)" suffix (author, 2026-08-16): blend names
 # already carry a " (2)" when a name repeats (src.intake.unique_blend_name),
@@ -692,10 +716,17 @@ def generate_comparator_table(
     formula_comparison() shape — metrics as COLUMNS, one row per
     blend/formula.
 
-    Columns: Name, Energy (kcal), Protein (g), Free water (mL), kcal/mL,
-    Protein g/mL. Free water uses each formula's free_water_per_mL
-    (data/packs/canada/formulas.csv, Part 2.6) — "—" when a formula's
-    CSV row omits it (never a fabricated 0).
+    Columns: Name, Energy (kcal), Protein (g), Carbohydrate (g), Fat (g),
+    Free water (mL), kcal/mL. Carbohydrate and Fat replaced the old
+    "Protein g/mL" column (author, 2026-08-16): protein was the only macro
+    shown, and its density duplicated a number the Protein (g) column
+    already carried at the chosen volume, while carbohydrate and fat were
+    missing entirely. kcal/mL stays because energy density is the one
+    figure that does NOT fall out of the daily columns.
+
+    A formula's macro columns come from its disclosed per-mL values
+    (data/packs/canada/formulas.csv, Part 2.6) — "—" when that CSV row
+    leaves the column blank (never a fabricated 0; see _formula_daily).
 
     Args:
         blends:           Ordered (name, profile) pairs — one row each,
@@ -722,24 +753,25 @@ def generate_comparator_table(
                 "Name": f"{EDITING_MARKER} {name}" if i == 0 else name,
                 "Energy (kcal)": round(profile.kcal_per_mL * daily_volume_mL, 0),
                 "Protein (g)": round(profile.protein_per_mL * daily_volume_mL, 1),
+                "Carbohydrate (g)": round(profile.carbohydrate_per_mL * daily_volume_mL, 1),
+                "Fat (g)": round(profile.fat_per_mL * daily_volume_mL, 1),
                 "Free water (mL)": round(profile.free_water_fraction * daily_volume_mL, 0),
                 "kcal/mL": round(profile.kcal_per_mL, 2),
-                "Protein g/mL": round(profile.protein_per_mL, 3),
             }
         )
     for name in formula_names:
         formula = COMMERCIAL_FORMULAS[name]
-        fw_per_mL = formula.get("free_water_per_mL")
         rows.append(
             {
                 "Name": name,
                 "Energy (kcal)": round(formula["kcal_per_mL"] * daily_volume_mL, 0),
                 "Protein (g)": round(formula["protein_per_mL"] * daily_volume_mL, 1),
-                "Free water (mL)": (
-                    round(fw_per_mL * daily_volume_mL, 0) if fw_per_mL is not None else "—"
+                "Carbohydrate (g)": _formula_daily(formula, "carbohydrate_per_mL", daily_volume_mL),
+                "Fat (g)": _formula_daily(formula, "fat_per_mL", daily_volume_mL),
+                "Free water (mL)": _formula_daily(
+                    formula, "free_water_per_mL", daily_volume_mL, decimals=0
                 ),
                 "kcal/mL": formula["kcal_per_mL"],
-                "Protein g/mL": formula["protein_per_mL"],
             }
         )
     return pd.DataFrame(rows)
