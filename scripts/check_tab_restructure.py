@@ -50,7 +50,8 @@ def main() -> None:
         "Per-Source Breakdown",
         "Chart Note",
         # One download since 2026-08-01 (was "Export" + a separate save).
-        "Save this day",
+        # "day" became "record" throughout the wording 2026-08-16.
+        "Save this record",
     ):
         assert expected in subheaders, f"missing subheader: {expected!r} — have {subheaders}"
     print("section placement OK: all expected subheaders present")

@@ -25,6 +25,7 @@ from src.intake import (
     aggregate_intake,
     resolve_blend_profile,
     sorted_intake_log,
+    thinned_blend_name,
     unique_blend_name,
     InvalidBlendError,
 )
@@ -730,3 +731,45 @@ class TestUniqueBlendName:
         taken = ["Whole-food blend", "Vegan blend"]
         assert unique_blend_name("Whole-food blend", taken) == "Whole-food blend (2)"
         assert unique_blend_name("Vegan blend", taken) == "Vegan blend (2)"
+
+
+class TestThinnedBlendName:
+    """Thinning makes a SEPARATE recipe, so it needs a name of its own.
+    The name was shortened from "X (thinned with 150 mL apple juice)" to
+    "X (thinned)" on 2026-08-16: the long form crowded the blend selector,
+    and what it spelled out is already recorded as an ingredient of the
+    copy and as the copy's measured volume, neither of which can drift out
+    of step with the recipe the way a name can.
+    """
+
+    def test_a_plain_blend_gains_the_suffix(self):
+        assert thinned_blend_name("Whole-food blend") == "Whole-food blend (thinned)"
+
+    def test_thinning_a_thinned_blend_does_not_compound(self):
+        """The failure this guards: "X (thinned) (thinned)". Asking for the
+        same name again is correct -- unique_blend_name() turns it into
+        "(thinned) (2)", so repeats use ONE numbering scheme rather than a
+        second one owned by thinning."""
+        assert thinned_blend_name("Whole-food blend (thinned)") == "Whole-food blend (thinned)"
+        assert thinned_blend_name("Whole-food blend (thinned) (2)") == "Whole-food blend (thinned)"
+
+    def test_the_full_progression_through_unique_blend_name(self):
+        """Thin, thin again, thin again -- the sequence an RD building
+        progressively thinner versions actually walks."""
+        names = ["Whole-food blend"]
+        for _ in range(3):
+            names.append(unique_blend_name(thinned_blend_name(names[-1]), names))
+        assert names == [
+            "Whole-food blend",
+            "Whole-food blend (thinned)",
+            "Whole-food blend (thinned) (2)",
+            "Whole-food blend (thinned) (3)",
+        ]
+
+    def test_a_number_that_is_not_a_thinned_suffix_is_kept(self):
+        """ "Renal (2)" is a blend in its own right, distinguished from
+        "Renal" by that number, so thinning it must not quietly drop it."""
+        assert thinned_blend_name("Renal (2)") == "Renal (2) (thinned)"
+
+    def test_a_parenthesised_word_is_not_mistaken_for_the_suffix(self):
+        assert thinned_blend_name("Renal (low K)") == "Renal (low K) (thinned)"

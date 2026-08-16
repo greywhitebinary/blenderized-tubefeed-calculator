@@ -114,6 +114,7 @@ from src.intake import (
     resolve_blend_profile,
     blend_fluid_fraction,
     sorted_intake_log,
+    thinned_blend_name,
     unique_blend_name,
     InvalidBlendError,
     TUBE_FEED_LABEL,
@@ -1635,7 +1636,7 @@ def _apply_saved_day(parsed) -> None:
     the upload handler stages the parsed day and reruns; this applies it
     before any widget exists.
 
-    Replaces rather than merges. Opening a saved day means "go back to
+    Replaces rather than merges. Opening a saved record means "go back to
     that day"; merging two days would produce an intake record that never
     happened. Recipes are the opposite and load alongside what you have.
     """
@@ -1724,7 +1725,7 @@ def _food_search_index(group_code: int | None):
 
 # ===========================================================================
 # TOP BAR — onboarding row (demo, example), then patient/day label and
-# "Open a saved day". No sidebar.
+# "Open a saved record". No sidebar.
 # ===========================================================================
 
 
@@ -1748,26 +1749,31 @@ def _show_demo_video() -> None:
 
 
 # Onboarding pair: both are for someone who has never seen the tool.
-# "Open a saved day" stays top right as the returning-user action.
+# "Open a saved record" stays top right as the returning-user action.
 with st.container(horizontal=True):
     _demo_clicked = st.button("▶️ How this works — a 3-minute demo")
-    load_example_clicked = st.button("📋 Load example day")
+    load_example_clicked = st.button("📋 Load example record")
 if _demo_clicked:
     _show_demo_video()
 
 # vertical_alignment="bottom" aligns the popover with the text input
 # exactly; the old st.write("") spacer only guessed at the label height.
-top_l, top_r = st.columns([4, 1], vertical_alignment="bottom")
+#
+# 3:1, not 4:1 (author, 2026-08-16): at a fifth of the page the popover
+# label wrapped onto two lines, and "Open a saved record" is a word longer
+# than the "day" version it replaced. The label field on the left keeps
+# three quarters, which is still far more than a patient label needs.
+top_l, top_r = st.columns([3, 1], vertical_alignment="bottom")
 with top_r:
-    with st.popover("📂 Open a saved day", width="stretch"):
+    with st.popover("📂 Open a saved record", width="stretch"):
         # In a popover so the top bar keeps its shape -- the UI is pinned
         # (CONTEXT.md §9), and a file uploader is a tall control.
         _day_file = st.file_uploader(
-            "Open a saved day",
+            "Open a saved record",
             type=["xlsx"],
             key="day_upload",
             label_visibility="collapsed",
-            help="A day file saved from this app. Recipes load from the Feed Recipes tab.",
+            help="A record saved from this app. Recipes load from the Feed Recipes tab.",
         )
 
 if _day_file is not None and st.session_state.get("_last_day_upload") != _day_file.name:
@@ -1779,13 +1785,13 @@ if _day_file is not None and st.session_state.get("_last_day_upload") != _day_fi
         st.session_state["_last_day_upload"] = _day_file.name
         st.rerun()
 
-# Confirm before replacing. Opening a saved day overwrites the blends,
+# Confirm before replacing. Opening a saved record overwrites the blends,
 # the intake record and the targets currently on screen, and an RD who
 # has been working for ten minutes should get to say no.
 _pending_day = st.session_state.get("_pending_day")
 if _pending_day is not None:
     st.warning(
-        f"**Open this saved day?** {_pending_day.summary}. "
+        f"**Open this saved record?** {_pending_day.summary}. "
         "This replaces the blends, intake record and targets currently on screen."
     )
     for _w in _pending_day.warnings:
@@ -1801,7 +1807,7 @@ if _pending_day is not None:
         st.rerun()
 
 # NOTE: the button-click handler below is deliberately placed BEFORE the
-# "Patient / day label" text_input is instantiated (even though that input
+# "Patient / record label" text_input is instantiated (even though that input
 # renders visually to the LEFT of the button -- `with top_l:`/`with top_r:`
 # only control layout POSITION, not script execution order). This lets the
 # handler preset st.session_state["recipe_name_input"] before that widget's
@@ -2171,7 +2177,7 @@ if load_example_clicked:
         # is legal).
         #
         # These figures are spoken in the demo video -- keep them in step
-        # with it. Other targets are zeroed because "Load example day"
+        # with it. Other targets are zeroed because "Load example record"
         # warns that it replaces the targets on screen.
         st.session_state["patient_weight_input"] = 165.0
         st.session_state["weight_unit"] = "lbs"
@@ -2194,10 +2200,10 @@ with top_l:
     # preset triggers Streamlit's (harmless but noisy) "created with a
     # default value but also had its value set via Session State" warning.
     if "recipe_name_input" not in st.session_state:
-        st.session_state["recipe_name_input"] = "My BTF day"
-    recipe_name = _narrow(1, 1).text_input("Patient / day label", key="recipe_name_input")
+        st.session_state["recipe_name_input"] = "My BTF record"
+    recipe_name = _narrow(1, 1).text_input("Patient / record label", key="recipe_name_input")
 
-st.title(f"🥕🥦🥤 {recipe_name or 'BTF day'} 💉💧🍌")
+st.title(f"🥕🥦🥤 {recipe_name or 'BTF record'} 💉💧🍌")
 st.caption(
     "⚠️ Under development. Estimates to inform clinical judgment, not to replace it. "
     "Check the numbers before you act on them."
@@ -2488,18 +2494,31 @@ with recipes_tab:
     # not touch st.session_state. Streamlit calls format_func outside the
     # script run (serialising widget state), where session_state raises
     # "has no attribute" and takes six of the nine CI checks down with it.
+    #
+    # Each label carries its blend's ITEM COUNT (author, 2026-08-16). The
+    # complaint it answers: after adding foods to blend 1 and switching to
+    # blend 2, nothing on screen showed that blend 1 still held them, so it
+    # was unclear whether something needed clicking before switching. It
+    # never did -- ingredients write straight into session_state as they
+    # are added -- but the dropdown was silent about it. Counting here in
+    # the list every blend is already picked from means the reassurance is
+    # continuous and costs no extra control.
     _blend_labels: dict[int, str] = {}
     for _bid in blend_ids:
         _widget_name = st.session_state.get(f"blend_name_{_bid}")
         _stored = st.session_state.blends[_bid]["name"]
-        _blend_labels[_bid] = (_widget_name if _widget_name is not None else _stored) or (
-            f"Blend {_bid}"
+        _name = (_widget_name if _widget_name is not None else _stored) or f"Blend {_bid}"
+        _count = len(st.session_state.blends[_bid]["ingredients"])
+        _blend_labels[_bid] = (
+            f"{_name} · {_count} item{'' if _count == 1 else 's'}"
+            if _count
+            else f"{_name} · no items yet"
         )
 
     # Options are the BLEND IDS, not positions (author, 2026-08-01).
     #
     # This started as an index list, `range(len(blend_ids))`, which meant
-    # that starting the app and pressing "Load example day" sent the
+    # that starting the app and pressing "Load example record" sent the
     # browser the same options both times -- [0] before, [0] after -- even
     # though the starter blend (id 0) had been replaced by the example
     # blend (id 1). The server computed the right label; the browser saw a
@@ -2519,7 +2538,7 @@ with recipes_tab:
 
     # vertical_alignment="bottom" so the two buttons line up with the
     # Select blend BOX rather than floating level with its label (author,
-    # 2026-08-15) -- same fix as the "Open a saved day" popover above.
+    # 2026-08-15) -- same fix as the "Open a saved record" popover above.
     bsel1, bsel2, bsel3 = st.columns([3, 1, 1], vertical_alignment="bottom")
     chosen_id = bsel1.selectbox(
         "Select blend",
@@ -2531,6 +2550,19 @@ with recipes_tab:
     st.session_state.selected_blend_id = chosen_id
     selected_blend_id = st.session_state.selected_blend_id
     selected_blend = st.session_state.blends[selected_blend_id]
+
+    # Sits directly under the selector because that is where the doubt
+    # lands: switching blends is the moment an RD wonders whether something
+    # needed clicking first. Says what to do to KEEP work rather than what
+    # would lose it (author, 2026-08-16) -- the tab closing and taking
+    # everything with it is intended behaviour on a shared public server,
+    # not a gap to apologise for. The second sentence is the only pointer
+    # to the Recipe Record section, which sits ~1200 lines further down the
+    # tab, past the density panel and the Dilution What-If.
+    st.caption(
+        "Blends are kept while switching between them. Download a recipe "
+        "to keep it for next time."
+    )
 
     if bsel2.button("➕ New blend", width="stretch"):
         _new_blend(_next_blend_label())
@@ -3706,15 +3738,23 @@ with recipes_tab:
                     help="Your original blend is left untouched.",
                 ):
                     _src_name = _src_label
-                    # Name says WHAT it was thinned with, not just how much
-                    # (author, 2026-08-01): "(thinned +150 mL)" left the RD
-                    # to remember whether that was water, broth or juice --
-                    # and a recipe name is exactly the place that shouldn't
-                    # need remembering, since it is what the chart note, the
-                    # blend selector and the saved file all carry.
-                    _new_id = _new_blend(
-                        f"{_src_name} (thinned with {added_mL:.0f} mL {liquid_type.lower()})"
-                    )
+                    # Just "(thinned)" (author, 2026-08-16). This used to
+                    # spell the dilution out -- "(thinned with 150 mL
+                    # water)", 2026-08-01, so the RD would not have to
+                    # remember which liquid it was -- but there is only one
+                    # liquid to remember (THINNING_LIQUIDS is water-only by
+                    # construction), and at ~70 characters it crowded the
+                    # blend selector. The amount is already recorded where
+                    # it cannot go stale: as an ingredient of the copy and
+                    # in the copy's measured volume. A name that repeats
+                    # the ingredient list is a name that can disagree with
+                    # it after an edit.
+                    #
+                    # Repeated thinning numbers itself through
+                    # unique_blend_name() inside _new_blend(), so this stays
+                    # one naming scheme rather than two: (thinned),
+                    # (thinned) (2), (thinned) (3).
+                    _new_id = _new_blend(thinned_blend_name(_src_name))
                     _copy = st.session_state.blends[_new_id]
                     for _ing in selected_blend["ingredients"]:
                         st.session_state.next_ingr_id += 1
@@ -3775,7 +3815,12 @@ with recipes_tab:
     rr1, rr2 = st.columns(2)
     with rr1:
         st.download_button(
-            "💾 Save recipe" if _n_savable <= 1 else f"💾 Save all {_n_savable} recipes",
+            # "Download", not "Save" (author, 2026-08-16). A button saying
+            # Save implies there is unsaved work, which is what made
+            # switching blends feel risky when nothing was ever at stake.
+            # Same split the Daily Intake Record tab already uses: the
+            # SECTION says "Save this record", the BUTTON says "Download".
+            "💾 Download recipe" if _n_savable <= 1 else f"💾 Download all {_n_savable} recipes",
             # Falls back to the selected blend purely so the disabled
             # button still has valid bytes to hold.
             data=(
@@ -3805,7 +3850,7 @@ with recipes_tab:
         # In a popover so this reads as a BUTTON beside "Save recipe"
         # rather than a tall drag-and-drop dropzone next to one (author,
         # 2026-08-15) -- the two sat side by side as different kinds of
-        # control. Same idiom as "Open a saved day" at the top of the
+        # control. Same idiom as "Open a saved record" at the top of the
         # page, which wraps its uploader for exactly this reason.
         with st.popover("📂 Load a recipe", width="stretch"):
             _uploaded = st.file_uploader(
@@ -4054,7 +4099,7 @@ with record_tab:
     # sheet (tagged with its blend, so Excel can sort or filter by recipe)
     # and every flow test as columns on the Blends sheet. Two views of the
     # same rows in one workbook is how they drift apart.
-    st.subheader("Save this day")
+    st.subheader("Save this record")
 
     _report_sheets: dict[str, pd.DataFrame] = {}
     if st.session_state.intake_log:
@@ -4087,7 +4132,7 @@ with record_tab:
     ]
 
     st.download_button(
-        label="💾 Download this day (.xlsx)",
+        label="💾 Download this record (.xlsx)",
         data=day_to_workbook_bytes(
             label=recipe_name,
             patient_weight=st.session_state.get("patient_weight_input", 0.0),
@@ -4105,7 +4150,7 @@ with record_tab:
         width="stretch",
     )
     st.caption(
-        "One file, two uses. Re-upload it with “Open a saved day” at the top "
+        "One file, two uses. Re-upload it with “Open a saved record” at the top "
         "of the page to carry on where you left off, or file it as it is — the "
         "first tabs hold what you entered (blends, ingredients, intake record, "
         "targets, custom foods) and the rest hold the worked-out numbers "

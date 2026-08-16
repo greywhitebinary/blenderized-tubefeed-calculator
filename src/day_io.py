@@ -28,7 +28,7 @@ says so rather than leaving them to work it out.
 
 WHAT MUST BE IN THE FILE
 ------------------------
-  Day           label, patient weight, format version
+  Record        label, patient weight, format version
   Targets       one row per nutrient with a target set
   Blends        one row per blend: name, measured volume, flow test
   Ingredients   one row per ingredient, tagged with its blend
@@ -76,9 +76,12 @@ from src.recipe_io import _coerce_bool, _coerce_date, _coerce_float, _coerce_str
 #     while nobody is harmed by a file carrying extra sheets. v1 files still
 #     load: the reader takes sheets and columns by name and ignores anything
 #     it doesn't recognise.
-DAY_FORMAT_VERSION = 2
+DAY_FORMAT_VERSION = 3
 
-DAY_SHEET = "Day"
+RECORD_SHEET = "Record"
+# What RECORD_SHEET was called before format version 3 (2026-08-16). Kept
+# only to RECOGNISE such a file and say so plainly -- it is never read.
+LEGACY_RECORD_SHEET = "Day"
 TARGETS_SHEET = "Targets"
 BLENDS_SHEET = "Blends"
 INGREDIENTS_SHEET = "Ingredients"
@@ -91,7 +94,7 @@ _BLEND_NAME_COLUMN = "Blend name"
 # The reloadable half. A report sheet may not overwrite one of these --
 # that would make the file unopenable by the app it came from.
 _INPUT_SHEETS = frozenset(
-    {DAY_SHEET, TARGETS_SHEET, BLENDS_SHEET, INGREDIENTS_SHEET, INTAKE_SHEET, CUSTOM_FOODS_SHEET}
+    {RECORD_SHEET, TARGETS_SHEET, BLENDS_SHEET, INGREDIENTS_SHEET, INTAKE_SHEET, CUSTOM_FOODS_SHEET}
 )
 
 
@@ -200,7 +203,7 @@ def day_to_workbook_bytes(
     """
     day_df = pd.DataFrame(
         [
-            {"Field": "Day label", "Value": label or ""},
+            {"Field": "Record label", "Value": label or ""},
             {"Field": "Patient weight", "Value": float(patient_weight or 0.0)},
             {"Field": "Weight unit", "Value": weight_unit or "kg"},
             {"Field": "Delivery method", "Value": delivery_method or ""},
@@ -307,7 +310,7 @@ def day_to_workbook_bytes(
 
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        day_df.to_excel(writer, sheet_name=DAY_SHEET, index=False)
+        day_df.to_excel(writer, sheet_name=RECORD_SHEET, index=False)
         targets_df.to_excel(writer, sheet_name=TARGETS_SHEET, index=False)
         pd.DataFrame(
             blend_rows,
@@ -359,8 +362,8 @@ def suggested_day_filename(label: str) -> str:
     """
     cleaned = "".join(ch if (ch.isalnum() or ch in " -_") else "-" for ch in (label or "")).strip()
     cleaned = "-".join(cleaned.split())
-    cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-") or "day"
-    return f"btf-day_{cleaned}.xlsx"
+    cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-") or "record"
+    return f"btf-record_{cleaned}.xlsx"
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +379,7 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
     except Exception as exc:  # noqa: BLE001 - surfaced to the RD as a message
         raise DayFileError(
             "That file couldn't be opened as a spreadsheet. Please upload an "
-            ".xlsx day file saved from this app."
+            ".xlsx record saved from this app."
         ) from exc
 
     # The Intake sheet is what makes this a day rather than a recipe file.
@@ -384,17 +387,31 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
     # upload a recipe here by mistake, which is an easy thing to do.
     if INTAKE_SHEET not in sheets:
         raise DayFileError(
-            f"This spreadsheet has no '{INTAKE_SHEET}' sheet, so it isn't a saved day. "
+            f"This spreadsheet has no '{INTAKE_SHEET}' sheet, so it isn't a saved record. "
             "If it's a saved recipe, load it from the Feed Recipes tab instead."
         )
 
     parsed = ParsedDay()
 
-    # --- Day sheet
-    day_df = sheets.get(DAY_SHEET)
+    # --- Record sheet
+    #
+    # Format version 3 renamed this sheet from "Day" (2026-08-16), and the
+    # reader deliberately does NOT accept the old name (author's call: the
+    # app is new enough that few such files exist). Refusing LOUDLY is the
+    # part that matters. The read below tolerates a missing sheet, so an
+    # older file would otherwise open looking fine while its label, weight
+    # and unit came back blank -- a silent wrong answer, which is worse
+    # than a file that plainly will not open.
+    if RECORD_SHEET not in sheets and LEGACY_RECORD_SHEET in sheets:
+        raise DayFileError(
+            f"This file was saved before the '{LEGACY_RECORD_SHEET}' sheet was renamed "
+            f"to '{RECORD_SHEET}', so it can't be opened here."
+        )
+
+    day_df = sheets.get(RECORD_SHEET)
     if day_df is not None and {"Field", "Value"}.issubset(day_df.columns):
         values = {_coerce_str(r.get("Field")): r.get("Value") for _, r in day_df.iterrows()}
-        parsed.label = _coerce_str(values.get("Day label"))
+        parsed.label = _coerce_str(values.get("Record label"))
         parsed.patient_weight = _coerce_float(values.get("Patient weight")) or 0.0
         parsed.weight_unit = _coerce_str(values.get("Weight unit")) or "kg"
         version = _coerce_float(values.get("Format version"))
@@ -483,7 +500,8 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
     for column in ("Source type", "Amount"):
         if column not in intake_df.columns:
             raise DayFileError(
-                f"The '{INTAKE_SHEET}' sheet has no '{column}' column, so the day " "can't be read."
+                f"The '{INTAKE_SHEET}' sheet has no '{column}' column, so the record "
+                "can't be read."
             )
 
     next_intake_id = 0

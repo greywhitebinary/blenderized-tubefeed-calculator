@@ -126,6 +126,47 @@ class InvalidBlendError(ValueError):
 
 _NUMBERED_SUFFIX = re.compile(r"^(?P<stem>.*?) \((?P<n>\d+)\)$")
 
+# " (thinned)", optionally already numbered by unique_blend_name().
+_THINNED_SUFFIX = re.compile(r"^(?P<stem>.*?) \(thinned\)(?: \(\d+\))?$")
+
+
+def thinned_blend_name(source_name: str) -> str:
+    """The name for a blend created by thinning `source_name`.
+
+    Thinning produces a SEPARATE recipe -- its own ingredients (including
+    the added water), its own measured volume, its own flow test -- so it
+    needs a name of its own. That name used to spell the dilution out in
+    full: "Whole-food blend (thinned with 150 mL water)", so an RD would
+    not have to remember "whether that was water, broth or juice"
+    (author, 2026-08-01).
+
+    Shortened on 2026-08-16 for two reasons. It ran to ~70 characters and
+    crowded the blend selector; and the choice it was disambiguating does
+    not exist. The app offers exactly ONE thinning liquid -- water --
+    because app.streamlit_app._load_thinning_liquids() keeps only
+    non-nutritive presets, a nutritive thinner belonging in the ingredient
+    list where all its nutrients are computed rather than three. So
+    "(thinned)" is already unambiguous.
+
+    Nothing is lost by the shortening either way: the water is a real
+    ingredient in the copy ("Water (added to thin)") and the volume is on
+    the blend itself, both of which stay correct if the recipe is edited
+    later, unlike a name.
+
+    Repeated thinning is numbered by unique_blend_name(), not by a scheme
+    of its own (author, 2026-08-16), which is why the stem is stripped
+    first: thinning a blend already called "X (thinned)" must ask for
+    "X (thinned)" again and be numbered to "X (thinned) (2)", never
+    compound into "X (thinned) (thinned)".
+
+    A number that is NOT part of a thinned suffix is left alone: thinning
+    "Renal (2)" gives "Renal (2) (thinned)", since that (2) distinguishes
+    it from a different blend called "Renal".
+    """
+    match = _THINNED_SUFFIX.match(source_name)
+    stem = match.group("stem") if match else source_name
+    return f"{stem} (thinned)"
+
 
 def unique_blend_name(wanted: str, taken: Iterable[str]) -> str:
     """Return `wanted`, or the first free " (2)", " (3)" ... variant of it.

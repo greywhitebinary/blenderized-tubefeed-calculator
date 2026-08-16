@@ -21,6 +21,9 @@ import pytest
 
 from src.day_io import (
     DAY_FORMAT_VERSION,
+    INTAKE_SHEET,
+    LEGACY_RECORD_SHEET,
+    RECORD_SHEET,
     DayFileError,
     day_to_workbook_bytes,
     suggested_day_filename,
@@ -292,5 +295,37 @@ class TestBadFiles:
 
 
 def test_filename_is_safe_and_readable():
-    assert suggested_day_filename("James W, H&N RT wk 5") == "btf-day_James-W-H-N-RT-wk-5.xlsx"
-    assert suggested_day_filename("") == "btf-day_day.xlsx"
+    # "day" became "record" throughout the user-facing wording on
+    # 2026-08-16, and the filename is user-facing: it is what an RD sees in
+    # their downloads folder months later.
+    assert suggested_day_filename("James W, H&N RT wk 5") == "btf-record_James-W-H-N-RT-wk-5.xlsx"
+    assert suggested_day_filename("") == "btf-record_record.xlsx"
+
+
+def test_a_file_from_before_the_sheet_rename_is_refused_not_silently_blanked():
+    """Format version 3 renamed the "Day" sheet to "Record" and the reader
+    does not accept the old name (author's call 2026-08-16: the app is new
+    enough that few such files exist).
+
+    What this pins is that the refusal is LOUD. The Record sheet is read
+    with .get(), so without the guard an older file would open looking
+    perfectly fine while its label, patient weight and weight unit came
+    back empty -- a silent wrong answer in a clinical tool, which is worse
+    than a file that plainly will not open.
+    """
+    import io
+
+    import pandas as pd
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame([{"Field": "Day label", "Value": "James W"}]).to_excel(
+            writer, sheet_name=LEGACY_RECORD_SHEET, index=False
+        )
+        pd.DataFrame([{"Time": "08:00", "Source type": "flush", "Amount": 100.0}]).to_excel(
+            writer, sheet_name=INTAKE_SHEET, index=False
+        )
+
+    with pytest.raises(DayFileError) as exc:
+        workbook_bytes_to_day(buf.getvalue())
+    assert LEGACY_RECORD_SHEET in str(exc.value) and RECORD_SHEET in str(exc.value)
