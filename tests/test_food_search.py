@@ -374,12 +374,20 @@ def test_real_cnf_basic_foods_rank_above_contains_foods():
     frame = pd.read_csv(CNF_FOOD_NAME, encoding="utf-8-sig", low_memory=False)
     index = build_index(frame)
 
-    milk = _descriptions(search_foods("milk", index))
+    # A limit big enough to hold every match, so this asserts on the
+    # RANKING rather than on what fits the default 50-row page. Since tier
+    # 5 became alphabetical (2026-08-15), the contains-matches this test
+    # names fall off that page entirely -- a stronger outcome than the
+    # test asks for, but one that made the old `next(...)` lookups raise
+    # StopIteration instead of proving anything.
+    _ALL = 10_000
+
+    milk = _descriptions(search_foods("milk", index, limit=_ALL))
     cracker = next(d for d in milk if d.startswith("Cracker, milk"))
     fluid = next(d for d in milk if d.startswith("Milk, fluid"))
     assert milk.index(fluid) < milk.index(cracker)
 
-    egg = _descriptions(search_foods("egg", index))
+    egg = _descriptions(search_foods("egg", index, limit=_ALL))
     bagel = next(d for d in egg if d.startswith("Bagel, egg"))
     chicken_egg = next(d for d in egg if d.startswith("Egg, chicken"))
     assert egg.index(chicken_egg) < egg.index(bagel)

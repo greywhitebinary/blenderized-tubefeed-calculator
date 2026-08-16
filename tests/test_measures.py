@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from src.measures import is_bare_gram_weight, load_measure_lookup
+from src.measures import is_bare_gram_weight, load_measure_lookup, scale_measure_label
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CNF_MEASURE_NAME = PROJECT_ROOT / "cnf_fcen_all-files-data_2026" / "Measure_Name.csv"
@@ -86,3 +86,59 @@ class TestLoadMeasureLookupFiltersRealData:
         ships far more genuine kitchen measures than bare-gram ones."""
         lookup = load_measure_lookup()
         assert len(lookup) > 1000  # ~1184 real rows minus the 38 filtered
+
+
+class TestScaleMeasureLabel:
+    """scale_measure_label() folds a quantity INTO a CNF measure label so a
+    recipe line reads "500 ml" rather than "2 x 250 ml" (author,
+    2026-08-15). 98.5% of CNF's household-measure labels open with their
+    own count, which is what makes this worth doing.
+    """
+
+    def test_quantity_of_one_returns_the_label_untouched(self):
+        # CNF labels already carry their own count, so a "1 x" prefix
+        # printed "1 1 medium ...".
+        assert scale_measure_label("1 medium (18cm to 20cm long)", 1) == (
+            "1 medium (18cm to 20cm long)"
+        )
+
+    def test_a_leading_volume_is_multiplied_out(self):
+        assert scale_measure_label("250 ml", 2) == "500 ml"
+        assert scale_measure_label("250 ml mashed", 1.5) == "375 ml mashed"
+
+    def test_a_leading_count_of_one_becomes_the_quantity(self):
+        assert scale_measure_label("1 extra large (23cm or longer)", 2) == (
+            "2 extra large (23cm or longer)"
+        )
+
+    def test_fractional_leaders_are_multiplied_as_fractions(self):
+        # 85 CNF labels open with a fraction ("1/2 egg", "1/6 package").
+        assert scale_measure_label("1/2 egg", 2) == "1 egg"
+        assert scale_measure_label("1/2 egg", 3) == "1.5 egg"
+
+    def test_labels_containing_an_equals_are_never_scaled(self):
+        """THE correctness case. "1/2 bagel = 1 food guide serving" doubled
+        would read "1 bagel = 1 food guide serving" -- false, since one
+        bagel is two servings. Four CNF labels contain "="; all must fall
+        back to the multiplier form rather than restate a wrong equation.
+        """
+        assert scale_measure_label("1/2 bagel = 1 food guide serving", 2) == (
+            "2 × 1/2 bagel = 1 food guide serving"
+        )
+        assert scale_measure_label("1 food guide serving = 75g", 3) == (
+            "3 × 1 food guide serving = 75g"
+        )
+
+    def test_labels_without_a_leading_count_fall_back_to_the_multiplier(self):
+        # 17 CNF labels, e.g. the "yield from ..." ones and ranges.
+        assert scale_measure_label("yield from 1 large ear (20cm to 23cm long)", 2) == (
+            "2 × yield from 1 large ear (20cm to 23cm long)"
+        )
+        assert scale_measure_label("8-14 seeds", 2) == "2 × 8-14 seeds"
+        # No space after the number -- half-parsing "4.5oz" would be worse
+        # than not parsing it.
+        assert scale_measure_label("4.5oz cocktail", 2) == "2 × 4.5oz cocktail"
+
+    def test_missing_label_does_not_raise(self):
+        assert scale_measure_label(None, 2) == "2"
+        assert scale_measure_label("", 2) == "2"

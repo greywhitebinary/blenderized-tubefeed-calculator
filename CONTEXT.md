@@ -1768,14 +1768,23 @@ this session) — display-only throughout; `intake_log`,
     flush rows (before/after several feeds + free-water sips) summing to
     exactly 1032 mL; 1 oral row (small banana, ~101 g via the real "1
     small" CNF household measure, for QOL).
-  - **Verified computed totals** (AppTest, `src/intake.aggregate_intake`):
-    **2204.2 kcal, 100.4 g protein, 2250.0 mL fluid** against targets of
-    2250/100/2250 — protein and fluid land almost exactly on target
-    (100.4% and 100.0% adequacy); energy lands at 98.0% (2204 vs. the
-    task's ballpark estimate of ~2265 kcal) — a ~2.7% shortfall from
-    real, verified CNF nutrient values for the specified grams, not a
-    fudge. Not adjusted further per instruction to report rather than
-    force-fit.
+  - **Verified computed totals** (AppTest, read off the rendered Adequacy
+    table): **2228 kcal, 100.8 g protein, 2255 mL fluid** against targets
+    of 2250/100/2250 — 99%, 101% and 100% adequacy. Still real, verified
+    CNF values for the grams specified, not a fudge, and not adjusted
+    further per the instruction to report rather than force-fit.
+
+    Restated 2026-08-15, up from **2204.2 kcal / 100.4 g / 2250.0 mL**.
+    The example's ingredients used to be typed in grams; they now carry
+    the CNF household measure an RD would actually have picked when
+    searching ("250 ml" milk, "1 small" banana), and their weights are
+    that measure's own weight, resolved from the lookup at runtime. The
+    small shifts are those measures' real weights (250 mL of milk is
+    257.8 g, not 257), so the day drifted a little closer to target
+    rather than away from it. Chicken keeps a typed 50 g on purpose —
+    CNF offers it only as "1 piece" (181 g) or "1 food guide serving =
+    75g", so it is the case that proves why entering grams directly has
+    to stay available.
   - **Widget-state gotcha (§11) hit again, this time on STATIC widget
     keys** (not a fresh-ID widget like `vol_{blend_id}`): the "Patient /
     day label" text_input, weight number_input, delivery-method

@@ -74,6 +74,54 @@ def is_bare_gram_weight(description: str | None) -> bool:
     return bool(_BARE_GRAM_WEIGHT.match(description.strip()))
 
 
+# A CNF measure description that opens with its own count: "250 ml",
+# "1 extra large (23cm or longer)", "1/2 egg". 98.5% of the 1146 labels in
+# the filtered lookup are this shape, which is what makes scaling them
+# readable rather than printing "2 x 1 extra large ..." (author, 2026-08-15).
+# Requires whitespace after the number so "4.5oz cocktail" and the range
+# labels ("8-14 seeds", "15-20 nachos") fall through to the multiplier form
+# instead of being half-parsed.
+_LEADING_COUNT = re.compile(r"^\s*(\d+(?:\.\d+)?|\d+/\d+)\s+(\S.*)$")
+
+
+def scale_measure_label(description: str | None, quantity: float) -> str:
+    """Fold `quantity` INTO a CNF measure description.
+
+    "250 ml" x 2 -> "500 ml"; "1 extra large (23cm or longer)" x 2 ->
+    "2 extra large (23cm or longer)"; "1/2 egg" x 2 -> "1 egg". The point
+    is a recipe line that reads like a recipe: multiplying the count out
+    beats printing "2 x 1 extra large ..." (author, 2026-08-15).
+
+    Falls back to "<qty> x <description>" in two cases:
+
+      1. The description does not open with a count (17 labels, e.g.
+         "yield from 1 large ear (20cm to 23cm long)", "8-14 seeds").
+      2. The description contains "=" (4 labels). Scaling those states
+         something FALSE: "1/2 bagel = 1 food guide serving" doubled would
+         print "1 bagel = 1 food guide serving", when one bagel is two
+         servings. A clumsy line is fine; a wrong equation on a recipe is
+         not.
+
+    Quantity 1 returns the description unchanged, since CNF labels already
+    carry their own count.
+    """
+    if not isinstance(description, str) or not description.strip():
+        return f"{quantity:g}"
+    text = description.strip()
+    if quantity == 1:
+        return text
+    match = None if "=" in text else _LEADING_COUNT.match(text)
+    if match is None:
+        return f"{quantity:g} × {text}"
+    count_text, rest = match.group(1), match.group(2)
+    if "/" in count_text:
+        numerator, denominator = count_text.split("/")
+        count = float(numerator) / float(denominator)
+    else:
+        count = float(count_text)
+    return f"{count * quantity:g} {rest}"
+
+
 def load_measure_lookup() -> pd.DataFrame:
     """Build a lookup table: Food_Code + Measure_Code → grams + description.
 

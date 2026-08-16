@@ -168,11 +168,23 @@ class SearchIndex:
     desc_tokens: tuple[frozenset[str], ...]
     #: Words from Alternate_Description_EN, one frozenset per row.
     alt_tokens: tuple[frozenset[str], ...]
-    #: First word of each description. CNF files foods headword-first
-    #: ("Milk, fluid, ..."), so the headword is how the ranking tells
-    #: "this food IS what you typed" apart from "this food CONTAINS what
-    #: you typed" ("Cracker, milk"). "" for an untokenisable description.
-    desc_headword: tuple[str, ...]
+    #: The headword WORDS of each description -- normally just the first
+    #: word, since CNF files foods headword-first ("Milk, fluid, ..."),
+    #: which is how the ranking tells "this food IS what you typed" apart
+    #: from "this food CONTAINS what you typed" ("Cracker, milk").
+    #:
+    #: A tuple, not one string, because CNF spells a headword's alternate
+    #: name in brackets straight after it -- "Yogourt (yogurt), Greek
+    #: style", "Doughnut (donut), ...", "Rutabaga (swede), ...". Both
+    #: words are the headword as far as a searcher is concerned, and CNF
+    #: prints the bracket precisely because it knows people type the
+    #: other one. Crediting only the first meant "yogurt" never scored a
+    #: headword match on a single real yogurt (CNF's own spelling is
+    #: "Yogourt"), so the ranking fell through to length and answered
+    #: with frozen-yogurt desserts and yogurt-covered candies -- 64
+    #: entries affected, the largest such pair in the file (author,
+    #: 2026-08-15). Empty tuple for an untokenisable description.
+    desc_headword: tuple[tuple[str, ...], ...]
     #: True when the description opens with "<headword>," -- CNF's
     #: inverted commodity filing ("Egg, chicken, whole, cooked, ..."),
     #: as opposed to a natural-language dish name ("Egg Benedict",
@@ -206,6 +218,27 @@ class SearchResult:
         return self.matches.empty
 
 
+# CNF's "Headword (alternate spelling)" convention, e.g. "Yogourt
+# (yogurt), Greek style" or "Doughnut (donut), plain". Only matched at the
+# very start of a description, and only when the bracket holds a single
+# word: a multi-word bracket is a description, not an alias ("Leeks (bulb
+# and lower-leaf portion)"), and crediting those as headwords would let
+# "portion" rank a leek above whatever the RD actually meant.
+_HEADWORD_ALIAS = re.compile(r"^\s*([A-Za-z][A-Za-z\-]*)\s*\(\s*([A-Za-z][A-Za-z\-]*)\s*\)")
+
+
+def _headwords(raw_description: str, words: list[str]) -> tuple[str, ...]:
+    """The word(s) a searcher would consider this food's headword."""
+    if not words:
+        return ()
+    match = _HEADWORD_ALIAS.match(str(raw_description))
+    if match:
+        alias = match.group(2).lower()
+        if alias != words[0]:
+            return (words[0], alias)
+    return (words[0],)
+
+
 def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
     """Tokenise a CNF Food_Name frame once, ready for repeated queries."""
     descriptions = food_name_df["Food_Description_EN"].fillna("")
@@ -218,7 +251,7 @@ def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
 
     desc_words = [tokenize(t) for t in descriptions]
     desc_tokens = tuple(frozenset(words) for words in desc_words)
-    desc_headword = tuple(words[0] if words else "" for words in desc_words)
+    desc_headword = tuple(_headwords(raw, words) for raw, words in zip(descriptions, desc_words))
     desc_inverted = tuple(
         bool(words) and str(raw).lower().startswith(words[0] + ",")
         for raw, words in zip(descriptions, desc_words)
@@ -294,8 +327,23 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          (2026-08-07 RD feedback, round 2). An RD looking for a dish
          types the dish ("chicken a la king"); a bare commodity word
          means the commodity;
-      5. shorter descriptions first, because CNF's terse entries are its
-         basic foods and the long ones are heavily-qualified variants.
+      5. alphabetically, as a stable last resort.
+
+         This used to be "shortest description first", on the theory that
+         CNF's terse entries are its basic foods. Measured against the
+         file, that theory is wrong often enough to matter: it answered
+         "chicken" with "Chicken, feet, boiled" (21 chars) ahead of
+         "Chicken, broiler, breast, skinless, boneless, meat, braised"
+         (59), and "milk" with "Milk, dry whole" ahead of every fluid
+         milk. Short and basic are not the same thing. Alphabetical
+         decides nothing about relevance -- tiers 1-4 have already done
+         that -- it just stops length from pretending to (author,
+         2026-08-15).
+
+         Note what this still cannot do: nothing in a CNF description
+         says breast is wanted more often than back, so no rule here can
+         put it first. That needs a curated preferred-foods list, the
+         same shape as data/packs/<pack>/food_synonyms.csv.
     """
     scored: list[tuple[tuple, int]] = []
 
@@ -322,9 +370,9 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
             sort_key = (
                 0 if matched_in_desc else 1,
                 0 if exact_words == len(query_tokens) else 1,
-                0 if any(headword.startswith(t) for t in query_tokens) else 1,
+                0 if any(h.startswith(t) for h in headword for t in query_tokens) else 1,
                 0 if index.desc_inverted[position] else 1,
-                len(str(description)),
+                str(description).lower(),
             )
             scored.append((sort_key, position))
 

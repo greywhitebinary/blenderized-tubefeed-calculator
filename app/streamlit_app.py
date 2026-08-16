@@ -72,7 +72,7 @@ from src.calculator import (
     required_daily_volume,
     COMMERCIAL_FORMULAS,
 )
-from src.measures import load_measure_lookup, get_measures_for_food
+from src.measures import load_measure_lookup, get_measures_for_food, scale_measure_label
 from src.food_search import MIN_QUERY_LEN, build_index, search_foods
 from src.label_extract import (
     MAX_EXTRACTIONS_PER_DAY,
@@ -233,8 +233,22 @@ def get_food_group():
 
 
 def find_food(fn_df: pd.DataFrame, desc: str) -> int | None:
-    """Find the first Food_Code matching a description substring."""
-    m = fn_df[fn_df["Food_Description_EN"].str.contains(desc, case=False, na=False, regex=False)]
+    """Find a Food_Code by description: an exact match if there is one,
+    otherwise the first substring match.
+
+    The exact pass matters because CNF descriptions nest. "Spinach,
+    boiled, drained" is a substring of "New Zealand spinach, boiled,
+    drained", so substring-only resolved the example day's spinach to the
+    New Zealand one -- silently, and with different nutrients (author,
+    2026-08-15). Every caller here names a full CNF description, so
+    preferring an exact hit costs nothing and removes a whole class of
+    wrong-food-looks-right bug.
+    """
+    descriptions = fn_df["Food_Description_EN"]
+    exact = fn_df[descriptions.str.casefold() == desc.casefold()]
+    if len(exact):
+        return int(exact.iloc[0]["Food_Code"])
+    m = fn_df[descriptions.str.contains(desc, case=False, na=False, regex=False)]
     if len(m) == 0:
         return None
     return int(m.iloc[0]["Food_Code"])
@@ -1479,6 +1493,21 @@ st.markdown(
         padding: 0.35rem 0.5rem;
         border-radius: 0.35rem;
     }
+    /* Pull the ingredient row's two lines together. Streamlit's default
+       20px vertical gap between the name line and the amount/unit line
+       left them reading as two separate things rather than one ingredient
+       (author, 2026-08-15).
+
+       The selector has NO descendant part on purpose: st.container()
+       renders the keyed class ON the stVerticalBlock itself, so
+       `.st-key-x [data-testid="stVerticalBlock"]` matches only the nested
+       blocks inside the columns and leaves the 20px gap that actually
+       separates the two lines untouched (measured, after that first
+       attempt did nothing). */
+    [class*="st-key-zebrarow_ingr"],
+    [class*="st-key-plainrow_ingr"] {
+        gap: 0.15rem;
+    }
     [class*="st-key-zebrarow"] {
         /* #f8f9fb is not a new colour -- it's the grey Streamlit already
            paints behind the report tables' header rows (sampled off a
@@ -1739,7 +1768,19 @@ if load_example_clicked:
     carrot = find_food(fn, "Carrot, boiled, drained")
     oil = find_food(fn, "Vegetable oil, canola")
     water = find_food(fn, "Water, municipal")
+    # A SECOND blend, vegan, so the example demonstrates what one blend
+    # cannot (author, 2026-08-15): that a day can hold several recipes,
+    # that they can be compared against each other and against a
+    # commercial formula, that "Save all N recipes" has something to
+    # save, and that the Intake Record draws on whichever blend was
+    # actually fed -- here the first, leaving this one on the shelf.
+    soy = find_food(fn, "Plant-based beverage, soy beverage, all flavours, low fat, fortified")
+    tofu = find_food(fn, "Tofu, regular, firm or extra firm")
+    lentils = find_food(fn, "Lentils, mature seeds, boiled")
+    peanut = find_food(fn, "Peanut butter, natural")
+    spinach = find_food(fn, "Spinach, boiled, drained")
     _example_foods = [milk, yogurt, oats, chicken, banana, avocado, carrot, oil, water]
+    _vegan_foods = [soy, tofu, lentils, peanut, spinach]
     if all(f is not None for f in _example_foods):
         # Drop any pre-existing empty starter blend(s) so the example
         # doesn't leave clutter alongside "Whole-food blend".
@@ -1749,81 +1790,109 @@ if load_example_clicked:
         example_id = _new_blend("Whole-food blend")
         st.session_state.next_ingr_id += 9
         _base_id = st.session_state.next_ingr_id - 8
-        st.session_state.blends[example_id]["ingredients"] = [
-            {
-                "id": _base_id + 0,
-                "food_code": milk,
-                "food_description": "Whole milk 3.25% M.F.",
-                "grams": 257.0,
-                "unit": "g",
-                "counts_as_fluid": True,
-            },
-            {
-                "id": _base_id + 1,
-                "food_code": yogurt,
-                "food_description": "Greek yogurt, plain, 2%",
-                "grams": 100.0,
-                "unit": "g",
-                "counts_as_fluid": False,
-            },
-            {
-                "id": _base_id + 2,
-                "food_code": oats,
-                "food_description": "Rolled oats, cooked",
-                "grams": 100.0,
-                "unit": "g",
-                "counts_as_fluid": False,
-            },
-            {
-                "id": _base_id + 3,
-                "food_code": chicken,
-                "food_description": "Chicken breast, cooked (skinless)",
-                "grams": 50.0,
-                "unit": "g",
-                "counts_as_fluid": False,
-            },
-            {
-                "id": _base_id + 4,
-                "food_code": banana,
-                "food_description": "Banana, raw",
-                "grams": 100.0,
-                "unit": "g",
-                "counts_as_fluid": False,
-            },
-            {
-                "id": _base_id + 5,
-                "food_code": avocado,
-                "food_description": "Avocado, raw",
-                "grams": 50.0,
-                "unit": "g",
-                "counts_as_fluid": False,
-            },
-            {
-                "id": _base_id + 6,
-                "food_code": carrot,
-                "food_description": "Carrots, cooked (boiled, drained)",
-                "grams": 75.0,
-                "unit": "g",
-                "counts_as_fluid": False,
-            },
-            {
-                "id": _base_id + 7,
-                "food_code": oil,
-                "food_description": "Canola oil",
-                "grams": 14.0,
-                "unit": "g",
-                "counts_as_fluid": False,
-            },
-            {
-                "id": _base_id + 8,
-                "food_code": water,
-                "food_description": "Water, municipal",
-                "grams": 250.0,
-                "unit": "g",
-                "counts_as_fluid": True,
-            },
+
+        # Descriptions come from CNF itself, not hand-written friendly
+        # names (author, 2026-08-15). The example is meant to look like a
+        # blend the RD built by searching, and searching yields CNF's own
+        # wording -- "Cereal, hot, oats (oatmeal), large flakes, prepared,
+        # Rogers", not "Rolled oats, cooked". Hand-written short names made
+        # the example look like it came from somewhere other than the
+        # database the app actually uses, and hid how long real CNF
+        # descriptions get.
+        def _cnf_name(code: int, fallback: str) -> str:
+            _row = fn[fn["Food_Code"] == code]
+            return str(_row.iloc[0]["Food_Description_EN"]) if len(_row) else fallback
+
+        # Each row names the CNF household measure the RD would have
+        # picked when searching, and its grams are that measure's own
+        # weight -- so the example is a blend somebody actually built,
+        # not one typed in grams (author, 2026-08-15). Weights come from
+        # the lookup at runtime rather than being hard-coded, so they
+        # cannot drift from CNF.
+        #
+        # Chicken deliberately has NO measure: CNF offers it only as
+        # "1 piece" (181 g) and "1 food guide serving = 75g", neither of
+        # which is the 50 g this case wants, so grams is what an RD would
+        # really type. The example is more honest for showing both kinds
+        # of row.
+        def _measure_grams(code: int, label: str, fallback: float) -> float:
+            _m = get_measures_for_food(code, lookup)
+            _hit = _m[_m["Measure_Description_and_Unit_EN"] == label]
+            return float(_hit.iloc[0]["grams"]) if len(_hit) else fallback
+
+        # (code, fallback name, measure label or None, fallback grams, counts_as_fluid)
+        _example_spec = [
+            (milk, "Whole milk 3.25% M.F.", "250 ml", 257.0, True),
+            (yogurt, "Greek yogurt, plain, 2%", "100 ml", 100.0, False),
+            (oats, "Rolled oats, cooked", "100 ml", 100.0, False),
+            (chicken, "Chicken breast, cooked (skinless)", None, 50.0, False),
+            (banana, "Banana, raw", "1 small (15cm to 17.5cm long)", 100.0, False),
+            (avocado, "Avocado, raw", "100 ml slices", 50.0, False),
+            (carrot, "Carrots, cooked (boiled, drained)", "125 ml slices", 75.0, False),
+            (oil, "Canola oil", "15 ml", 14.0, False),
+            (water, "Water, municipal", "250 ml", 250.0, True),
         ]
+        _example_ingredients = []
+        for _offset, (_code, _fallback, _label, _fallback_g, _fluid) in enumerate(_example_spec):
+            _grams = _measure_grams(_code, _label, _fallback_g) if _label else _fallback_g
+            _example_ingredients.append(
+                {
+                    "id": _base_id + _offset,
+                    "food_code": _code,
+                    "food_description": _cnf_name(_code, _fallback),
+                    "grams": _grams,
+                    "unit": "g",
+                    "counts_as_fluid": _fluid,
+                    "measure_label": _label,
+                    "measure_grams": _grams if _label else None,
+                }
+            )
+        st.session_state.blends[example_id]["ingredients"] = _example_ingredients
         st.session_state.blends[example_id]["measured_volume_mL"] = 1000.0
+
+        # --- Second blend: vegan, built the same way ---------------------
+        # Deliberately NOT fed in the Intake Record below. A day usually
+        # holds more recipes than were used, and seeing one blend sitting
+        # unfed is how that reads on screen.
+        if all(f is not None for f in _vegan_foods):
+            vegan_id = _new_blend("Vegan blend")
+            _vegan_spec = [
+                (soy, "Soy beverage, fortified", "250 ml", 257.0, True),
+                (tofu, "Tofu, firm", "125 ml", 133.0, False),
+                (lentils, "Lentils, boiled", "125 ml", 105.0, False),
+                (peanut, "Peanut butter, natural", "30 ml", 31.5, False),
+                (banana, "Banana, raw", "1 medium (18cm to 20cm long)", 118.0, False),
+                (spinach, "Spinach, boiled, drained", "125 ml", 95.0, False),
+                (oil, "Canola oil", "15 ml", 14.0, False),
+                (water, "Water, municipal", "250 ml", 250.0, True),
+            ]
+            _vegan_ingredients = []
+            for _code, _fallback, _label, _fallback_g, _fluid in _vegan_spec:
+                st.session_state.next_ingr_id += 1
+                _grams = _measure_grams(_code, _label, _fallback_g)
+                _vegan_ingredients.append(
+                    {
+                        "id": st.session_state.next_ingr_id,
+                        "food_code": _code,
+                        "food_description": _cnf_name(_code, _fallback),
+                        "grams": _grams,
+                        "unit": "g",
+                        "counts_as_fluid": _fluid,
+                        "measure_label": _label,
+                        "measure_grams": _grams,
+                    }
+                )
+            st.session_state.blends[vegan_id]["ingredients"] = _vegan_ingredients
+            st.session_state.blends[vegan_id]["measured_volume_mL"] = 1000.0
+
+            # _new_blend() selects whatever it just made, which would open
+            # the example on the vegan blend. Land on the one the day
+            # actually fed instead -- the Intake Record below is all
+            # "Whole-food blend", so opening anywhere else reads as though
+            # the numbers on screen belong to the recipe in front of you
+            # when they do not.
+            st.session_state.selected_blend_id = example_id
+            st.session_state.pop("blend_selector", None)
 
         # Example Intake Record -- a full bolus day (design doc section
         # 3.2): the WHOLE "Whole-food blend" batch across 4 bolus feeds
@@ -2149,12 +2218,13 @@ def _intake_row_label(row: dict) -> str:
     name = _intake_source_name(row)
     measure_label = row.get("measure_label")
     measure_grams = row.get("measure_grams")
-    # Read-only "2 × 1 small" form of the entry-side quantity/toggle
-    # (plan's "Display format" section) -- quantity is derived, never
+    # Read-only household-measure form, with the quantity folded into the
+    # label the same way the recipe card does it -- "(2 small)", not
+    # "(2 × 1 small)" (author, 2026-08-15). Quantity is derived, never
     # stored, so this is always in step with the grams actually recorded.
     if measure_label and measure_grams:
-        qty = row["amount"] / measure_grams
-        name = f"{name} ({qty:g} × {measure_label})"
+        qty = round(row["amount"] / measure_grams, 2)
+        name = f"{name} ({scale_measure_label(measure_label, qty)})"
     return f"{t_str} — {name} — {row['amount']:.0f} {row['unit']}"
 
 
@@ -2388,7 +2458,10 @@ with recipes_tab:
     # reproduced": the test harness renders, it does not paint.
     sel_idx = blend_ids.index(st.session_state.selected_blend_id)
 
-    bsel1, bsel2, bsel3 = st.columns([3, 1, 1])
+    # vertical_alignment="bottom" so the two buttons line up with the
+    # Select blend BOX rather than floating level with its label (author,
+    # 2026-08-15) -- same fix as the "Open a saved day" popover above.
+    bsel1, bsel2, bsel3 = st.columns([3, 1, 1], vertical_alignment="bottom")
     chosen_id = bsel1.selectbox(
         "Select blend",
         options=blend_ids,
@@ -2545,7 +2618,10 @@ with recipes_tab:
                     # line rather than wrapping and changing the row's
                     # height depending on which unit happens to be chosen.
                     name_col, del_col = st.columns([11, 1])
-                    name_col.markdown(f"**{i + 1}. {ing['food_description']}**")
+                    # Not bold: every row would be bold, so it emphasises
+                    # nothing and just makes the list heavier to scan
+                    # (author, 2026-08-15).
+                    name_col.write(f"{i + 1}. {ing['food_description']}")
                     if del_col.button("❌", key=f"del_{ing['id']}"):
                         selected_blend["ingredients"].pop(i)
                         st.rerun()
@@ -2684,25 +2760,23 @@ with recipes_tab:
             # (author's choice); st.code so it gets Streamlit's own copy
             # button, the same idiom the Chart Note (Daily Intake Record
             # tab) already uses.
-            st.caption("Copy this to hand to whoever is actually blending.")
             _card_lines = [selected_blend["name"] or f"Blend {selected_blend_id}"]
             for ing in selected_blend["ingredients"]:
                 _label = ing.get("measure_label")
                 _measure_grams = ing.get("measure_grams")
                 _unit = ing.get("unit", "g")
                 if _label and _measure_grams:
-                    # "1 medium (18cm to 20cm long) Banana, raw  (118 g)" --
-                    # measure-first, grams in brackets.
-                    #
-                    # NO leading "1 x" when the quantity is one: CNF labels
-                    # already carry their own count ("1 medium", "250 ml"),
-                    # so prefixing the quantity printed "1 1 medium ..."
-                    # (author, 2026-08-15). Any other quantity keeps an
-                    # explicit multiplier, which is the honest way to say
-                    # "two of these" without pluralising a label that would
-                    # break on "1 small". :g trims a trailing ".0".
+                    # "500 ml Whole milk  (516 g)" -- measure-first, grams
+                    # in brackets, with the quantity MULTIPLIED INTO the
+                    # label rather than printed in front of it (author,
+                    # 2026-08-15). CNF labels carry their own count, so
+                    # "2 x 250 ml" and "2 x 1 extra large" both read
+                    # awkwardly; folding the number in gives "500 ml" and
+                    # "2 extra large". scale_measure_label() owns the rule,
+                    # including the two cases where folding would lie --
+                    # see its docstring.
                     _qty = round(ing["grams"] / _measure_grams, 2)
-                    _amount = _label if _qty == 1 else f"{_qty:g} × {_label}"
+                    _amount = scale_measure_label(_label, _qty)
                     _card_lines.append(
                         f"  {_amount} {ing['food_description']}  " f"({ing['grams']:.0f} {_unit})"
                     )
@@ -2718,7 +2792,12 @@ with recipes_tab:
             # the measured volume. Printed next to "Measured final volume
             # (mL)" it also invited reading grams as millilitres, which is
             # wrong for a blend carrying oil and solids.
-            st.code("\n".join(_card_lines), language=None)
+            #
+            # Collapsed by default (author, 2026-08-15): the card is for
+            # the moment you hand the recipe over, not for every edit, so
+            # it should not push the rows above it up the page every time.
+            with st.expander("📋 Recipe card — copy to hand over"):
+                st.code("\n".join(_card_lines), language=None)
 
         else:  # _view == "Nutrition" (Change 1.4)
             # compute_ingredient_breakdown() is the SAME merge-and-scale
@@ -3631,12 +3710,19 @@ with recipes_tab:
             width="stretch",
         )
     with rr2:
-        _uploaded = st.file_uploader(
-            "📂 Load a recipe",
-            type=["xlsx"],
-            key=f"recipe_upload_{selected_blend_id}",
-            help="Loads into NEW blends — it never overwrites what you have.",
-        )
+        # In a popover so this reads as a BUTTON beside "Save recipe"
+        # rather than a tall drag-and-drop dropzone next to one (author,
+        # 2026-08-15) -- the two sat side by side as different kinds of
+        # control. Same idiom as "Open a saved day" at the top of the
+        # page, which wraps its uploader for exactly this reason.
+        with st.popover("📂 Load a recipe", width="stretch"):
+            _uploaded = st.file_uploader(
+                "Load a recipe",
+                type=["xlsx"],
+                key=f"recipe_upload_{selected_blend_id}",
+                label_visibility="collapsed",
+                help="Loads into NEW blends — it never overwrites what you have.",
+            )
 
     if _uploaded is not None and st.session_state.get("_last_recipe_upload") != _uploaded.name:
         try:

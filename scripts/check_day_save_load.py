@@ -145,10 +145,25 @@ next(b for b in at3.button if "example" in b.label.lower()).click().run()
 assert not at3.exception, at3.exception
 
 bid = min(at3.session_state["blends"])
-ing_id = at3.session_state["blends"][bid]["ingredients"][0]["id"]
 
-# Save the day exactly as it stands right now (1000 mL, 257 g milk --
-# see the "Load example day" handler) BEFORE touching any widget.
+# Target an ingredient shown in GRAMS, not one shown in a household
+# measure. An ingredient carrying a measure_label renders its amount box
+# under "grams_{id}_{unit}" (the unit is in the key so switching units
+# re-seeds the box); only a grams-mode row uses the plain "grams_{id}"
+# this test drives. The example day now gives most of its ingredients a
+# CNF measure, so ask for the grams-mode one rather than assuming index 0.
+_ings = at3.session_state["blends"][bid]["ingredients"]
+ing_idx = next(i for i, ing in enumerate(_ings) if not ing.get("measure_label"))
+ing_id = _ings[ing_idx]["id"]
+
+# What the example day actually put on screen, read from the app rather
+# than hard-coded. This used to pin a literal 257.0; the example's weights
+# now come from CNF at runtime, and pinning one meant this check broke the
+# moment the example changed without testing anything more than it does.
+in_session_grams0 = float(_ings[ing_idx]["grams"])
+
+# Save the day exactly as it stands right now (1000 mL, and whatever the
+# example's first ingredient weighs) BEFORE touching any widget.
 saved3 = day_to_workbook_bytes(
     label=at3.session_state["recipe_name_input"],
     patient_weight=at3.session_state["patient_weight_input"],
@@ -172,9 +187,13 @@ assert not parsed3.warnings, parsed3.warnings
 # very assertion and "pass" even with the old aliasing bug back in place.
 # This is a real trap; it fooled the author of this test once.
 expected_volume = copy.deepcopy(parsed3.blends[bid]["measured_volume_mL"])
-expected_grams0 = copy.deepcopy(parsed3.blends[bid]["ingredients"][0]["grams"])
+expected_grams0 = copy.deepcopy(parsed3.blends[bid]["ingredients"][ing_idx]["grams"])
 assert expected_volume == 1000.0, expected_volume
-assert expected_grams0 == 257.0, expected_grams0
+# The file must carry what was on screen -- and it must not be the 11.0
+# this test is about to type in, or the round-trip assertion below would
+# pass vacuously.
+assert expected_grams0 == in_session_grams0, (expected_grams0, in_session_grams0)
+assert expected_grams0 != 11.0, expected_grams0
 
 # Now edit the SAME blend/ingredient through the real on-screen widgets,
 # to values that do NOT appear anywhere in the saved file.
@@ -182,7 +201,7 @@ next(n for n in at3.number_input if n.key == f"vol_{bid}").set_value(400.0).run(
 next(n for n in at3.number_input if n.key == f"grams_{ing_id}").set_value(11.0).run()
 assert not at3.exception, at3.exception
 assert at3.session_state["blends"][bid]["measured_volume_mL"] == 400.0
-assert at3.session_state["blends"][bid]["ingredients"][0]["grams"] == 11.0
+assert at3.session_state["blends"][bid]["ingredients"][ing_idx]["grams"] == 11.0
 
 # Reopen the saved day -- in this SAME session, where "vol_{bid}" and
 # "grams_{ing_id}" already hold the edited 400/11 values above.
@@ -191,7 +210,7 @@ at3.run()
 assert not at3.exception, at3.exception
 
 restored_volume = at3.session_state["blends"][bid]["measured_volume_mL"]
-restored_grams0 = at3.session_state["blends"][bid]["ingredients"][0]["grams"]
+restored_grams0 = at3.session_state["blends"][bid]["ingredients"][ing_idx]["grams"]
 assert (
     restored_volume == expected_volume
 ), f"expected the file's volume {expected_volume}, got stale on-screen value {restored_volume}"

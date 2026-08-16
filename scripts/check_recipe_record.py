@@ -128,14 +128,18 @@ savable = [
     for _bid, b in sorted(at.session_state["blends"].items())
     if b["ingredients"]
 ]
-assert len(savable) == 2, f"expected 2 savable blends, got {len(savable)}"
+# The example day itself now ships TWO blends (Whole-food + Vegan), and
+# this script adds a third. Derive the count rather than pinning it, so
+# the check is "every blend with ingredients round-trips" -- which is what
+# it is actually for -- instead of a number that changes with the example.
+assert len(savable) == 3, f"expected 3 savable blends, got {len(savable)}"
 
 multi = recipes_to_workbook_bytes(savable)
 recipes = workbook_bytes_to_recipes(multi)
-assert len(recipes) == 2, f"2 blends saved -> {len(recipes)} read back"
+assert len(recipes) == len(savable), f"{len(savable)} blends saved -> {len(recipes)} read back"
 
 by_name = {r.name: r for r in recipes}
-assert set(by_name) == {"Whole-food blend", "Evening blend"}, list(by_name)
+assert set(by_name) == {"Whole-food blend", "Vegan blend", "Evening blend"}, list(by_name)
 assert len(by_name["Whole-food blend"].ingredients) == len(real_blend["ingredients"])
 assert len(by_name["Evening blend"].ingredients) == 2
 assert by_name["Evening blend"].measured_volume_mL == 640.0
@@ -154,7 +158,7 @@ for name, recipe in by_name.items():
     assert all(s == MATCH_BY_CODE for s in statuses), (name, statuses)
 
 print(
-    f"OK: 2 blends -> one file -> 2 blends back "
+    f"OK: {len(savable)} blends -> one file -> {len(recipes)} blends back "
     f"({len(by_name['Whole-food blend'].ingredients)} + "
     f"{len(by_name['Evening blend'].ingredients)} ingredients), "
     "each with its own flow test, all matched by code"
