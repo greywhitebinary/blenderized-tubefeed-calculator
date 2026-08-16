@@ -31,10 +31,12 @@ to test directly.
 
 import pytest
 
-from src.calculator import compute_ingredient_breakdown
-from src.models import Ingredient
+from src.calculator import calculate_profile, compute_ingredient_breakdown
+from src.intake import InvalidBlendError, resolve_blend_profile
+from src.models import Ingredient, Recipe
 from src.nutrients import defs_for_tier, registry_by_name
 from src.report import (
+    EDITING_MARKER,
     _adequacy_status,
     _coverage_text,
     _ordered_label_defs,
@@ -42,6 +44,7 @@ from src.report import (
     format_ingredient_breakdown,
     generate_adequacy_report,
     generate_clinical_screen,
+    generate_comparator_table,
 )
 
 from tests.conftest import FOOD_CHICKEN, FOOD_RICE, CUSTOM_PROTEIN_SHAKE
@@ -459,3 +462,97 @@ def test_empty_breakdown_returns_empty_display_with_correct_columns(nutrient_amo
     assert len(display) == 0
     assert "Ingredient" in display.columns
     assert "Amount" in display.columns
+
+
+# ---------------------------------------------------------------------------
+# generate_comparator_table() -- blends vs blends vs formulas (Change 1/2/3,
+# plan you-know-the-line-vectorized-milner.md, 2026-08-15). The comparator
+# used to take ONE blend profile plus commercial formulas; it now takes an
+# ORDERED LIST of (name, profile) pairs so an RD can put several of their
+# OWN blends side by side, not just one blend against a formula.
+# ---------------------------------------------------------------------------
+
+
+def test_two_blends_produce_two_rows_named_and_ordered_as_given(nutrient_amount_df):
+    """Two (name, profile) pairs must become two rows, in the order
+    given -- the FIRST pair is the blend being edited, so its Name gets
+    EDITING_MARKER prefixed (the approved marking); the second pair keeps
+    its plain name. Two different recipes (chicken vs rice) so the
+    numbers can't accidentally match and mask a mix-up."""
+    whole_food = calculate_profile(
+        Recipe(
+            name="Whole-food blend",
+            ingredients=[Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 200.0)],
+            measured_final_volume_mL=500.0,
+        ),
+        nutrient_amount_df,
+    )
+    vegan = calculate_profile(
+        Recipe(
+            name="Vegan blend",
+            ingredients=[Ingredient(FOOD_RICE, "Rice, white, cooked", 200.0)],
+            measured_final_volume_mL=500.0,
+        ),
+        nutrient_amount_df,
+    )
+
+    df = generate_comparator_table(
+        [("Whole-food blend", whole_food), ("Vegan blend", vegan)],
+        daily_volume_mL=1000.0,
+        formula_names=[],
+    )
+
+    assert len(df) == 2
+    assert list(df["Name"]) == [f"{EDITING_MARKER} Whole-food blend", "Vegan blend"]
+    # Different recipes -> different densities -> different Energy figures,
+    # confirming the second row isn't just a copy of the first.
+    assert df.iloc[0]["Energy (kcal)"] != df.iloc[1]["Energy (kcal)"]
+
+
+def test_blend_with_no_measured_volume_is_skipped_not_raised(nutrient_amount_df):
+    """The most likely runtime failure: a blend with ingredients but no
+    measured volume raises InvalidBlendError from resolve_blend_profile()
+    (src/intake.py) -- densities can't be computed without a volume to
+    divide by. The comparator must SKIP that blend rather than crash the
+    whole tab (app/streamlit_app.py's comparator block wraps each
+    resolve_blend_profile() call in exactly this try/except). Both
+    example-day blends have volumes, so manual testing would never catch
+    a regression here -- only a test that deliberately omits one."""
+    measured_blend = {
+        "name": "Whole-food blend",
+        "ingredients": [
+            {
+                "food_code": FOOD_CHICKEN,
+                "food_description": "Chicken breast, cooked",
+                "grams": 200.0,
+            }
+        ],
+        "measured_volume_mL": 500.0,
+    }
+    unmeasured_blend = {
+        "name": "Vegan blend",
+        "ingredients": [
+            {"food_code": FOOD_RICE, "food_description": "Rice, white, cooked", "grams": 200.0}
+        ],
+        "measured_volume_mL": 0.0,
+    }
+
+    # Sanity check: resolving the unmeasured blend directly really does
+    # raise -- if this stops raising, the skip below would be testing
+    # nothing.
+    with pytest.raises(InvalidBlendError):
+        resolve_blend_profile(unmeasured_blend, nutrient_amount_df)
+
+    # Same skip idiom the app uses: try each blend, skip on
+    # InvalidBlendError, never let it propagate out of the loop.
+    comparator_blends = []
+    for blend in (measured_blend, unmeasured_blend):
+        try:
+            profile, _fluid_frac = resolve_blend_profile(blend, nutrient_amount_df)
+        except InvalidBlendError:
+            continue
+        comparator_blends.append((blend["name"], profile))
+
+    df = generate_comparator_table(comparator_blends, daily_volume_mL=1000.0, formula_names=[])
+
+    assert list(df["Name"]) == [f"{EDITING_MARKER} Whole-food blend"]

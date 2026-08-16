@@ -40,7 +40,9 @@ zero) -- that must still surface as a clear error. There is deliberately
 NO "logged more than the batch made" flag of any kind.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
+import re
 
 import pandas as pd
 
@@ -120,6 +122,40 @@ class InvalidBlendError(ValueError):
     computed without a volume to divide by. Not a judgment call, not an
     over-draw flag -- a genuine division-by-zero guard.
     """
+
+
+_NUMBERED_SUFFIX = re.compile(r"^(?P<stem>.*?) \((?P<n>\d+)\)$")
+
+
+def unique_blend_name(wanted: str, taken: Iterable[str]) -> str:
+    """Return `wanted`, or the first free " (2)", " (3)" ... variant of it.
+
+    Blend names must never repeat (author, 2026-08-16). A name is what
+    identifies a recipe everywhere it is shown -- the blend selector, the
+    chart note, the comparator table, the saved file -- and the app knowing
+    two blends apart by id does not help an RD reading two identical rows.
+
+    Duplicates are easy to reach without doing anything odd: loading the
+    example day twice keeps the blends that already have ingredients and
+    adds "Whole-food blend" on top of the existing one, and importing the
+    same recipe file twice does the same. Enforcing it at every point a
+    blend is born is what makes the screen unambiguous.
+
+    A `wanted` that is free is returned untouched, INCLUDING one that ends
+    in a number like "Trial (2)" -- the suffix is only ever re-stemmed on
+    collision, so the second "Trial (2)" becomes "Trial (3)" rather than
+    "Trial (2) (2)". Only a bare parenthesised integer counts as a suffix,
+    so "Renal (low K)" keeps its whole name as the stem.
+    """
+    taken_set = set(taken)
+    if wanted not in taken_set:
+        return wanted
+    match = _NUMBERED_SUFFIX.match(wanted)
+    stem = match.group("stem") if match else wanted
+    n = 2
+    while f"{stem} ({n})" in taken_set:
+        n += 1
+    return f"{stem} ({n})"
 
 
 def blend_fluid_fraction(ingredients: list[dict], measured_volume_mL: float) -> float:

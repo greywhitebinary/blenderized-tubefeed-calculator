@@ -42,7 +42,9 @@ def main() -> None:
         "Ingredients",
         "Per-blend density panel",
         "Dilution What-If",
-        "Commercial Formula Comparator",
+        # Renamed from "Commercial Formula Comparator" 2026-08-16, once the
+        # RD's own blends became the leading rows of that table.
+        "Compare Blends and Formulas",
         "Intake Record",
         "Daily Totals & Adequacy",
         "Per-Source Breakdown",

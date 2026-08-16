@@ -11,9 +11,13 @@ several blends, commercial formulas, flushes, and oral foods in one day
 (src.intake.aggregate_intake() is what produces that dict), so there is no
 longer one profile these functions can compute daily totals from
 internally. Per-blend functions (generate_density_summary(),
-generate_comparator_table(), generate_formula_comparison()) still take a
-NutrientProfile — densities are still a per-blend lens (design doc
-section 3.5). generate_source_breakdown() is new: the Tube-Feed vs
+generate_formula_comparison()) still take a single NutrientProfile —
+densities are still a per-blend lens (design doc section 3.5).
+generate_comparator_table() takes an ORDERED LIST of (name, profile)
+pairs instead of one profile — comparing several of the RD's own blends
+against each other, not just one blend against commercial formulas
+(you-know-the-line-vectorized-milner.md, 2026-08-15); see that
+function's docstring. generate_source_breakdown() is new: the Tube-Feed vs
 Food-&-Drink vs Total subtotal table, built directly from an IntakeTotals'
 per-source subtotals. generate_regimen_summary() (the old combined
 BTF + commercial-formula summary) is REMOVED — a formula is now just
@@ -663,17 +667,30 @@ def generate_density_summary(profile: NutrientProfile) -> pd.DataFrame:
     )
 
 
+# Leads the comparator row for the blend the RD has open in the editor.
+# A PREFIX, not a "(open above)" suffix (author, 2026-08-16): blend names
+# already carry a " (2)" when a name repeats (src.intake.unique_blend_name),
+# and a bracketed tail on top of that read as "Whole-food blend (2) (open
+# above)". A leading mark cannot stack with the numbering, and unlike a
+# shaded row it survives a screenshot pasted into a chart note, printing in
+# black and white, and being copied out as text. The app's caption is what
+# says what it means.
+EDITING_MARKER = "▸"
+
+
 def generate_comparator_table(
-    profile: NutrientProfile,
+    blends: list[tuple[str, NutrientProfile]],
     daily_volume_mL: float,
     formula_names: list[str],
 ) -> pd.DataFrame:
-    """Generate the multi-formula comparator table (round-2 clinical
-    feedback, Part 0 #11): TRANSPOSED from the old generate_formula_
-    comparison() shape — metrics as COLUMNS, one row per recipe/formula,
-    BTF always first. Supports comparing against up to several formulas
-    at once (the app enforces "up to 4" via st.multiselect's
-    max_selections; this function itself doesn't cap the list).
+    """Generate the multi-blend / multi-formula comparator table (round-2
+    clinical feedback, Part 0 #11; widened from one-blend-vs-formulas to
+    blends-vs-blends-vs-formulas by you-know-the-line-vectorized-milner.md,
+    2026-08-15 — an RD building a vegan alternative to an existing recipe
+    wants to see BOTH recipes at the same daily volume, not just each one
+    against a commercial formula). TRANSPOSED from the old generate_
+    formula_comparison() shape — metrics as COLUMNS, one row per
+    blend/formula.
 
     Columns: Name, Energy (kcal), Protein (g), Free water (mL), kcal/mL,
     Protein g/mL. Free water uses each formula's free_water_per_mL
@@ -681,23 +698,35 @@ def generate_comparator_table(
     CSV row omits it (never a fabricated 0).
 
     Args:
-        profile:         The BTF recipe's NutrientProfile.
-        daily_volume_mL: Daily volume to compare all rows at (the BTF and
-                          every formula are shown at the SAME volume, so
-                          the comparison isolates density, not dose).
+        blends:           Ordered (name, profile) pairs — one row each,
+                          in the order given. The caller keeps the blend
+                          currently open in the editor FIRST (its ordering
+                          contract, not this function's); that row's name
+                          is PREFIXED with EDITING_MARKER so it stays
+                          identifiable once other blends share the table.
+                          Every other row — blend or formula — uses its
+                          plain name. The app's blend picker deliberately
+                          cannot drop row 0, since this function marks
+                          whichever row comes first and would otherwise
+                          mark a blend the RD is not editing.
+        daily_volume_mL: Daily volume to compare all rows at (every blend
+                          and formula is shown at the SAME volume, so the
+                          comparison isolates density, not dose).
         formula_names:   Which COMMERCIAL_FORMULAS keys to include as
                           additional rows, in the order given.
     """
-    rows = [
-        {
-            "Name": "BTF (this recipe)",
-            "Energy (kcal)": round(profile.kcal_per_mL * daily_volume_mL, 0),
-            "Protein (g)": round(profile.protein_per_mL * daily_volume_mL, 1),
-            "Free water (mL)": round(profile.free_water_fraction * daily_volume_mL, 0),
-            "kcal/mL": round(profile.kcal_per_mL, 2),
-            "Protein g/mL": round(profile.protein_per_mL, 3),
-        }
-    ]
+    rows = []
+    for i, (name, profile) in enumerate(blends):
+        rows.append(
+            {
+                "Name": f"{EDITING_MARKER} {name}" if i == 0 else name,
+                "Energy (kcal)": round(profile.kcal_per_mL * daily_volume_mL, 0),
+                "Protein (g)": round(profile.protein_per_mL * daily_volume_mL, 1),
+                "Free water (mL)": round(profile.free_water_fraction * daily_volume_mL, 0),
+                "kcal/mL": round(profile.kcal_per_mL, 2),
+                "Protein g/mL": round(profile.protein_per_mL, 3),
+            }
+        )
     for name in formula_names:
         formula = COMMERCIAL_FORMULAS[name]
         fw_per_mL = formula.get("free_water_per_mL")

@@ -102,6 +102,7 @@ from src.report import (
     generate_adequacy_report,
     generate_clinical_screen,
     generate_comparator_table,
+    EDITING_MARKER,
     generate_density_summary,
     generate_source_breakdown,
     generate_water_ledger,
@@ -113,6 +114,7 @@ from src.intake import (
     resolve_blend_profile,
     blend_fluid_fraction,
     sorted_intake_log,
+    unique_blend_name,
     InvalidBlendError,
     TUBE_FEED_LABEL,
     FOOD_DRINK_LABEL,
@@ -428,8 +430,65 @@ def _confirm_recipe_import(entries) -> None:
         st.rerun()
 
 
+def _next_blend_label() -> str:
+    """The default name for a brand-new blend: "Blend N" for the LOWEST N
+    not already in use.
+
+    Counting the blends instead ("Blend {len + 1}") repeats a name as soon
+    as one is deleted: with Blend 1/2/3, deleting Blend 2 leaves a count of
+    2, so the next one is another "Blend 3". Taking the lowest free number
+    keeps the name clean rather than leaning on unique_blend_name() to turn
+    it into "Blend 3 (2)".
+    """
+    taken = {b["name"] for b in st.session_state.blends.values()}
+    n = 1
+    while f"Blend {n}" in taken:
+        n += 1
+    return f"Blend {n}"
+
+
+def _commit_blend_name(blend_id: int) -> None:
+    """on_change for the Blend name box: keep the typed name unique.
+
+    Runs as a CALLBACK rather than inline after the widget, because
+    Streamlit refuses to let session_state["blend_name_<id>"] be written
+    once that widget has been instantiated in the same run -- and the box
+    itself has to show the corrected name, or the RD sees one name in the
+    field and a different one in every table. A callback fires before the
+    rerun that redraws the widget, so the write is allowed there.
+
+    Clearing the box entirely falls back to the next free "Blend N": an
+    empty name is not something the app can show in a table, and two empty
+    names would repeat, which is the whole thing being prevented.
+    """
+    key = f"blend_name_{blend_id}"
+    wanted = st.session_state[key].strip() or _next_blend_label()
+    taken = [b["name"] for bid, b in st.session_state.blends.items() if bid != blend_id]
+    unique = unique_blend_name(wanted, taken)
+    st.session_state[key] = unique
+    st.session_state.blends[blend_id]["name"] = unique
+    # Read and cleared where the box is drawn, so the explanation appears
+    # once, right under the field that changed, and not again afterwards.
+    st.session_state["_renamed_blend_note"] = (
+        None
+        if unique == wanted
+        else (
+            f"Another blend is already called {wanted}, so this one is now "
+            f"{unique}. Rename either one to tell them apart."
+        )
+    )
+
+
 def _new_blend(name: str) -> int:
-    """Create a new empty blend, select it, and return its id."""
+    """Create a new empty blend, select it, and return its id.
+
+    `name` is de-duplicated against the existing blends here rather than by
+    each caller, because this is the ONLY way a blend is ever created --
+    the starter blend, the New blend button, an imported recipe file, the
+    example day, a thinned copy. Any future path gets the guarantee for
+    free (src.intake.unique_blend_name explains why names must be unique).
+    """
+    name = unique_blend_name(name, [b["name"] for b in st.session_state.blends.values()])
     new_id = st.session_state.next_blend_id
     st.session_state.next_blend_id += 1
     st.session_state.blends[new_id] = {
@@ -2474,7 +2533,7 @@ with recipes_tab:
     selected_blend = st.session_state.blends[selected_blend_id]
 
     if bsel2.button("➕ New blend", width="stretch"):
-        _new_blend(f"Blend {len(st.session_state.blends) + 1}")
+        _new_blend(_next_blend_label())
         st.rerun()
     if bsel3.button("🗑️ Delete blend", width="stretch", disabled=len(blend_ids) <= 1):
         removed_id = selected_blend_id
@@ -2502,9 +2561,24 @@ with recipes_tab:
             )
         st.rerun()
 
-    selected_blend["name"] = _narrow(1, 1).text_input(
-        "Blend name", selected_blend["name"], key=f"blend_name_{selected_blend_id}"
+    # Key-driven rather than value-driven: _commit_blend_name() writes the
+    # de-duplicated name back into this widget's own state, which Streamlit
+    # only permits before the widget exists -- so the value has to come
+    # FROM session_state, not from a `value=` argument it would ignore
+    # anyway once the key is set. Each blend has its own key, so switching
+    # blends still shows the right name.
+    _name_key = f"blend_name_{selected_blend_id}"
+    if _name_key not in st.session_state:
+        st.session_state[_name_key] = selected_blend["name"]
+    _name_col = _narrow(1, 1)
+    _name_col.text_input(
+        "Blend name",
+        key=_name_key,
+        on_change=_commit_blend_name,
+        args=(selected_blend_id,),
     )
+    if st.session_state.get("_renamed_blend_note"):
+        _name_col.warning(st.session_state.pop("_renamed_blend_note"))
 
     # Per-blend density mini-summary — orients the RD before they start
     # editing ingredients (design doc section 3.3).
@@ -2621,7 +2695,16 @@ with recipes_tab:
                     # Not bold: every row would be bold, so it emphasises
                     # nothing and just makes the list heavier to scan
                     # (author, 2026-08-15).
-                    name_col.write(f"{i + 1}. {ing['food_description']}")
+                    #
+                    # The backslash escapes the "." so markdown does not
+                    # read "4. Chicken, ..." as an ORDERED LIST. It did
+                    # once the bold came off (the asterisks had been
+                    # hiding it), rendering <ol><li>, which brought a list
+                    # indent and narrowed the text -- so names wrapped
+                    # early and their second line hung under the text
+                    # instead of the number. Visible only when zoomed out,
+                    # where "Banana, raw" broke across two lines.
+                    name_col.write(f"{i + 1}\\. {ing['food_description']}")
                     if del_col.button("❌", key=f"del_{ing['id']}"):
                         selected_blend["ingredients"].pop(i)
                         st.rerun()
@@ -3460,6 +3543,15 @@ with record_tab:
         # another way of looking at the same daily totals rather than a
         # separate, more important finding.
 
+# At this many eligible blends OR MORE, the comparator's blend rows switch
+# from "everyone automatically" to an explicit st.multiselect (defaulting to
+# all of them) -- same idiom as the formula multiselect just below it.
+# Nothing persists in this app (no accounts), so a session rarely holds many
+# blends, and an always-on picker would be a control most users never need
+# (author, you-know-the-line-vectorized-milner.md, 2026-08-15; confirmed as
+# "at 4, not above 4" 2026-08-16).
+COMPARATOR_BLEND_PICKER_THRESHOLD = 4
+
 with recipes_tab:
     st.divider()
 
@@ -3740,11 +3832,17 @@ with recipes_tab:
     if _pending is not None:
         _confirm_recipe_import(_pending)
 
-    # --- Commercial formula comparator (operates on the selected blend,
-    # at a manually-chosen comparison volume -- independent of the actual
-    # Intake Record, an explicit what-if: "if I gave X mL/day of just this
-    # blend, how does it compare to formula Y") ---
-    st.subheader("Commercial Formula Comparator")
+    # --- Comparator (operates on the selected blend plus the RD's other
+    # blends, at a manually-chosen comparison volume -- independent of the
+    # actual Intake Record, an explicit what-if: "if I gave X mL/day of
+    # just this blend, how does it compare to my vegan one, or to formula
+    # Y") ---
+    #
+    # Heading renamed from "Commercial Formula Comparator" (author,
+    # 2026-08-16): once the RD's own blends became rows, and the FIRST
+    # rows, a heading naming only formulas described the part that is no
+    # longer the point.
+    st.subheader("Compare Blends and Formulas")
     if selected_profile is None:
         _note("Add ingredients and a measured volume to the blend above " "to use the comparator.")
     else:
@@ -3797,11 +3895,65 @@ with recipes_tab:
             "Company narrows the list for scrolling — feeds you already "
             "picked stay selected when you switch companies."
         )
+
+        # Which of the RD's OWN blends join the table (Change 3,
+        # you-know-the-line-vectorized-milner.md, 2026-08-15): every blend
+        # with ingredients. A blend with ingredients but no measured volume
+        # yet raises InvalidBlendError from resolve_blend_profile()
+        # (src/intake.py); that blend is SKIPPED here, same as the density
+        # table above, rather than crashing this whole tab.
+        _other_blends = []
+        for _cbid, _cblend in st.session_state.blends.items():
+            if _cbid == selected_blend_id or not _cblend["ingredients"]:
+                continue
+            try:
+                _cprofile, _ = resolve_blend_profile(_cblend, na, st.session_state.custom_foods)
+            except InvalidBlendError:
+                continue
+            _other_blends.append((_cblend["name"], _cprofile))
+
+        # The picker offers only the OTHER blends: the one being edited is
+        # what this whole section is about, so it always stays row 0
+        # (author, 2026-08-16). That is also what keeps report.py's
+        # "(open above)" label honest -- report.py marks whichever row
+        # comes first, so a picker able to drop row 0 would slide the next
+        # blend into its place and label a blend the RD is NOT editing.
+        #
+        # At the threshold or above, ask which to include (defaulting to
+        # all) instead of showing every one -- see the module-level comment
+        # on COMPARATOR_BLEND_PICKER_THRESHOLD for why it is off below that.
+        if len(_other_blends) + 1 >= COMPARATOR_BLEND_PICKER_THRESHOLD:
+            # Options are POSITIONS, not names, so the picker keeps working
+            # even if two blends somehow share a name; format_func puts the
+            # name back on screen.
+            _kept = st.multiselect(
+                "Also compare these blends",
+                list(range(len(_other_blends))),
+                default=list(range(len(_other_blends))),
+                format_func=lambda i: _other_blends[i][0],
+                key="comparator_blend_select",
+            )
+            _other_blends = [_other_blends[i] for i in _kept]
+
         comparator_df = generate_comparator_table(
-            selected_profile, compare_volume_mL, selected_formulas
+            [(selected_blend["name"], selected_profile)] + _other_blends,
+            compare_volume_mL,
+            selected_formulas,
         )
         with st.container(key="fullbleed_formula_comparator"):
             st.dataframe(comparator_df, width="stretch", hide_index=True)
+        # The marker is meaningless without this sentence, so the caption
+        # is not decoration here -- it is the legend. "at the top of this
+        # tab" rather than "above" because the comparator sits a long way
+        # down, past Ingredients, the density panel, the Dilution What-If
+        # and the Recipe Record, so "above" points at most of the page
+        # (author, 2026-08-16).
+        st.caption(
+            f"{EDITING_MARKER} marks the blend being edited, chosen at the "
+            "top of this tab. Rows are compared at one daily volume; "
+            "differences between rows are in the feeds themselves and not "
+            "in the amounts given."
+        )
 
 with record_tab:
     st.divider()

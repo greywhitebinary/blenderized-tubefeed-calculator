@@ -25,6 +25,7 @@ from src.intake import (
     aggregate_intake,
     resolve_blend_profile,
     sorted_intake_log,
+    unique_blend_name,
     InvalidBlendError,
 )
 
@@ -679,3 +680,53 @@ class TestWaterSources:
         """An empty ledger shows nothing rather than a row of zeroes."""
         totals = aggregate_intake([], blends, nutrient_amount_df)
         assert totals.water_sources == {}
+
+
+# ---------------------------------------------------------------------------
+# unique_blend_name() -- blend names must never repeat (author, 2026-08-16)
+# ---------------------------------------------------------------------------
+
+
+class TestUniqueBlendName:
+    """A name is what identifies a recipe on every screen it appears on,
+    so two blends reading the same is a real ambiguity for the RD even
+    though the app itself tells them apart by id. app/streamlit_app.py
+    calls this from _new_blend() (the single point where a blend is born)
+    and from the Blend name box's on_change.
+    """
+
+    def test_a_free_name_is_returned_untouched(self):
+        assert unique_blend_name("Renal", ["Whole-food blend"]) == "Renal"
+
+    def test_a_taken_name_gets_the_first_free_number(self):
+        assert unique_blend_name("Renal", ["Renal"]) == "Renal (2)"
+        assert unique_blend_name("Renal", ["Renal", "Renal (2)"]) == "Renal (3)"
+
+    def test_gaps_in_the_numbering_are_filled_not_skipped(self):
+        """Deleting "Renal (2)" should let the next duplicate reuse it,
+        rather than counting the list and landing on (4)."""
+        assert unique_blend_name("Renal", ["Renal", "Renal (3)"]) == "Renal (2)"
+
+    def test_an_already_numbered_name_is_renumbered_not_double_suffixed(self):
+        """Loading the same file twice would otherwise produce
+        "Renal (2) (2)" -- the stem is re-used instead."""
+        assert unique_blend_name("Renal (2)", ["Renal", "Renal (2)"]) == "Renal (3)"
+
+    def test_a_free_numbered_name_keeps_its_number(self):
+        """The suffix is only ever re-stemmed on COLLISION: a blend the RD
+        deliberately called "Trial (2)" stays that, given nothing else has
+        the name."""
+        assert unique_blend_name("Trial (2)", ["Renal"]) == "Trial (2)"
+
+    def test_parenthesised_text_is_not_mistaken_for_a_number(self):
+        """Only a bare integer in brackets is a suffix, so a clinically
+        meaningful tail like "(low K)" stays part of the stem."""
+        assert unique_blend_name("Renal (low K)", ["Renal (low K)"]) == "Renal (low K) (2)"
+
+    def test_loading_the_example_day_twice_does_not_repeat_its_names(self):
+        """The concrete case that motivated this: "Load example day" keeps
+        any blend that already has ingredients and adds its own on top, so
+        without this the RD ends up with two "Whole-food blend" rows."""
+        taken = ["Whole-food blend", "Vegan blend"]
+        assert unique_blend_name("Whole-food blend", taken) == "Whole-food blend (2)"
+        assert unique_blend_name("Vegan blend", taken) == "Vegan blend (2)"

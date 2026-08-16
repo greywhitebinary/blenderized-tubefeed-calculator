@@ -1,4 +1,5 @@
-"""AppTest: two blends sharing a name must both survive the download.
+"""AppTest: near-identically named blends must both survive the download,
+and the app must refuse to let their names collide in the first place.
 
 WHAT THIS GUARDS
 ----------------
@@ -7,7 +8,7 @@ f"BTF {blend_name}"[:31], with no dedupe. openpyxl accepts a duplicate
 sheet title silently and the second write overwrote the first, so two
 blends with the same name produced ONE sheet and one blend's ingredients
 vanished with no error. Reachable without renaming anything --
-_new_blend() re-issues "Blend 3" after the middle of three blends is
+_new_blend() re-issued "Blend 3" after the middle of three blends is
 deleted -- and reachable by truncation, since two names differing past
 the 31st character collide.
 
@@ -18,13 +19,21 @@ them: ingredients now live on a single "Ingredients" sheet, tagged with
 "Blend id" and "Blend name". That makes a *sheet-name* collision
 impossible by construction.
 
-The underlying risk has NOT gone away, so neither has this check -- it is
-just aimed at the new structure. Two blends called the same thing must
-still be distinguishable in the file, and each must keep its own
-ingredients and its own flow test. The link is the numeric blend id, not
-the name, for the same reason recipe_io refuses to pool unlabelled rows:
-silently merging two recipes is the failure this project treats as
-unacceptable.
+WHAT CHANGED (2026-08-16)
+-------------------------
+Blend names can no longer repeat at all: src.intake.unique_blend_name()
+turns a second "Duplicate Blend" into "Duplicate Blend (2)", enforced in
+_new_blend() and in the Blend name box's on_change. So this check can no
+longer BUILD two identically named blends, and its first job is now to
+prove that -- through the real widget, which is the only way to catch the
+rename failing to reach either the box or the stored blend.
+
+The underlying risk has NOT gone away, so neither has the rest of this
+check. Two blends the RD can barely tell apart must still be
+distinguishable in the file, each keeping its own ingredients and its own
+flow test. The link is the numeric blend id, not the name, for the same
+reason recipe_io refuses to pool unlabelled rows: silently merging two
+recipes is the failure this project treats as unacceptable.
 """
 
 import io
@@ -42,6 +51,8 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 from src.day_io import workbook_bytes_to_day  # noqa: E402
 
 DUPLICATE_NAME = "Duplicate Blend"
+# What the app must turn a second DUPLICATE_NAME into.
+DEDUPED_NAME = f"{DUPLICATE_NAME} (2)"
 MARKER = "Marker ingredient for the second blend"
 
 # AppTest has no accessor for download_button payloads, so capture them as
@@ -97,14 +108,23 @@ def main() -> None:
     next(b for b in at.button if "New blend" in b.label).click().run()
     second_id = at.session_state["selected_blend_id"]
     assert second_id != first_id, "New blend did not create a second blend"
+    # Ask for the SAME name as the first blend. The app must refuse the
+    # collision and hand back the numbered variant instead.
     next(t for t in at.text_input if t.key == f"blend_name_{second_id}").set_value(
         DUPLICATE_NAME
     ).run()
     assert not at.exception, at.exception
 
     names = [b["name"] for b in at.session_state["blends"].values()]
-    assert names.count(DUPLICATE_NAME) == 2, f"needed two blends named the same, got {names}"
-    print(f"OK: two blends both named {DUPLICATE_NAME!r}")
+    assert names.count(DUPLICATE_NAME) == 1, f"the duplicate name was allowed to repeat: {names}"
+    assert (
+        at.session_state["blends"][second_id]["name"] == DEDUPED_NAME
+    ), f"expected the stored name to become {DEDUPED_NAME!r}, got {names}"
+    # The box itself has to show the corrected name too, or the RD reads
+    # one name in the field and a different one in every table.
+    shown = next(t for t in at.text_input if t.key == f"blend_name_{second_id}").value
+    assert shown == DEDUPED_NAME, f"the name box still shows {shown!r}, not {DEDUPED_NAME!r}"
+    print(f"OK: the second {DUPLICATE_NAME!r} became {DEDUPED_NAME!r}, in the box and in state")
 
     # Give the second blend an ingredient and a flow test of its own, so
     # "both kept theirs" is a claim with something behind it.
@@ -145,7 +165,7 @@ def main() -> None:
         assert required in sheets, f"no {required!r} sheet — have {list(sheets)}"
 
     blends_df = sheets["Blends"]
-    same_named = blends_df[blends_df["Blend name"] == DUPLICATE_NAME]
+    same_named = blends_df[blends_df["Blend name"].isin([DUPLICATE_NAME, DEDUPED_NAME])]
     assert len(same_named) == 2, f"expected 2 rows for {DUPLICATE_NAME!r}, got {len(same_named)}"
     assert same_named["Blend id"].nunique() == 2, "the two blends share a Blend id"
     print(f"OK: both blends kept their own row, ids {sorted(same_named['Blend id'].tolist())}")
