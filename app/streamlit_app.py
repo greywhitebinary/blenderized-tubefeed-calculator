@@ -48,7 +48,6 @@ Design commitments (from CONTEXT.md section 1):
 """
 
 import copy
-import re
 import sys
 from datetime import date as ddate
 from datetime import time as dtime
@@ -78,7 +77,7 @@ from src.measures import (
     scale_measure_label,
     group_ingredients_for_card,
 )
-from src.food_search import MIN_QUERY_LEN, build_index, search_foods
+from src.food_search import MIN_QUERY_LEN, build_index, search_foods, find_food
 from src.label_extract import (
     MAX_EXTRACTIONS_PER_DAY,
     MAX_EXTRACTIONS_PER_SESSION,
@@ -112,13 +111,20 @@ from src.report import (
     generate_source_breakdown,
     generate_water_ledger,
     format_ingredient_breakdown,
+    color_status,
 )
-from src.nutrients import defs_for_tier, registry_by_name, DEFAULT_PACK
+from src.nutrients import (
+    defs_for_tier,
+    registry_by_name,
+    load_thinning_liquids,
+    DEFAULT_PACK,
+)
 from src.intake import (
     aggregate_intake,
     resolve_blend_profile,
     blend_fluid_fraction,
     sorted_intake_log,
+    default_counts_as_fluid,
     thinned_blend_name,
     unique_blend_name,
     InvalidBlendError,
@@ -128,86 +134,7 @@ from src.intake import (
     WATER_FLUSH_LABEL,
 )
 
-# ---------------------------------------------------------------------------
-# Thinning liquid presets (per 100 mL) — for the dilution what-if
-# ---------------------------------------------------------------------------
-# NARROWED TO NON-NUTRITIVE LIQUIDS ONLY (author, 2026-07-30).
-#
-# dilute() models exactly three things from an added liquid: kcal,
-# protein and water. For plain water that is the COMPLETE picture, so the
-# preview is exact. For broth, juice or milk it is not: their sodium,
-# potassium, calcium and the rest silently stay at the pre-dilution
-# total, so the panel understates what the liquid actually brought --
-# thinning with broth would show sodium DENSITY falling while real broth
-# adds a sodium load.
-#
-# The fix is not to teach dilute() about every nutrient. Adding 200 mL of
-# broth to a blend IS a recipe change, and the recipe editor already
-# handles it correctly through the full CNF row -- every nutrient, not
-# three. For anything nutritive the editor gives a BETTER answer than
-# this preview, so offering the preview at all was offering the worse of
-# two tools. The rule an RD can hold in their head: thinning with water
-# is a preview, thinning with anything nutritive is a recipe edit.
-#
-# The CSV stays the canonical, RD-editable source (add "Sterile water" or
-# "Distilled water" and it appears automatically); the app simply filters
-# to entries that contribute no kcal and no protein.
-_THINNING_CSV_NAME = "thinning_liquids.csv"
-
-# Fallback used only if a pack's CSV is missing. Water only, matching the
-# non-nutritive filter in _load_thinning_liquids().
-_THINNING_FALLBACK: dict[str, dict[str, float]] = {
-    "Water": {"kcal": 0.0, "protein_g": 0.0, "water_g": 100.0},
-}
-
-
-def _thinning_csv_path(pack: str = DEFAULT_PACK) -> Path:
-    """Where a pack keeps its thinning-liquid presets.
-
-    Pack-aware since 2026-07-30 -- this was the last loader still reading
-    from a hardcoded `canada` path (CONTEXT.md §9). Inert until a second
-    pack exists, but it no longer silently serves Canadian reference data
-    to a non-Canadian pack.
-    """
-    return PROJECT_ROOT / "data" / "packs" / pack / _THINNING_CSV_NAME
-
-
-def _load_thinning_liquids(pack: str = DEFAULT_PACK) -> dict[str, dict[str, float]]:
-    """Load thinning liquid presets from a pack's CSV, falling back to a
-    hardcoded dict if the file is missing.
-
-    Returns ONLY non-nutritive liquids (no kcal, no protein) -- see the
-    module-level note above for why. Nutritive thinners belong in the
-    recipe, where every nutrient is computed rather than three.
-
-    CSV format: name,kcal_per_100mL,protein_g_per_100mL,water_g_per_100mL
-    """
-    csv_path = _thinning_csv_path(pack)
-    if not csv_path.exists():
-        liquids = dict(_THINNING_FALLBACK)
-    else:
-        df = pd.read_csv(csv_path)
-        liquids = {}
-        for _, row in df.iterrows():
-            liquids[row["name"]] = {
-                "kcal": float(row["kcal_per_100mL"]),
-                "protein_g": float(row["protein_g_per_100mL"]),
-                "water_g": float(row["water_g_per_100mL"]),
-            }
-    # Keep only non-nutritive liquids. A liquid carrying kcal or protein
-    # also carries sodium, potassium and the rest -- none of which
-    # dilute() models -- so previewing it here would be less accurate
-    # than simply adding it to the recipe. The "Custom" free-entry option
-    # was removed for the same reason: hand-entering kcal and protein is
-    # precisely the nutritive case that belongs in the ingredient list.
-    return {
-        name: vals
-        for name, vals in liquids.items()
-        if vals["kcal"] == 0.0 and vals["protein_g"] == 0.0
-    }
-
-
-THINNING_LIQUIDS: dict[str, dict[str, float]] = _load_thinning_liquids()
+THINNING_LIQUIDS: dict[str, dict[str, float]] = load_thinning_liquids()
 
 
 # ---------------------------------------------------------------------------
@@ -238,54 +165,6 @@ def get_food_group():
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def find_food(fn_df: pd.DataFrame, desc: str) -> int | None:
-    """Find a Food_Code by description: an exact match if there is one,
-    otherwise the first substring match.
-
-    The exact pass matters because CNF descriptions nest. "Spinach,
-    boiled, drained" is a substring of "New Zealand spinach, boiled,
-    drained", so substring-only resolved the example day's spinach to the
-    New Zealand one -- silently, and with different nutrients (author,
-    2026-08-15). Every caller here names a full CNF description, so
-    preferring an exact hit costs nothing and removes a whole class of
-    wrong-food-looks-right bug.
-    """
-    descriptions = fn_df["Food_Description_EN"]
-    exact = fn_df[descriptions.str.casefold() == desc.casefold()]
-    if len(exact):
-        return int(exact.iloc[0]["Food_Code"])
-    m = fn_df[descriptions.str.contains(desc, case=False, na=False, regex=False)]
-    if len(m) == 0:
-        return None
-    return int(m.iloc[0]["Food_Code"])
-
-
-# CNF_Food_Group_Code for "Beverages" — see data/packs/canada's
-# CNF_Food_Group table (loaded via src.data_loader.load_food_group()).
-# Used only to seed the counts-as-fluid checkbox's default; the RD can
-# always override per ingredient/row (the toggle IS the policy, this
-# default is a starting point, not a rule).
-_BEVERAGES_GROUP_CODE = 14
-
-
-def default_counts_as_fluid(food_desc: str, group_code) -> bool:
-    """Starting value for a food's counts-as-fluid checkbox.
-
-    True when the food is in CNF's own Beverages group (14), or its
-    description starts with the word "Water" (CNF's four standalone
-    water entries: "Water, municipal", "Water, mineral, ...", etc. — a
-    plain substring match would also catch "Watermelon" or any of the
-    176 CNF foods with "water added" in a soup description, which is why
-    this checks for the word at the START of the description, not
-    anywhere in it). Always user-toggleable afterward.
-    """
-    if group_code == _BEVERAGES_GROUP_CODE:
-        return True
-    if re.match(r"^water\b", (food_desc or "").strip(), re.IGNORECASE):
-        return True
-    return False
 
 
 # ---------------------------------------------------------------------------
@@ -554,27 +433,6 @@ def init_state():
     # never a population default recipe.
     if not st.session_state.blends:
         _new_blend("Blend 1")
-
-
-def color_status(val: str) -> str:
-    """Color-code adequacy status cells.
-
-    "Above UL" and "Below target" are both concerning (red); "Below UL"
-    and "Meeting target" are both fine (green) — a UL is a ceiling, not
-    an aim, so "Below UL" reads as "fine" the same way "Meeting target"
-    does for an RDA/AI nutrient. See src/report.py::_adequacy_status.
-
-    Text colour is set explicitly alongside each pale background: without
-    it, a dark theme renders near-white text on pale pink and the status
-    becomes unreadable.
-    """
-    if val in ("Below target", "Above UL"):
-        return "background-color: #ffcccc; color: #1a1a1a"
-    elif val == "Above target":
-        return "background-color: #ffe0b2; color: #1a1a1a"
-    elif val in ("Meeting target", "Below UL"):
-        return "background-color: #c8e6c9; color: #1a1a1a"
-    return ""
 
 
 # Per-nutrient step sizes for the custom-target number_inputs in the
@@ -3355,7 +3213,7 @@ with recipes_tab:
             added_mL = st.slider("Add liquid (mL)", 0, 500, 0, step=10)
 
             # Presets are non-nutritive by construction (see
-            # _load_thinning_liquids), so kcal and protein are always 0
+            # src.nutrients.load_thinning_liquids), so kcal and protein are 0
             # here and only the water term does any work. The old
             # "Custom" branch -- hand-entering kcal and protein for the
             # added liquid -- was removed 2026-07-30: that is exactly the

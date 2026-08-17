@@ -848,3 +848,29 @@ def generate_water_ledger(water_sources: dict[str, float]) -> pd.DataFrame:
     ]
     rows.append({"Water source": "Total water", "mL/day": round(sum(water_sources.values()), 0)})
     return pd.DataFrame(rows)
+
+
+def color_status(val: str) -> str:
+    """Pandas-Styler CSS for an adequacy Status cell.
+
+    Moved out of app/streamlit_app.py 2026-08-17 to sit beside
+    _adequacy_status(), which produces the exact strings it matches on --
+    the two drift apart silently if they live in different files, and only
+    here can it be tested.
+
+    "Above UL" and "Below target" are both concerning (red); "Below UL"
+    and "Meeting target" are both fine (green) -- a UL is a ceiling, not
+    an aim, so "Below UL" reads as "fine" the same way "Meeting target"
+    does for an RDA/AI nutrient.
+
+    Text colour is set explicitly alongside each pale background: without
+    it, a dark theme renders near-white text on pale pink and the status
+    becomes unreadable.
+    """
+    if val in ("Below target", "Above UL"):
+        return "background-color: #ffcccc; color: #1a1a1a"
+    elif val == "Above target":
+        return "background-color: #ffe0b2; color: #1a1a1a"
+    elif val in ("Meeting target", "Below UL"):
+        return "background-color: #c8e6c9; color: #1a1a1a"
+    return ""

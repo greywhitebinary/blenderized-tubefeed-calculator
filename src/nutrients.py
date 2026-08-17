@@ -244,5 +244,83 @@ NUTRIENT_LABELS: dict[str, str] = {
 
 
 # ---------------------------------------------------------------------------
-# Smoke test
+# Thinning liquid presets (per 100 mL) — for the Dilution What-If
 # ---------------------------------------------------------------------------
+# Moved out of app/streamlit_app.py 2026-08-17: pack-CSV loading is exactly
+# what this module does, and none of it needs Streamlit, so here it can be
+# unit-tested.
+#
+# NARROWED TO NON-NUTRITIVE LIQUIDS ONLY (author, 2026-07-30).
+#
+# calculator.dilute() models exactly three things from an added liquid:
+# kcal, protein and water. For plain water that is the COMPLETE picture, so
+# the preview is exact. For broth, juice or milk it is not: their sodium,
+# potassium, calcium and the rest silently stay at the pre-dilution total,
+# so the panel understates what the liquid actually brought -- thinning
+# with broth would show sodium DENSITY falling while real broth adds a
+# sodium load.
+#
+# The fix is not to teach dilute() about every nutrient. Adding 200 mL of
+# broth to a blend IS a recipe change, and the recipe editor already
+# handles it correctly through the full CNF row -- every nutrient, not
+# three. For anything nutritive the editor gives a BETTER answer than this
+# preview, so offering the preview at all was offering the worse of two
+# tools. The rule an RD can hold in their head: thinning with water is a
+# preview, thinning with anything nutritive is a recipe edit.
+#
+# The CSV stays the canonical, RD-editable source (add "Sterile water" or
+# "Distilled water" and it appears automatically); this module simply
+# filters to entries that contribute no kcal and no protein.
+_THINNING_CSV_NAME = "thinning_liquids.csv"
+
+# Fallback used only if a pack's CSV is missing. Water only, matching the
+# non-nutritive filter in load_thinning_liquids().
+_THINNING_FALLBACK: dict[str, dict[str, float]] = {
+    "Water": {"kcal": 0.0, "protein_g": 0.0, "water_g": 100.0},
+}
+
+
+def thinning_csv_path(pack: str = DEFAULT_PACK) -> Path:
+    """Where a pack keeps its thinning-liquid presets.
+
+    Pack-aware since 2026-07-30 -- this was the last loader still reading
+    from a hardcoded `canada` path (CONTEXT.md §9). Inert until a second
+    pack exists, but it no longer silently serves Canadian reference data
+    to a non-Canadian pack.
+    """
+    return PACKS_DIR / pack / _THINNING_CSV_NAME
+
+
+def load_thinning_liquids(pack: str = DEFAULT_PACK) -> dict[str, dict[str, float]]:
+    """Load thinning liquid presets from a pack's CSV, falling back to a
+    hardcoded dict if the file is missing.
+
+    Returns ONLY non-nutritive liquids (no kcal, no protein) -- see the
+    note above for why. Nutritive thinners belong in the recipe, where
+    every nutrient is computed rather than three.
+
+    CSV format: name,kcal_per_100mL,protein_g_per_100mL,water_g_per_100mL
+    """
+    csv_path = thinning_csv_path(pack)
+    if not csv_path.exists():
+        liquids = dict(_THINNING_FALLBACK)
+    else:
+        df = pd.read_csv(csv_path)
+        liquids = {}
+        for _, row in df.iterrows():
+            liquids[row["name"]] = {
+                "kcal": float(row["kcal_per_100mL"]),
+                "protein_g": float(row["protein_g_per_100mL"]),
+                "water_g": float(row["water_g_per_100mL"]),
+            }
+    # Keep only non-nutritive liquids. A liquid carrying kcal or protein
+    # also carries sodium, potassium and the rest -- none of which dilute()
+    # models -- so previewing it here would be less accurate than simply
+    # adding it to the recipe. The "Custom" free-entry option was removed
+    # for the same reason: hand-entering kcal and protein is precisely the
+    # nutritive case that belongs in the ingredient list.
+    return {
+        name: vals
+        for name, vals in liquids.items()
+        if vals["kcal"] == 0.0 and vals["protein_g"] == 0.0
+    }

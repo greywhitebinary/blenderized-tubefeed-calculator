@@ -36,6 +36,7 @@ import pandas as pd
 import pytest
 
 from src.food_search import (
+    find_food,
     MATCH_DIRECT,
     MATCH_FUZZY,
     MATCH_NONE,
@@ -426,3 +427,52 @@ def test_synonyms_never_shadow_a_working_plain_search():
             unnecessary.append(f"{term!r} already resolves directly, without the synonym")
 
     assert not unnecessary, "synonyms that aren't needed:\n  " + "\n  ".join(unnecessary)
+
+
+class TestFindFood:
+    """find_food() is the by-NAME lookup the app uses when it already
+    knows the exact CNF description it wants -- the example day's
+    ingredients, the water the Dilution What-If adds. Not the RD-facing
+    fuzzy search above. Moved out of app/streamlit_app.py 2026-08-17,
+    which is the first time it could be tested.
+
+    Hand-built frames, no CNF download needed: the behaviour under test is
+    exact-before-substring, which is a pure string rule.
+    """
+
+    @staticmethod
+    def _frame(*rows):
+        return pd.DataFrame([{"Food_Code": c, "Food_Description_EN": d} for c, d in rows])
+
+    def test_exact_match_wins_over_a_substring_match(self):
+        """THE BUG THIS PROTECTS (author, 2026-08-15): CNF descriptions
+        nest. "Spinach, boiled, drained" is a substring of "New Zealand
+        spinach, boiled, drained", so a substring-only lookup resolved the
+        example day's spinach to the New Zealand one -- silently, and with
+        different nutrients. Note the decoy is listed FIRST, so returning
+        the first substring hit would fail this.
+        """
+        fn = self._frame(
+            (1, "New Zealand spinach, boiled, drained"),
+            (2, "Spinach, boiled, drained"),
+        )
+        assert find_food(fn, "Spinach, boiled, drained") == 2
+
+    def test_falls_back_to_the_first_substring_match(self):
+        fn = self._frame((1, "Chicken, broiler, breast, braised"))
+        assert find_food(fn, "breast") == 1
+
+    def test_matching_ignores_case(self):
+        fn = self._frame((7, "Water, municipal"))
+        assert find_food(fn, "water, municipal") == 7
+
+    def test_no_match_returns_none_rather_than_raising(self):
+        """The Dilution What-If depends on this: it checks for None and
+        tells the RD to add the water by hand instead of crashing."""
+        assert find_food(self._frame((1, "Banana, raw")), "Sorghum") is None
+
+    def test_a_description_with_regex_characters_is_matched_literally(self):
+        """CNF descriptions carry brackets and plus signs. Treating them
+        as a pattern would either raise or match the wrong food."""
+        fn = self._frame((3, "Yogourt (yogurt), Greek style, 2% M.F."))
+        assert find_food(fn, "Yogourt (yogurt), Greek style, 2% M.F.") == 3

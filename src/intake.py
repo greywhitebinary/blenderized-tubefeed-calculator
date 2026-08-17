@@ -143,7 +143,7 @@ def thinned_blend_name(source_name: str) -> str:
     Shortened on 2026-08-16 for two reasons. It ran to ~70 characters and
     crowded the blend selector; and the choice it was disambiguating does
     not exist. The app offers exactly ONE thinning liquid -- water --
-    because app.streamlit_app._load_thinning_liquids() keeps only
+    because src.nutrients.load_thinning_liquids() keeps only
     non-nutritive presets, a nutritive thinner belonging in the ingredient
     list where all its nutrients are computed rather than three. So
     "(thinned)" is already unambiguous.
@@ -553,3 +553,33 @@ def sorted_intake_log(intake_log: list[dict]) -> list[dict]:
         intake_log,
         key=lambda r: (r.get("time") is None, r.get("time") or ""),
     )
+
+
+# CNF_Food_Group_Code for "Beverages" — see data/packs/canada's
+# CNF_Food_Group table (loaded via src.data_loader.load_food_group()).
+# Used only to seed the counts-as-fluid checkbox's default; the RD can
+# always override per ingredient/row (the toggle IS the policy, this
+# default is a starting point, not a rule).
+_BEVERAGES_GROUP_CODE = 14
+
+
+def default_counts_as_fluid(food_desc: str, group_code) -> bool:
+    """Starting value for a food's counts-as-fluid checkbox.
+
+    Lives here with the rest of the fluids ledger (blend_fluid_fraction,
+    the water-source labels) rather than in the app, where it could not be
+    tested -- moved 2026-08-17.
+
+    True when the food is in CNF's own Beverages group (14), or its
+    description starts with the word "Water" (CNF's four standalone water
+    entries: "Water, municipal", "Water, mineral, ...", etc. -- a plain
+    substring match would also catch "Watermelon" or any of the 176 CNF
+    foods with "water added" in a soup description, which is why this
+    checks for the word at the START of the description, not anywhere in
+    it). Always user-toggleable afterward.
+    """
+    if group_code == _BEVERAGES_GROUP_CODE:
+        return True
+    if re.match(r"^water\b", (food_desc or "").strip(), re.IGNORECASE):
+        return True
+    return False

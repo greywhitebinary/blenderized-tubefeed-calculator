@@ -25,6 +25,7 @@ from src.intake import (
     aggregate_intake,
     resolve_blend_profile,
     sorted_intake_log,
+    default_counts_as_fluid,
     thinned_blend_name,
     unique_blend_name,
     InvalidBlendError,
@@ -773,3 +774,35 @@ class TestThinnedBlendName:
 
     def test_a_parenthesised_word_is_not_mistaken_for_the_suffix(self):
         assert thinned_blend_name("Renal (low K)") == "Renal (low K) (thinned)"
+
+
+class TestDefaultCountsAsFluid:
+    """Seeds the counts-as-fluid checkbox. Moved out of the app on
+    2026-08-17, which is the first time it could be tested at all -- and
+    it is a clinical display rule, not a cosmetic one: it decides what a
+    food contributes to the fluids ledger unless the RD overrides it.
+    """
+
+    def test_anything_in_cnfs_beverages_group_counts(self):
+        assert default_counts_as_fluid("Cola, carbonated", 14) is True
+
+    def test_a_food_named_water_counts_outside_that_group(self):
+        assert default_counts_as_fluid("Water, municipal", 1) is True
+        assert default_counts_as_fluid("Water, mineral, bottled", 1) is True
+
+    def test_watermelon_is_not_water(self):
+        """The reason this matches on the WORD at the start, not a plain
+        substring: "Watermelon, raw" is a food, not a drink."""
+        assert default_counts_as_fluid("Watermelon, raw", 1) is False
+
+    def test_a_soup_with_water_added_is_not_water(self):
+        """176 CNF descriptions carry "water added" mid-string. Matching
+        anywhere would sweep every one of them into the fluids ledger."""
+        assert default_counts_as_fluid("Soup, tomato, canned, water added", 1) is False
+
+    def test_an_ordinary_food_does_not_count(self):
+        assert default_counts_as_fluid("Chicken, broiler, breast, braised", 1) is False
+
+    def test_a_missing_description_does_not_raise(self):
+        assert default_counts_as_fluid("", 1) is False
+        assert default_counts_as_fluid(None, 1) is False

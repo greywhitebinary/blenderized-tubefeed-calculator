@@ -729,8 +729,3 @@ def label_to_per_100g(label_value: float, serving_size_g: float) -> float:
     if serving_size_g <= 0:
         raise ValueError("serving_size_g must be positive")
     return label_value * (100.0 / serving_size_g)
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------

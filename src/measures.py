@@ -275,8 +275,3 @@ def get_measures_for_food(
 
     measures = lookup_df[lookup_df["Food_Code"] == food_code].copy()
     return measures.sort_values("grams", ascending=False).reset_index(drop=True)
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------

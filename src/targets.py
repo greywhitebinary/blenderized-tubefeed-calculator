@@ -56,8 +56,3 @@ def empty_targets(pack: str = DEFAULT_PACK) -> dict[str, float]:
     targets = {d.name: 0.0 for d in load_registry(pack) if d.offer_target}
     targets["fluid_mL"] = 0.0
     return targets
-
-
-# ---------------------------------------------------------------------------
-# Smoke test
-# ---------------------------------------------------------------------------

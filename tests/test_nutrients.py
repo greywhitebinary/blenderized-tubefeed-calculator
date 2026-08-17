@@ -33,7 +33,9 @@ from src.nutrients import (
     codes_for,
     defs_for_tier,
     load_registry,
+    load_thinning_liquids,
     registry_by_name,
+    thinning_csv_path,
 )
 
 # ---------------------------------------------------------------------------
@@ -228,3 +230,35 @@ def test_sodium_survives_registry_load_and_keeps_its_numeric_cnf_code():
     sodium = by_name["sodium_mg"]
     assert sodium.code == 307
     assert sodium.name == "sodium_mg"  # not NaN, not the string "NA"
+
+
+class TestThinningLiquids:
+    """Moved out of app/streamlit_app.py 2026-08-17. The filter is the
+    clinically load-bearing part: calculator.dilute() models only kcal,
+    protein and water, so a nutritive thinner would show sodium DENSITY
+    falling while real broth adds a sodium load. Anything with calories or
+    protein must never reach the Dilution What-If's dropdown.
+    """
+
+    def test_the_shipped_pack_offers_water(self):
+        liquids = load_thinning_liquids("canada")
+        assert "Water" in liquids
+        assert liquids["Water"]["water_g"] == 100.0
+
+    def test_everything_offered_is_non_nutritive(self):
+        for name, vals in load_thinning_liquids("canada").items():
+            assert vals["kcal"] == 0.0, f"{name} carries calories"
+            assert vals["protein_g"] == 0.0, f"{name} carries protein"
+
+    def test_a_missing_pack_falls_back_to_water_rather_than_raising(self):
+        """A pack with no thinning_liquids.csv still gets a usable
+        dropdown instead of an empty one or an exception."""
+        liquids = load_thinning_liquids("no-such-pack")
+        assert liquids == {"Water": {"kcal": 0.0, "protein_g": 0.0, "water_g": 100.0}}
+
+    def test_the_path_is_pack_aware(self):
+        """Was the last loader reading from a hardcoded `canada` path
+        (CONTEXT.md section 9); inert until a second pack exists, but it no
+        longer serves Canadian reference data to a non-Canadian pack."""
+        assert thinning_csv_path("canada").parent.name == "canada"
+        assert thinning_csv_path("elsewhere").parent.name == "elsewhere"

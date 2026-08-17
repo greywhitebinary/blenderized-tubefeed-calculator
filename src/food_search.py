@@ -479,3 +479,31 @@ def search_foods(
             )
 
     return SearchResult(empty, MATCH_NONE)
+
+
+def find_food(fn_df: pd.DataFrame, desc: str) -> int | None:
+    """Find a Food_Code by description: an exact match if there is one,
+    otherwise the first substring match.
+
+    NOT the RD-facing search above -- this is the by-name lookup the app
+    uses when IT already knows the exact CNF description it wants (the
+    example day's ingredients, the water the Dilution What-If adds).
+    Moved here from app/streamlit_app.py 2026-08-17; it needs no Streamlit
+    and so can be tested.
+
+    The exact pass matters because CNF descriptions nest. "Spinach,
+    boiled, drained" is a substring of "New Zealand spinach, boiled,
+    drained", so substring-only resolved the example day's spinach to the
+    New Zealand one -- silently, and with different nutrients (author,
+    2026-08-15). Every caller names a full CNF description, so preferring
+    an exact hit costs nothing and removes a whole class of
+    wrong-food-looks-right bug.
+    """
+    descriptions = fn_df["Food_Description_EN"]
+    exact = fn_df[descriptions.str.casefold() == desc.casefold()]
+    if len(exact):
+        return int(exact.iloc[0]["Food_Code"])
+    m = fn_df[descriptions.str.contains(desc, case=False, na=False, regex=False)]
+    if len(m) == 0:
+        return None
+    return int(m.iloc[0]["Food_Code"])

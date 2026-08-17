@@ -39,6 +39,7 @@ from src.report import (
     EDITING_MARKER,
     _adequacy_status,
     _formula_daily,
+    color_status,
     _coverage_text,
     _ordered_label_defs,
     _zero_coverage,
@@ -631,3 +632,52 @@ def test_blend_with_no_measured_volume_is_skipped_not_raised(nutrient_amount_df)
     df = generate_comparator_table(comparator_blends, daily_volume_mL=1000.0, formula_names=[])
 
     assert list(df["Name"]) == [f"{EDITING_MARKER} Whole-food blend"]
+
+
+class TestColorStatus:
+    """The Styler CSS for an adequacy Status cell. Moved out of the app on
+    2026-08-17 to sit beside _adequacy_status(), which produces the exact
+    strings it matches on -- these tests are what stops the two drifting
+    apart, since a status string with no colour rule fails silently as a
+    blank cell.
+    """
+
+    def test_every_status_adequacy_can_produce_has_a_colour(self):
+        """The real coupling: iterate the statuses _adequacy_status()
+        actually returns and require a rule for each. Add a status there
+        without a colour here and this fails."""
+        produced = {
+            _adequacy_status(50.0, 100.0),  # Below target
+            _adequacy_status(100.0, 100.0),  # Meeting target
+            _adequacy_status(200.0, 100.0),  # Above target
+            _adequacy_status(50.0, 100.0, "UL"),  # Below UL
+            _adequacy_status(200.0, 100.0, "UL"),  # Above UL
+        }
+        assert len(produced) == 5, produced
+        for status in produced:
+            assert color_status(status), f"{status!r} has no colour rule"
+
+    def test_concerning_statuses_are_red(self):
+        red = "background-color: #ffcccc; color: #1a1a1a"
+        assert color_status("Below target") == red
+        assert color_status("Above UL") == red
+
+    def test_fine_statuses_are_green(self):
+        """A UL is a ceiling, not an aim, so "Below UL" reads as fine the
+        same way "Meeting target" does for an RDA/AI nutrient."""
+        green = "background-color: #c8e6c9; color: #1a1a1a"
+        assert color_status("Meeting target") == green
+        assert color_status("Below UL") == green
+
+    def test_above_target_is_amber_not_red(self):
+        assert color_status("Above target") == "background-color: #ffe0b2; color: #1a1a1a"
+
+    def test_no_target_gets_no_colour(self):
+        assert color_status(_adequacy_status(100.0, 0.0)) == ""
+
+    def test_every_rule_sets_text_colour_with_its_background(self):
+        """Without an explicit text colour a dark theme renders near-white
+        text on pale pink and the status becomes unreadable."""
+        for status in ("Below target", "Above target", "Meeting target", "Below UL", "Above UL"):
+            css = color_status(status)
+            assert "background-color:" in css and "color: #1a1a1a" in css, (status, css)
