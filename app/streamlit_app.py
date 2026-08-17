@@ -1255,6 +1255,17 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
 # results directly beneath the record they summarize).
 # ===========================================================================
 
+
+# At this many eligible blends OR MORE, the comparator's blend rows switch
+# from "everyone automatically" to an explicit st.multiselect (defaulting to
+# all of them) -- same idiom as the formula multiselect just below it.
+# Nothing persists in this app (no accounts), so a session rarely holds many
+# blends, and an always-on picker would be a control most users never need
+# (author, you-know-the-line-vectorized-milner.md, 2026-08-15; confirmed as
+# "at 4, not above 4" 2026-08-16).
+COMPARATOR_BLEND_PICKER_THRESHOLD = 4
+
+
 targets_tab, recipes_tab, record_tab = st.tabs(
     ["Nutrition Targets", "Feed Recipes", "Daily Intake Record"]
 )
@@ -1957,285 +1968,6 @@ with recipes_tab:
         _ft_state["result"] = flow_test_result
         _ft_state["notes"] = flow_test_notes
 
-
-with record_tab:
-    st.subheader("Intake Record")
-    st.caption(
-        "What was actually given — tube feed (blends, formulas, flushes) "
-        "and food/drink by mouth, together in one chronological list."
-    )
-
-    # Delivery method: a single free-choice field for chart-note wording
-    # only (FEED_LOG_REWORK.md section 3.4) — it no longer drives any math.
-    # Seed the default only the very first time this key ever exists (see
-    # the same comment by "recipe_name_input" above) -- avoids the
-    # Session-State-vs-value= warning when Load Example presets this key.
-    # Seeded EMPTY, not "Syringe bolus": the placeholder only shows in an
-    # empty field, and a greyed example teaches the format without anyone
-    # having to load the example day first. This line is the chart note's
-    # opening line verbatim, so it needs to show the whole shape.
-    if "delivery_method_input" not in st.session_state:
-        st.session_state["delivery_method_input"] = ""
-    delivery_method = _narrow(1, 1).text_input(
-        "Delivery method (chart-note wording only)",
-        placeholder="Eg: BTF using [feeding tube type, include tube diameter if known], "
-        "via [feeding method]",
-        help="Free text — this becomes the first line of the chart note. "
-        "Doesn't affect any calculation; every row's own amount is what's summed.",
-        key="delivery_method_input",
-    )
-
-    # Always-visible summary line — aggregated NUTRIENT totals, never a
-    # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a
-    # meaningful single number). See FEED_LOG_REWORK.md section 3.4.
-    _banner_totals = aggregate_intake(
-        st.session_state.intake_log,
-        st.session_state.blends,
-        na,
-        custom_foods=st.session_state.custom_foods,
-    )
-    _b_kcal = _banner_totals.nutrient_totals.get("energy_kcal", 0.0)
-    _b_protein = _banner_totals.nutrient_totals.get("protein_g", 0.0)
-    _b_fluid = _banner_totals.fluid_provided_mL
-    st.markdown(
-        f"**Today: ~{_b_kcal:.0f} kcal | {_b_protein:.0f} g protein | "
-        f"{_b_fluid:.0f} mL fluid provided**"
-    )
-
-    # --- Add tube feed ---
-    with st.expander("➕ 💉 Add tube feed"):
-        tf1, tf2, tf3 = st.columns([1, 2, 1])
-        tf_time = tf1.time_input("Time (optional)", value=None, key="tf_time_input")
-        _source_options, _source_map = _intake_source_options()
-        tf_source_label = tf2.selectbox("Source", _source_options, key="tf_source_select")
-        tf_amount = tf3.number_input(
-            "Volume (mL)", min_value=0.0, value=0.0, step=10.0, format="%g", key="tf_amount_input"
-        )
-        if st.button("Add tube feed row", key="tf_add_btn"):
-            if tf_amount > 0:
-                tf_source_type, tf_source_id = _source_map[tf_source_label]
-                st.session_state.next_intake_id += 1
-                st.session_state.intake_log.append(
-                    {
-                        "id": st.session_state.next_intake_id,
-                        "time": tf_time,
-                        "source_type": tf_source_type,
-                        "source_id": tf_source_id,
-                        "food_description": None,
-                        "amount": float(tf_amount),
-                        "unit": "mL",
-                        "counts_as_fluid": tf_source_type == "flush",
-                    }
-                )
-                st.rerun()
-            else:
-                st.warning("Enter a volume greater than 0 mL.")
-
-    # --- Add water flush: three precisions, one list (author feedback
-    # 2026-07-20). A single flush for the precise; a with-feeds
-    # calculation for the common "60 mL before and after each feed"
-    # pattern; a rough daily figure for med flushes (no meds list --
-    # deliberately). All produce ordinary flush rows in the one
-    # intake_log, summed the same way as everything else.
-    # Sits right after "Add tube feed": flushes are part of the
-    # tube-feeding routine (before/after feeds, med flushes down the
-    # tube), so they group with the tube-side entry; oral intake is the
-    # other route entirely and goes last (author feedback 2026-07-20).
-    with st.expander("➕ 💧 Add water flushes"):
-        _flush_mode = st.radio(
-            "How do you want to count flushes?",
-            ["Single flush", "With feeds (calculated)", "Med flushes (daily, rough)"],
-            horizontal=True,
-            key="flush_mode",
-        )
-        _flush_label = "Water flush"
-        _flush_time = None
-        _flush_total = 0.0
-        if _flush_mode == "Single flush":
-            _sf1, _sf2 = st.columns(2)
-            _flush_time = _sf1.time_input("Time (optional)", value=None, key="flush_single_time")
-            _flush_total = _sf2.number_input(
-                "Volume (mL)",
-                min_value=0.0,
-                value=0.0,
-                step=10.0,
-                format="%g",
-                key="flush_single_amount",
-            )
-        elif _flush_mode == "With feeds (calculated)":
-            _n_feeds = sum(
-                1 for r in st.session_state.intake_log if r["source_type"] in ("blend", "formula")
-            )
-            _wf1, _wf2 = st.columns(2)
-            _per_flush = _wf1.number_input(
-                "mL per flush",
-                min_value=0.0,
-                value=60.0,
-                step=10.0,
-                format="%g",
-                key="flush_per",
-            )
-            _per_feed = _wf2.number_input(
-                "Flushes per feed",
-                min_value=1,
-                value=2,
-                step=1,
-                key="flush_per_feed",
-            )
-            _flush_total = _per_flush * _per_feed * _n_feeds
-            _flush_label = "Water flushes with feeds"
-            st.caption(
-                f"{_n_feeds} tube feed(s) in the record × {_per_feed} flush(es) × "
-                f"{_per_flush:.0f} mL = **{_flush_total:.0f} mL**"
-            )
-        else:
-            _flush_total = _narrow(1, 3).number_input(
-                "Med flushes (mL/day — a rough figure is fine)",
-                min_value=0.0,
-                value=100.0,
-                step=10.0,
-                format="%g",
-                key="flush_med_amount",
-            )
-            _flush_label = "Med flushes"
-        if st.button("Add flush row", key="flush_add_btn"):
-            if _flush_total > 0:
-                st.session_state.next_intake_id += 1
-                st.session_state.intake_log.append(
-                    {
-                        "id": st.session_state.next_intake_id,
-                        "time": _flush_time,
-                        "source_type": "flush",
-                        "source_id": None,
-                        "food_description": _flush_label,
-                        "amount": float(_flush_total),
-                        "unit": "mL",
-                        "counts_as_fluid": True,
-                    }
-                )
-                st.rerun()
-            else:
-                st.warning("The flush total is 0 mL — nothing to add.")
-
-    # --- Add oral intake (inline expander -- see _render_add_oral_ui()'s
-    # docstring for why this is an expander rather than st.dialog).
-    # Last of the three adders: the oral route, its own category
-    # (author feedback 2026-07-20). ---
-    with st.expander("➕ 🍌 Add oral intake (food/drink)"):
-        _render_add_oral_ui(fn, na, lookup, fg)
-
-    # --- Row list: grouped by section header, one underlying list
-    # (section 6.3 — "Tube Feed" and "Food & Drink" are a DISPLAY
-    # grouping, not two separately-maintained logs). Chronological, rows
-    # with no time sort last (section 6.1); each row removable.
-    if not st.session_state.intake_log:
-        st.caption("No intake logged yet.")
-    else:
-        _ordered_rows = sorted_intake_log(st.session_state.intake_log)
-        _tube_rows = [r for r in _ordered_rows if r["source_type"] in ("blend", "formula", "flush")]
-        _oral_rows = [r for r in _ordered_rows if r["source_type"] == "oral"]
-
-        def _render_intake_row(row: dict, index: int) -> None:
-            # Banded rows (Change 1.6, author request 2026-08-15) -- same
-            # .st-key-zebrarow/.plainrow CSS hook as the Ingredients list.
-            # `index` is a running count across BOTH the Tube Feed and
-            # Food & Drink groups below (not restarted per group), so the
-            # stripe reads as one continuous 19-row list, matching the
-            # "Everything given" framing above the expander.
-            _band = "zebrarow" if index % 2 else "plainrow"
-            with st.container(key=f"{_band}_intake_{row['id']}"):
-                rc1, rc2 = st.columns([6, 1])
-                rc1.write(_intake_row_label(row))
-                if rc2.button("❌", key=f"del_intake_{row['id']}"):
-                    st.session_state.intake_log = [
-                        r for r in st.session_state.intake_log if r["id"] != row["id"]
-                    ]
-                    st.rerun()
-
-        # Collapsed once the day gets long (author, 2026-08-01). A real
-        # day is mostly flushes -- the example day is 19 rows, 11 of them
-        # water and 8 of those an identical 30 mL -- and every row is a
-        # full-width line with its own delete button. That pushed the
-        # day's actual OUTPUT (per-source breakdown, adequacy, chart
-        # note) roughly a screen and a half down the page, so the numbers
-        # the RD came for sat below a wall of "30 mL flush".
-        #
-        # Collapsing, not paginating or summarising: the rows still have
-        # to be individually deletable (grouping "8 x 30 mL" into one
-        # line would take that away), and they are still ONE list under a
-        # display grouping, exactly as before -- section 6.3 is untouched.
-        # Short days stay open so a new user sees rows appear as they add
-        # them; the collapse only kicks in once scrolling was going to be
-        # the problem anyway.
-        # Names the DISTINCT things given, with how many times each was
-        # given -- not a row count per source_type (author, 2026-08-01).
-        # The first version of this line read "4 blend feeds, 3 formulas"
-        # for a day that had ONE blend given four times and ONE product
-        # given three times. That reads as four different blends, which is
-        # the kind of number an RD notices first and stops trusting the
-        # rest of the page over.
-        #
-        # Flushes are named but NOT counted: eleven of them is noise in a
-        # summary line, and "did I flush" is the question, not "how many
-        # times". They're still individually listed and deletable inside.
-        # Oral rows are counted as ONE category, not named individually
-        # (author, 2026-08-01). A blend and a commercial feed are each a
-        # thing you gave repeatedly, so naming them earns its space; the
-        # food and drink side is "did they eat anything, how much", and
-        # listing every banana crowds the line without answering it. The
-        # category name matches the section header the rows sit under
-        # inside, so the label and the list use one vocabulary.
-        _n_rows = len(_ordered_rows)
-        _times_given: dict[tuple, int] = {}
-        _order: list[tuple] = []
-        for _r in _ordered_rows:
-            if _r["source_type"] in ("blend", "formula"):
-                _key = (_r["source_type"], _r["source_id"])
-                if _key not in _times_given:
-                    _times_given[_key] = 0
-                    _order.append(_key)
-                _times_given[_key] += 1
-
-        _parts: list[str] = []
-        for _key in _order:
-            _stype, _sid = _key
-            if _stype == "blend":
-                _nm = st.session_state.blends.get(_sid, {}).get("name") or f"Blend {_sid}"
-            else:
-                _nm = str(_sid)
-            _n = _times_given[_key]
-            _parts.append(f"{_nm} ×{_n}" if _n > 1 else _nm)
-
-        # A day drawing on many feeds would otherwise run the label off
-        # the edge of the expander.
-        if len(_parts) > 3:
-            _parts = _parts[:3] + [f"+{len(_parts) - 3} more"]
-
-        if any(_r["source_type"] == "flush" for _r in _ordered_rows):
-            _parts.append("water flushes")
-        _n_oral = sum(1 for _r in _ordered_rows if _r["source_type"] == "oral")
-        if _n_oral:
-            _parts.append(f"{FOOD_DRINK_LABEL} ×{_n_oral}")
-
-        _summary = f"📋 Everything given ({_n_rows} row{'' if _n_rows == 1 else 's'})"
-        if _parts:
-            _summary += " — " + ", ".join(_parts)
-
-        with st.expander(_summary, expanded=_n_rows <= ROW_LIST_COLLAPSE_THRESHOLD):
-            _row_idx = 0
-            if _tube_rows:
-                st.markdown(f"*{TUBE_FEED_LABEL}*")
-                for _row in _tube_rows:
-                    _render_intake_row(_row, _row_idx)
-                    _row_idx += 1
-            if _oral_rows:
-                st.markdown(f"*{FOOD_DRINK_LABEL}*")
-                for _row in _oral_rows:
-                    _render_intake_row(_row, _row_idx)
-                    _row_idx += 1
-
-
-with recipes_tab:
     st.divider()
 
     # --- Per-blend density panel (EVERY blend, not just selected --
@@ -2327,173 +2059,6 @@ with recipes_tab:
                 generate_density_summary(selected_profile), width="content", hide_index=True
             )
 
-with record_tab:
-    st.divider()
-
-    # --- Daily totals, adequacy, micro screen, per-kg, per-source
-    # breakdown -- all computed from the Intake Record via
-    # src.intake.aggregate_intake() (design doc section 3.5). ---
-    intake_totals = aggregate_intake(
-        st.session_state.intake_log,
-        st.session_state.blends,
-        na,
-        custom_foods=st.session_state.custom_foods,
-    )
-
-    if not st.session_state.intake_log:
-        _note("Add rows to the Intake Record above to see daily totals.")
-    else:
-        # --- Per-source subtotal breakdown (design doc section 3.5) ---
-        st.subheader("Per-Source Breakdown")
-        st.caption(
-            f'"{TUBE_FEED_LABEL}" vs "{FOOD_DRINK_LABEL}" vs "{TOTAL_LABEL}" — combined '
-            "numbers, with the split still visible."
-        )
-        with st.container(key="fullbleed_source_breakdown"):
-            st.dataframe(generate_source_breakdown(intake_totals), width="stretch", hide_index=True)
-
-        # --- Water ledger: every source on its own line (author, 2026-07-30) ---
-        _water_ledger = generate_water_ledger(intake_totals.water_sources)
-        if not _water_ledger.empty:
-            st.subheader("Where the Water Came From")
-            st.caption(
-                "Free water is water that arrived as part of something fed — "
-                "including tap water blended into a recipe, since in the recipe "
-                "it *is* the recipe. Water flushes are water given as water, so "
-                "they sit on their own and add on top."
-            )
-            st.dataframe(_water_ledger, width="content", hide_index=True)
-
-        st.subheader("Daily Totals & Adequacy")
-        st.caption(
-            "A direct sum over the Intake Record (above) — never "
-            "extrapolated from a batch volume against a schedule."
-        )
-
-        adequacy_df, hidden_main_names = generate_adequacy_report(
-            intake_totals.nutrient_totals,
-            targets,
-            fluid_provided_mL=intake_totals.fluid_provided_mL,
-            nutrient_coverage=intake_totals.nutrient_coverage,
-            patient_weight_kg=patient_weight_kg if patient_weight_kg > 0 else None,
-        )
-        adequacy_display = adequacy_df.copy()
-        adequacy_display["Target"] = adequacy_display["Target"].astype(str)
-        adequacy_display["% Target"] = adequacy_display["% Target"].astype(str)
-        # Mixed floats and "—" in one column, same convention as Target /
-        # % Target above -- cast so Arrow isn't fixing a mixed-type column
-        # on every render.
-        if "Per kg" in adequacy_display.columns:
-            adequacy_display["Per kg"] = adequacy_display["Per kg"].astype(str)
-        # Provenance (Source / Coverage) moves to its own expander below
-        # (author feedback 2026-08-14). Nine columns competed for width here
-        # and the text ones lost -- Source in particular truncated on exactly
-        # the rows whose provenance is least obvious. It is still one click
-        # away, and generate_adequacy_report() still RETURNS all nine, so the
-        # Excel export below is untouched.
-        _PROVENANCE_COLS = ["Source", "Coverage"]
-        _main_cols = [c for c in adequacy_display.columns if c not in _PROVENANCE_COLS]
-        # Breaks out of the page cap: it is the table the RD reads most, so a
-        # hidden column costs more here than anywhere else.
-        with st.container(key="fullbleed_adequacy"):
-            st.dataframe(
-                adequacy_display[_main_cols].style
-                # Daily Total / Target / % Target arrive from report.py
-                # already formatted as text at each nutrient's own registry
-                # precision (see _fmt there), which is what stops Energy's
-                # 0 dp being dragged to "2204.0" by Protein's 1 dp sharing
-                # the column. The Styler only colours Status now.
-                .map(color_status, subset=["Status"]),
-                # stretch + explicit pixel widths is the only combination
-                # that both guarantees the long cells fit and still scrolls.
-                # width="content" was tried and is wrong here: it leaves the
-                # columns at their measured size without filling the
-                # container, so the table renders narrow with dead space to
-                # its right and can never scroll. The named buckets are no
-                # help either -- small/medium/large are the raw pixel
-                # constants 75/200/400, and medium clipped both columns.
-                #
-                # Sized for the longest value each column carries, both on
-                # the free-water row: "Free water from foods and feeds" (31
-                # chars) and "Informational — see Fluids provided" (35).
-                # These are PIXELS and the cell font is rem-based, so if the
-                # root font-size knob at the top of the style block ever
-                # changes, bump these to match.
-                width="stretch",
-                hide_index=True,
-                column_config={
-                    "Nutrient": st.column_config.TextColumn(width=320),
-                    "Status": st.column_config.TextColumn(width=360),
-                },
-            )
-        st.caption(
-            "Free water counts moisture from CNF foods plus formula-declared "
-            "free water. Water flushes are counted under Fluids provided, not "
-            "here. Foods entered from a label contribute none, because no "
-            "label carries moisture."
-        )
-        with st.expander("Where these numbers came from"):
-            st.dataframe(
-                adequacy_display[["Nutrient", *_PROVENANCE_COLS]],
-                # Widths measured off a rendered screenshot, not guessed:
-                # Source's longest value ("Full volume of counts-as-fluid
-                # ingredients (I&O convention) + flushes", 69 chars) draws
-                # about 500px. An earlier 680 here overflowed the expander
-                # and pushed the Coverage column out of view entirely, so
-                # these are sized to leave Coverage its share.
-                width="stretch",
-                hide_index=True,
-                column_config={
-                    "Nutrient": st.column_config.TextColumn(width=270),
-                    "Source": st.column_config.TextColumn(width=520),
-                },
-            )
-        if hidden_main_names:
-            st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
-
-        with st.expander("BTF micro screen — vitamins & minerals not on labels"):
-            st.caption(
-                'A one-time supplementation screen (ASPEN-style: "does this '
-                "day's intake need a multivitamin?\"), not a daily-tracked panel "
-                "like the table above."
-            )
-            clinical_df, hidden_clinical_names = generate_clinical_screen(
-                intake_totals.nutrient_totals,
-                targets,
-                nutrient_coverage=intake_totals.nutrient_coverage,
-            )
-            if len(clinical_df) > 0:
-                clinical_display = clinical_df.copy()
-                clinical_display["Target"] = clinical_display["Target"].astype(str)
-                clinical_display["% Target"] = clinical_display["% Target"].astype(str)
-                st.dataframe(
-                    clinical_display.style.map(color_status, subset=["Status"]),
-                    width="stretch",
-                    hide_index=True,
-                )
-            if hidden_clinical_names:
-                st.caption(
-                    "Not shown — no data from any ingredient: " + ", ".join(hidden_clinical_names)
-                )
-
-        # Per-kg used to be three st.metric tiles below this table (author,
-        # 2026-08-01). Metrics are the app's loudest display element, which
-        # gave kcal/kg, protein g/kg and fluid mL/kg more visual weight than
-        # the adequacy table they were derived from. They are now a "Per kg"
-        # column inside that table, between Unit and Target, so they read as
-        # another way of looking at the same daily totals rather than a
-        # separate, more important finding.
-
-# At this many eligible blends OR MORE, the comparator's blend rows switch
-# from "everyone automatically" to an explicit st.multiselect (defaulting to
-# all of them) -- same idiom as the formula multiselect just below it.
-# Nothing persists in this app (no accounts), so a session rarely holds many
-# blends, and an always-on picker would be a control most users never need
-# (author, you-know-the-line-vectorized-milner.md, 2026-08-15; confirmed as
-# "at 4, not above 4" 2026-08-16).
-COMPARATOR_BLEND_PICKER_THRESHOLD = 4
-
-with recipes_tab:
     st.divider()
 
     # --- Dilution what-if (operates on the selected blend) ---
@@ -2914,7 +2479,439 @@ with recipes_tab:
             "in the amounts given."
         )
 
+
 with record_tab:
+    st.subheader("Intake Record")
+    st.caption(
+        "What was actually given — tube feed (blends, formulas, flushes) "
+        "and food/drink by mouth, together in one chronological list."
+    )
+
+    # Delivery method: a single free-choice field for chart-note wording
+    # only (FEED_LOG_REWORK.md section 3.4) — it no longer drives any math.
+    # Seed the default only the very first time this key ever exists (see
+    # the same comment by "recipe_name_input" above) -- avoids the
+    # Session-State-vs-value= warning when Load Example presets this key.
+    # Seeded EMPTY, not "Syringe bolus": the placeholder only shows in an
+    # empty field, and a greyed example teaches the format without anyone
+    # having to load the example day first. This line is the chart note's
+    # opening line verbatim, so it needs to show the whole shape.
+    if "delivery_method_input" not in st.session_state:
+        st.session_state["delivery_method_input"] = ""
+    delivery_method = _narrow(1, 1).text_input(
+        "Delivery method (chart-note wording only)",
+        placeholder="Eg: BTF using [feeding tube type, include tube diameter if known], "
+        "via [feeding method]",
+        help="Free text — this becomes the first line of the chart note. "
+        "Doesn't affect any calculation; every row's own amount is what's summed.",
+        key="delivery_method_input",
+    )
+
+    # Always-visible summary line — aggregated NUTRIENT totals, never a
+    # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a
+    # meaningful single number). See FEED_LOG_REWORK.md section 3.4.
+    _banner_totals = aggregate_intake(
+        st.session_state.intake_log,
+        st.session_state.blends,
+        na,
+        custom_foods=st.session_state.custom_foods,
+    )
+    _b_kcal = _banner_totals.nutrient_totals.get("energy_kcal", 0.0)
+    _b_protein = _banner_totals.nutrient_totals.get("protein_g", 0.0)
+    _b_fluid = _banner_totals.fluid_provided_mL
+    st.markdown(
+        f"**Today: ~{_b_kcal:.0f} kcal | {_b_protein:.0f} g protein | "
+        f"{_b_fluid:.0f} mL fluid provided**"
+    )
+
+    # --- Add tube feed ---
+    with st.expander("➕ 💉 Add tube feed"):
+        tf1, tf2, tf3 = st.columns([1, 2, 1])
+        tf_time = tf1.time_input("Time (optional)", value=None, key="tf_time_input")
+        _source_options, _source_map = _intake_source_options()
+        tf_source_label = tf2.selectbox("Source", _source_options, key="tf_source_select")
+        tf_amount = tf3.number_input(
+            "Volume (mL)", min_value=0.0, value=0.0, step=10.0, format="%g", key="tf_amount_input"
+        )
+        if st.button("Add tube feed row", key="tf_add_btn"):
+            if tf_amount > 0:
+                tf_source_type, tf_source_id = _source_map[tf_source_label]
+                st.session_state.next_intake_id += 1
+                st.session_state.intake_log.append(
+                    {
+                        "id": st.session_state.next_intake_id,
+                        "time": tf_time,
+                        "source_type": tf_source_type,
+                        "source_id": tf_source_id,
+                        "food_description": None,
+                        "amount": float(tf_amount),
+                        "unit": "mL",
+                        "counts_as_fluid": tf_source_type == "flush",
+                    }
+                )
+                st.rerun()
+            else:
+                st.warning("Enter a volume greater than 0 mL.")
+
+    # --- Add water flush: three precisions, one list (author feedback
+    # 2026-07-20). A single flush for the precise; a with-feeds
+    # calculation for the common "60 mL before and after each feed"
+    # pattern; a rough daily figure for med flushes (no meds list --
+    # deliberately). All produce ordinary flush rows in the one
+    # intake_log, summed the same way as everything else.
+    # Sits right after "Add tube feed": flushes are part of the
+    # tube-feeding routine (before/after feeds, med flushes down the
+    # tube), so they group with the tube-side entry; oral intake is the
+    # other route entirely and goes last (author feedback 2026-07-20).
+    with st.expander("➕ 💧 Add water flushes"):
+        _flush_mode = st.radio(
+            "How do you want to count flushes?",
+            ["Single flush", "With feeds (calculated)", "Med flushes (daily, rough)"],
+            horizontal=True,
+            key="flush_mode",
+        )
+        _flush_label = "Water flush"
+        _flush_time = None
+        _flush_total = 0.0
+        if _flush_mode == "Single flush":
+            _sf1, _sf2 = st.columns(2)
+            _flush_time = _sf1.time_input("Time (optional)", value=None, key="flush_single_time")
+            _flush_total = _sf2.number_input(
+                "Volume (mL)",
+                min_value=0.0,
+                value=0.0,
+                step=10.0,
+                format="%g",
+                key="flush_single_amount",
+            )
+        elif _flush_mode == "With feeds (calculated)":
+            _n_feeds = sum(
+                1 for r in st.session_state.intake_log if r["source_type"] in ("blend", "formula")
+            )
+            _wf1, _wf2 = st.columns(2)
+            _per_flush = _wf1.number_input(
+                "mL per flush",
+                min_value=0.0,
+                value=60.0,
+                step=10.0,
+                format="%g",
+                key="flush_per",
+            )
+            _per_feed = _wf2.number_input(
+                "Flushes per feed",
+                min_value=1,
+                value=2,
+                step=1,
+                key="flush_per_feed",
+            )
+            _flush_total = _per_flush * _per_feed * _n_feeds
+            _flush_label = "Water flushes with feeds"
+            st.caption(
+                f"{_n_feeds} tube feed(s) in the record × {_per_feed} flush(es) × "
+                f"{_per_flush:.0f} mL = **{_flush_total:.0f} mL**"
+            )
+        else:
+            _flush_total = _narrow(1, 3).number_input(
+                "Med flushes (mL/day — a rough figure is fine)",
+                min_value=0.0,
+                value=100.0,
+                step=10.0,
+                format="%g",
+                key="flush_med_amount",
+            )
+            _flush_label = "Med flushes"
+        if st.button("Add flush row", key="flush_add_btn"):
+            if _flush_total > 0:
+                st.session_state.next_intake_id += 1
+                st.session_state.intake_log.append(
+                    {
+                        "id": st.session_state.next_intake_id,
+                        "time": _flush_time,
+                        "source_type": "flush",
+                        "source_id": None,
+                        "food_description": _flush_label,
+                        "amount": float(_flush_total),
+                        "unit": "mL",
+                        "counts_as_fluid": True,
+                    }
+                )
+                st.rerun()
+            else:
+                st.warning("The flush total is 0 mL — nothing to add.")
+
+    # --- Add oral intake (inline expander -- see _render_add_oral_ui()'s
+    # docstring for why this is an expander rather than st.dialog).
+    # Last of the three adders: the oral route, its own category
+    # (author feedback 2026-07-20). ---
+    with st.expander("➕ 🍌 Add oral intake (food/drink)"):
+        _render_add_oral_ui(fn, na, lookup, fg)
+
+    # --- Row list: grouped by section header, one underlying list
+    # (section 6.3 — "Tube Feed" and "Food & Drink" are a DISPLAY
+    # grouping, not two separately-maintained logs). Chronological, rows
+    # with no time sort last (section 6.1); each row removable.
+    if not st.session_state.intake_log:
+        st.caption("No intake logged yet.")
+    else:
+        _ordered_rows = sorted_intake_log(st.session_state.intake_log)
+        _tube_rows = [r for r in _ordered_rows if r["source_type"] in ("blend", "formula", "flush")]
+        _oral_rows = [r for r in _ordered_rows if r["source_type"] == "oral"]
+
+        def _render_intake_row(row: dict, index: int) -> None:
+            # Banded rows (Change 1.6, author request 2026-08-15) -- same
+            # .st-key-zebrarow/.plainrow CSS hook as the Ingredients list.
+            # `index` is a running count across BOTH the Tube Feed and
+            # Food & Drink groups below (not restarted per group), so the
+            # stripe reads as one continuous 19-row list, matching the
+            # "Everything given" framing above the expander.
+            _band = "zebrarow" if index % 2 else "plainrow"
+            with st.container(key=f"{_band}_intake_{row['id']}"):
+                rc1, rc2 = st.columns([6, 1])
+                rc1.write(_intake_row_label(row))
+                if rc2.button("❌", key=f"del_intake_{row['id']}"):
+                    st.session_state.intake_log = [
+                        r for r in st.session_state.intake_log if r["id"] != row["id"]
+                    ]
+                    st.rerun()
+
+        # Collapsed once the day gets long (author, 2026-08-01). A real
+        # day is mostly flushes -- the example day is 19 rows, 11 of them
+        # water and 8 of those an identical 30 mL -- and every row is a
+        # full-width line with its own delete button. That pushed the
+        # day's actual OUTPUT (per-source breakdown, adequacy, chart
+        # note) roughly a screen and a half down the page, so the numbers
+        # the RD came for sat below a wall of "30 mL flush".
+        #
+        # Collapsing, not paginating or summarising: the rows still have
+        # to be individually deletable (grouping "8 x 30 mL" into one
+        # line would take that away), and they are still ONE list under a
+        # display grouping, exactly as before -- section 6.3 is untouched.
+        # Short days stay open so a new user sees rows appear as they add
+        # them; the collapse only kicks in once scrolling was going to be
+        # the problem anyway.
+        # Names the DISTINCT things given, with how many times each was
+        # given -- not a row count per source_type (author, 2026-08-01).
+        # The first version of this line read "4 blend feeds, 3 formulas"
+        # for a day that had ONE blend given four times and ONE product
+        # given three times. That reads as four different blends, which is
+        # the kind of number an RD notices first and stops trusting the
+        # rest of the page over.
+        #
+        # Flushes are named but NOT counted: eleven of them is noise in a
+        # summary line, and "did I flush" is the question, not "how many
+        # times". They're still individually listed and deletable inside.
+        # Oral rows are counted as ONE category, not named individually
+        # (author, 2026-08-01). A blend and a commercial feed are each a
+        # thing you gave repeatedly, so naming them earns its space; the
+        # food and drink side is "did they eat anything, how much", and
+        # listing every banana crowds the line without answering it. The
+        # category name matches the section header the rows sit under
+        # inside, so the label and the list use one vocabulary.
+        _n_rows = len(_ordered_rows)
+        _times_given: dict[tuple, int] = {}
+        _order: list[tuple] = []
+        for _r in _ordered_rows:
+            if _r["source_type"] in ("blend", "formula"):
+                _key = (_r["source_type"], _r["source_id"])
+                if _key not in _times_given:
+                    _times_given[_key] = 0
+                    _order.append(_key)
+                _times_given[_key] += 1
+
+        _parts: list[str] = []
+        for _key in _order:
+            _stype, _sid = _key
+            if _stype == "blend":
+                _nm = st.session_state.blends.get(_sid, {}).get("name") or f"Blend {_sid}"
+            else:
+                _nm = str(_sid)
+            _n = _times_given[_key]
+            _parts.append(f"{_nm} ×{_n}" if _n > 1 else _nm)
+
+        # A day drawing on many feeds would otherwise run the label off
+        # the edge of the expander.
+        if len(_parts) > 3:
+            _parts = _parts[:3] + [f"+{len(_parts) - 3} more"]
+
+        if any(_r["source_type"] == "flush" for _r in _ordered_rows):
+            _parts.append("water flushes")
+        _n_oral = sum(1 for _r in _ordered_rows if _r["source_type"] == "oral")
+        if _n_oral:
+            _parts.append(f"{FOOD_DRINK_LABEL} ×{_n_oral}")
+
+        _summary = f"📋 Everything given ({_n_rows} row{'' if _n_rows == 1 else 's'})"
+        if _parts:
+            _summary += " — " + ", ".join(_parts)
+
+        with st.expander(_summary, expanded=_n_rows <= ROW_LIST_COLLAPSE_THRESHOLD):
+            _row_idx = 0
+            if _tube_rows:
+                st.markdown(f"*{TUBE_FEED_LABEL}*")
+                for _row in _tube_rows:
+                    _render_intake_row(_row, _row_idx)
+                    _row_idx += 1
+            if _oral_rows:
+                st.markdown(f"*{FOOD_DRINK_LABEL}*")
+                for _row in _oral_rows:
+                    _render_intake_row(_row, _row_idx)
+                    _row_idx += 1
+
+    st.divider()
+
+    # --- Daily totals, adequacy, micro screen, per-kg, per-source
+    # breakdown -- all computed from the Intake Record via
+    # src.intake.aggregate_intake() (design doc section 3.5). ---
+    intake_totals = aggregate_intake(
+        st.session_state.intake_log,
+        st.session_state.blends,
+        na,
+        custom_foods=st.session_state.custom_foods,
+    )
+
+    if not st.session_state.intake_log:
+        _note("Add rows to the Intake Record above to see daily totals.")
+    else:
+        # --- Per-source subtotal breakdown (design doc section 3.5) ---
+        st.subheader("Per-Source Breakdown")
+        st.caption(
+            f'"{TUBE_FEED_LABEL}" vs "{FOOD_DRINK_LABEL}" vs "{TOTAL_LABEL}" — combined '
+            "numbers, with the split still visible."
+        )
+        with st.container(key="fullbleed_source_breakdown"):
+            st.dataframe(generate_source_breakdown(intake_totals), width="stretch", hide_index=True)
+
+        # --- Water ledger: every source on its own line (author, 2026-07-30) ---
+        _water_ledger = generate_water_ledger(intake_totals.water_sources)
+        if not _water_ledger.empty:
+            st.subheader("Where the Water Came From")
+            st.caption(
+                "Free water is water that arrived as part of something fed — "
+                "including tap water blended into a recipe, since in the recipe "
+                "it *is* the recipe. Water flushes are water given as water, so "
+                "they sit on their own and add on top."
+            )
+            st.dataframe(_water_ledger, width="content", hide_index=True)
+
+        st.subheader("Daily Totals & Adequacy")
+        st.caption(
+            "A direct sum over the Intake Record (above) — never "
+            "extrapolated from a batch volume against a schedule."
+        )
+
+        adequacy_df, hidden_main_names = generate_adequacy_report(
+            intake_totals.nutrient_totals,
+            targets,
+            fluid_provided_mL=intake_totals.fluid_provided_mL,
+            nutrient_coverage=intake_totals.nutrient_coverage,
+            patient_weight_kg=patient_weight_kg if patient_weight_kg > 0 else None,
+        )
+        adequacy_display = adequacy_df.copy()
+        adequacy_display["Target"] = adequacy_display["Target"].astype(str)
+        adequacy_display["% Target"] = adequacy_display["% Target"].astype(str)
+        # Mixed floats and "—" in one column, same convention as Target /
+        # % Target above -- cast so Arrow isn't fixing a mixed-type column
+        # on every render.
+        if "Per kg" in adequacy_display.columns:
+            adequacy_display["Per kg"] = adequacy_display["Per kg"].astype(str)
+        # Provenance (Source / Coverage) moves to its own expander below
+        # (author feedback 2026-08-14). Nine columns competed for width here
+        # and the text ones lost -- Source in particular truncated on exactly
+        # the rows whose provenance is least obvious. It is still one click
+        # away, and generate_adequacy_report() still RETURNS all nine, so the
+        # Excel export below is untouched.
+        _PROVENANCE_COLS = ["Source", "Coverage"]
+        _main_cols = [c for c in adequacy_display.columns if c not in _PROVENANCE_COLS]
+        # Breaks out of the page cap: it is the table the RD reads most, so a
+        # hidden column costs more here than anywhere else.
+        with st.container(key="fullbleed_adequacy"):
+            st.dataframe(
+                adequacy_display[_main_cols].style
+                # Daily Total / Target / % Target arrive from report.py
+                # already formatted as text at each nutrient's own registry
+                # precision (see _fmt there), which is what stops Energy's
+                # 0 dp being dragged to "2204.0" by Protein's 1 dp sharing
+                # the column. The Styler only colours Status now.
+                .map(color_status, subset=["Status"]),
+                # stretch + explicit pixel widths is the only combination
+                # that both guarantees the long cells fit and still scrolls.
+                # width="content" was tried and is wrong here: it leaves the
+                # columns at their measured size without filling the
+                # container, so the table renders narrow with dead space to
+                # its right and can never scroll. The named buckets are no
+                # help either -- small/medium/large are the raw pixel
+                # constants 75/200/400, and medium clipped both columns.
+                #
+                # Sized for the longest value each column carries, both on
+                # the free-water row: "Free water from foods and feeds" (31
+                # chars) and "Informational — see Fluids provided" (35).
+                # These are PIXELS and the cell font is rem-based, so if the
+                # root font-size knob at the top of the style block ever
+                # changes, bump these to match.
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "Nutrient": st.column_config.TextColumn(width=320),
+                    "Status": st.column_config.TextColumn(width=360),
+                },
+            )
+        st.caption(
+            "Free water counts moisture from CNF foods plus formula-declared "
+            "free water. Water flushes are counted under Fluids provided, not "
+            "here. Foods entered from a label contribute none, because no "
+            "label carries moisture."
+        )
+        with st.expander("Where these numbers came from"):
+            st.dataframe(
+                adequacy_display[["Nutrient", *_PROVENANCE_COLS]],
+                # Widths measured off a rendered screenshot, not guessed:
+                # Source's longest value ("Full volume of counts-as-fluid
+                # ingredients (I&O convention) + flushes", 69 chars) draws
+                # about 500px. An earlier 680 here overflowed the expander
+                # and pushed the Coverage column out of view entirely, so
+                # these are sized to leave Coverage its share.
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "Nutrient": st.column_config.TextColumn(width=270),
+                    "Source": st.column_config.TextColumn(width=520),
+                },
+            )
+        if hidden_main_names:
+            st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
+
+        with st.expander("BTF micro screen — vitamins & minerals not on labels"):
+            st.caption(
+                'A one-time supplementation screen (ASPEN-style: "does this '
+                "day's intake need a multivitamin?\"), not a daily-tracked panel "
+                "like the table above."
+            )
+            clinical_df, hidden_clinical_names = generate_clinical_screen(
+                intake_totals.nutrient_totals,
+                targets,
+                nutrient_coverage=intake_totals.nutrient_coverage,
+            )
+            if len(clinical_df) > 0:
+                clinical_display = clinical_df.copy()
+                clinical_display["Target"] = clinical_display["Target"].astype(str)
+                clinical_display["% Target"] = clinical_display["% Target"].astype(str)
+                st.dataframe(
+                    clinical_display.style.map(color_status, subset=["Status"]),
+                    width="stretch",
+                    hide_index=True,
+                )
+            if hidden_clinical_names:
+                st.caption(
+                    "Not shown — no data from any ingredient: " + ", ".join(hidden_clinical_names)
+                )
+
+        # Per-kg used to be three st.metric tiles below this table (author,
+        # 2026-08-01). Metrics are the app's loudest display element, which
+        # gave kcal/kg, protein g/kg and fluid mL/kg more visual weight than
+        # the adequacy table they were derived from. They are now a "Per kg"
+        # column inside that table, between Unit and Target, so they read as
+        # another way of looking at the same daily totals rather than a
+        # separate, more important finding.
+
     st.divider()
 
     # --- Chart note: the delivery-method line, then totals by category
