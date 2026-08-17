@@ -121,7 +121,7 @@ def main() -> None:
     print(f"one item:       {labels()}")
 
     # --- The line that states it in words.
-    captions = [c.value for c in at.caption if "kept while switching" in c.value]
+    captions = [c.value for c in at.caption if "stay saved while you switch" in c.value]
     assert captions, "the reassurance caption is missing from under the selector"
     print(f"caption:        {captions[0]}")
 

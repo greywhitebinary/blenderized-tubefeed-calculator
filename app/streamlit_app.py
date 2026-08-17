@@ -1459,11 +1459,17 @@ with recipes_tab:
     # would lose it (author, 2026-08-16) -- the tab closing and taking
     # everything with it is intended behaviour on a shared public server,
     # not a gap to apologise for. The second sentence is the only pointer
-    # to the Recipe Record section, which sits ~1200 lines further down the
+    # to the Recipe Record section, which sits ~800 lines further down the
     # tab, past the density panel and the Dilution What-If.
+    #
+    # Second person here on purpose (author's wording, 2026-08-17). It
+    # describes how the app behaves, and that is where this app uses "you"
+    # -- "Nothing is added until you press Add", "it never overwrites what
+    # you have". Copy about what the NUMBERS mean stays impersonal (the
+    # comparator's caption, the adequacy tables).
     st.caption(
-        "Blends are kept while switching between them. Download a recipe "
-        "to keep it for next time."
+        "Your blends stay saved while you switch between them. To keep "
+        "them for next time, scroll down to save your recipe record."
     )
 
     if bsel2.button("➕ New blend", width="stretch"):
@@ -1514,23 +1520,28 @@ with recipes_tab:
     if st.session_state.get("_renamed_blend_note"):
         _name_col.warning(st.session_state.pop("_renamed_blend_note"))
 
-    # Per-blend density mini-summary — orients the RD before they start
-    # editing ingredients (design doc section 3.3).
-    try:
-        if selected_blend["ingredients"]:
-            _mini_profile, _mini_fluid_frac = resolve_blend_profile(
-                selected_blend, na, st.session_state.custom_foods
+    # The kcal/mL + protein/mL mini-summary that sat here was REMOVED
+    # 2026-08-17 (author). Added 2026-07-19 per FEED_LOG_REWORK.md §3.3
+    # ("helps orient"), it had since been overtaken: the blend selector
+    # above now carries each blend's item count, and the Per-blend density
+    # panel a short scroll down shows the same figures for every blend. It
+    # was also the only place rendering kcal/mL to three decimals where
+    # everything else uses two, so the same blend read 0.720 here and 0.72
+    # below.
+    #
+    # The WARNING it wrapped stays, and is why this block still resolves
+    # the blend: a blend with ingredients but no measured volume can't
+    # produce densities, and this is the only place that says so in the
+    # open. The "Full density summary" expander further down carries the
+    # same message, but it is collapsed by default.
+    if selected_blend["ingredients"]:
+        try:
+            resolve_blend_profile(selected_blend, na, st.session_state.custom_foods)
+        except InvalidBlendError:
+            st.warning(
+                "This blend has ingredients but no measured volume yet — "
+                "densities can't be computed until you enter one below."
             )
-            if selected_blend["measured_volume_mL"] > 0:
-                st.caption(
-                    f"**{_mini_profile.kcal_per_mL:.3f} kcal/mL** · "
-                    f"**{_mini_profile.protein_per_mL:.3f} g protein/mL**"
-                )
-    except InvalidBlendError:
-        st.warning(
-            "This blend has ingredients but no measured volume yet — "
-            "densities can't be computed until you enter one below."
-        )
 
     st.divider()
 
