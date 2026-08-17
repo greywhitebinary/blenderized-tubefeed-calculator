@@ -2566,18 +2566,24 @@ with record_tab:
 
     if _unusable_blends:
         intake_totals = None
-        _names = ", ".join(f'"{n}"' for n in sorted(_unusable_blends))
-        _is_are = "is" if len(_unusable_blends) == 1 else "are"
+        # Author's wording, 2026-08-17. It also happens to demonstrate the
+        # house rule (MAINTAINING.md, "Writing copy for the app"): the two
+        # facts are impersonal, and only the closing instruction addresses
+        # the reader.
+        #
+        # Names are joined without a serial comma, matching the UK/Canadian
+        # style the rest of the copy uses.
+        _quoted = [f'"{n}"' for n in sorted(_unusable_blends)]
+        if len(_quoted) == 1:
+            _names, _plural = _quoted[0], False
+        else:
+            _names, _plural = ", ".join(_quoted[:-1]) + " and " + _quoted[-1], True
         st.warning(
-            f"Today's totals can't be worked out yet. {_names} {_is_are} in the "
-            "Intake Record below but has no measured final volume, so there is no "
-            "density to multiply by. Add the volume on the Feed Recipes tab, under "
-            "Blend details."
-            if len(_unusable_blends) == 1
-            else f"Today's totals can't be worked out yet. {_names} are in the "
-            "Intake Record below but have no measured final volume, so there is no "
-            "density to multiply by. Add a volume for each on the Feed Recipes tab, "
-            "under Blend details."
+            f"The final volume{'s' if _plural else ''} for {_names} "
+            f"{'are' if _plural else 'is'} missing. Without a measured final "
+            "volume, the calculations required for the Intake Record below cannot "
+            f"be completed. Add the volume{'s' if _plural else ''} on the Feed "
+            "Recipes tab under Blend details."
         )
     else:
         # Always-visible summary line — aggregated NUTRIENT totals, never a

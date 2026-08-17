@@ -96,7 +96,8 @@ def main() -> None:
     assert not at.exception, f"clearing a referenced blend's volume crashed the app: {at.exception}"
     print("OK: the page survived")
 
-    warnings = [w.value for w in at.warning if "can't be worked out" in w.value]
+    # Matched on the one phrase common to the singular and plural wording.
+    warnings = [w.value for w in at.warning if "cannot be completed" in w.value]
     assert warnings, f"no warning explaining why totals are missing; warnings were {at.warning}"
     assert blend_name in warnings[0], f"the warning does not name the blend: {warnings[0]!r}"
     print(f"OK: it names the blend -- {warnings[0][:72]}...")
@@ -130,6 +131,41 @@ def main() -> None:
     banner = [m.value for m in at.markdown if m.value.startswith("**Today:")]
     assert banner, "totals did not come back after a volume was entered"
     print(f"OK: warning cleared and totals returned -- {banner[0]}")
+
+    # --- The plural branch. Three words change ("volumes", "are",
+    # "volumes"), and the example record references only ONE blend, so
+    # nothing above can reach this. Give the second blend an intake row
+    # first -- only blends the record actually uses can block totals.
+    other_id = next(b for b in at.session_state["blends"] if b != blend_id)
+    at.session_state["next_intake_id"] += 1
+    at.session_state["intake_log"].append(
+        {
+            "id": at.session_state["next_intake_id"],
+            "time": None,
+            "source_type": "blend",
+            "source_id": other_id,
+            "amount": 200.0,
+            "unit": "mL",
+            "counts_as_fluid": False,
+        }
+    )
+    at.run()
+    for _bid in (blend_id, other_id):
+        next(s for s in at.selectbox if s.key == "blend_selector").set_value(_bid).run()
+        next(n for n in at.number_input if n.key == f"vol_{_bid}").set_value(0.0).run()
+        assert not at.exception, at.exception
+
+    plural = [w.value for w in at.warning if "cannot be completed" in w.value]
+    assert plural, "no warning when two referenced blends both lack a volume"
+    text = plural[0]
+    for expected in ("The final volumes for", "are missing", "Add the volumes"):
+        assert expected in text, f"plural wording wrong -- {expected!r} missing from {text!r}"
+    both = at.session_state["blends"]
+    for _bid in (blend_id, other_id):
+        assert both[_bid]["name"] in text, f"{both[_bid]['name']!r} not named: {text!r}"
+    # Joined without a serial comma, matching the rest of the copy.
+    assert " and " in text and ", and " not in text, f"unexpected list punctuation: {text!r}"
+    print(f"OK: plural reads correctly -- {text[:78]}...")
 
     print("\n=== BLEND WITHOUT VOLUME APPTEST PASSED ===")
 
