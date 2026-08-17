@@ -140,11 +140,17 @@ not prose — leave those alone.)
 who decides. Others to watch: "reach out", "heads-up", "gotten", "off of",
 "different than", "going forward", "circle back".
 
-**4. Do not say "cost" when you mean effect or impact.** This app is used
-in countries with public healthcare, where "cost" reads as money. The
-Dilution What-If used to ask "what would thinning this blend cost you?"
-when the thing being spent is density; it now asks what thinning "does to
-its density". Same for "expensive", "pay for", "worth it".
+**4. Do not say "cost" when you mean effect or impact.** Really this is a
+specific case of rule 3. The figurative "what's it going to cost you?",
+meaning what you give up rather than what you pay, is chiefly American; it
+is used less in Canadian English and, the author believes, in British.
+
+There is a second, smaller reason to avoid it: in countries with public
+healthcare the literal reading is money, which is not the claim being made.
+
+The Dilution What-If asked "what would thinning this blend with water cost
+you?" when the thing being given up is density. It now asks what thinning
+"does to its density". Same care with "expensive", "pay for", "worth it".
 
 Copy changes go past the author before they land — the wording gets
 iterated, and the author is the clinical expert on how it should sound.
