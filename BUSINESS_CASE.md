@@ -41,7 +41,7 @@ side-by-side with a commercial formula at the same volume. And many RDs
 still prefer doing it by hand because they don't trust tools they can't
 audit.
 
-### The sweet spot — thin enough to flow, dense enough to nourish
+### Two constraints at once — thin enough to flow, dense enough to nourish
 
 Every BTF recipe lives in a tension between two physical realities:
 
@@ -61,7 +61,7 @@ Every BTF recipe lives in a tension between two physical realities:
    volume they tolerate. This *is* computable: kcal/mL × tolerated
    volume = daily kcal.
 
-The **sweet spot** is where these two constraints overlap. The RD
+A workable recipe is one where these two constraints overlap. The RD
 iterates: tweak the recipe → check the numbers (tool) → drip test
 (hands-on) → tweak again → until both sides work. BTF recipes should be
 **at most as thick as Resource 2.0** (one of the thickest commercial
@@ -560,7 +560,7 @@ Our differentiators, honestly stated:
 - **Large database + custom entry** — CNF + labels = use what's
   in your kitchen
 - **Per-mL density lens** — kcal/mL as primary metric
-- **Sweet spot awareness** — shows density while RD checks flow
+- **Both constraints visible** — shows density while the RD checks flow
 - **Thinning-liquid comparison** — water vs juice vs broth vs milk
 - **Commercial formula comparator** — side-by-side
 - **Canadian** — CNF data, Canadian fortification, Canadian formulas

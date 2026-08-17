@@ -1968,11 +1968,16 @@ with recipes_tab:
         else f"🧪 Flow test — {_ft_current}{_ft_date_bit}"
     )
     with st.expander(_ft_label):
+        # Reworded 2026-08-17. The previous version called this "the half
+        # of the sweet spot the app can't compute" and said it "records
+        # what your syringe told you" -- a strained metaphor, an internal
+        # glossary term that should never have reached the screen, and a
+        # talking syringe. It also said "the tool" and then "the app" for
+        # the same thing in one sentence.
         st.caption(
-            "Documentation only — the tool can't measure viscosity or tube "
-            "flow. This is the half of the sweet spot the app can't compute: "
-            "it records what your syringe told you, and it belongs to this "
-            "blend, so the chart note can say which recipe it refers to."
+            "Documentation only. Flow through a tube is measured, not "
+            "calculated, so a syringe test is recorded here against this "
+            "blend, and the chart note can then name the recipe tested."
         )
         ft1, ft2 = st.columns(2)
         flow_test_date = ft1.date_input(

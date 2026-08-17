@@ -78,7 +78,7 @@ to it. The full business case, market analysis, and methodology are in
    / Appendix A8 for the full resolution of the long-pinned
    "dilution-slider vs. live recipe adjustment" question.
 
-**The sweet spot — thin enough to flow, dense enough to nourish:**
+**Two constraints at once — thin enough to flow, dense enough to nourish:**
 Every BTF recipe lives in a tension between two physical realities:
 thin enough to flow through the tube (checked by the RD with a drip
 test — no app can measure viscosity) and dense enough to nourish
@@ -407,8 +407,10 @@ author can compare their fixes or unblock themselves if stuck for too long.
   with `.iterrows()` (which is a code smell).
 - **BOM (Byte Order Mark)** — a `﻿` character at the start of some
   UTF-8 files; `encoding="utf-8-sig"` strips it.
-- **Sweet spot** — the overlap between "thin enough to flow" (RD's
-  drip test) and "dense enough to nourish" (tool's density calc).
+- **The two constraints** — a workable recipe is both "thin enough to
+  flow" (the RD's drip test) and "dense enough to nourish" (the app's
+  density calculation). Called "the sweet spot" until 2026-08-17, when
+  the author retired the phrase as marketing language.
 - **Drip test** — hands-on check: pull blended food in a 50–60 mL
   syringe without resistance (AHS 2021). The tool can't replace this.
 - **Thickness ceiling** — BTF recipes should be at most as thick as
