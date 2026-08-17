@@ -1286,335 +1286,36 @@ st.set_page_config(
     layout="wide",
 )
 
-# Tab labels as big as a subheading — Streamlit doesn't expose this as a
-# parameter, so it's injected CSS. Verified against Streamlit 1.58's actual
-# compiled frontend bundle: each tab button renders as
-# `<button data-testid="stTab">` wrapping a
-# `[data-testid="stMarkdownContainer"]` div whose `<p>` carries the label.
-# The maroon accent itself (selected-tab indicator, radios, sliders) comes
-# from .streamlit/config.toml's primaryColor; this block handles what the
-# theme can't: label size, bold, spacing, and selected-label colour
-# (author theming request 2026-07-20, Dietitians-of-Canada-style maroon).
-st.markdown(
+
+@st.cache_data(show_spinner=False)
+def _stylesheet() -> str:
+    """The app's stylesheet, read from app/styles.css.
+
+    Lifted out of this module 2026-08-16: 313 lines of CSS inside a Python
+    string got no syntax highlighting and its diffs read as Python. Cached
+    so it is read from disk once per session rather than on every rerun.
+
+    WHAT IT IS FOR. The maroon accent itself (selected-tab indicator,
+    radios, sliders) comes from .streamlit/config.toml's primaryColor; this
+    stylesheet handles what the theme can't -- label size, bold, spacing,
+    and selected-label colour (author theming request 2026-07-20,
+    Dietitians-of-Canada-style maroon). Tab labels as big as a subheading
+    are the clearest example: Streamlit exposes no parameter for it, so it
+    has to be injected. Those selectors were verified against Streamlit
+    1.58's compiled frontend bundle -- each tab button renders as
+    `<button data-testid="stTab">` wrapping a
+    `[data-testid="stMarkdownContainer"]` div whose `<p>` carries the
+    label -- which is why requirements.txt pins 1.58 exactly.
+
+    The two remaining <style> blocks in this file stay inline on purpose:
+    each is a couple of lines scoped to the one widget below it
+    (render_add_food_ui's, and _show_demo_video's iframe reset), and moving
+    them here would separate them from the thing they style.
     """
-    <style>
-    /* Base font bump: Streamlit's default body text is 16px, at the
-       small end of typical websites (~16-19px). Nearly everything in
-       Streamlit is sized in rem, so scaling the root scales the whole
-       app proportionally -- tab labels, tables, inputs, captions.
-       112.5% (18px) still read small to the author; 125% = 20px
-       (author feedback 2026-07-20). Tune this one number to resize the
-       whole app. */
-    html {
-        font-size: 125%;
-    }
-    /* Trim Streamlit's large default top padding on the main content
-       block (it reserves room to clear the top toolbar). The default
-       leaves a big empty gap above the first element; this keeps a
-       little breathing room below the Cloud toolbar without the void.
-       Both selectors cover Streamlit version drift in the testid name.
+    return (PROJECT_ROOT / "app" / "styles.css").read_text()
 
-       3.75rem matches the height of Streamlit's fixed header, which
-       page content scrolls under -- anything less clips the first
-       element. Tune this one number. */
-    .stApp [data-testid="stMainBlockContainer"],
-    .stApp .block-container {
-        padding-top: 3.75rem !important;
-    }
-    /* Tab-label sizing, version-resilient. Streamlit's tab DOM attribute
-       has drifted across releases (data-baseweb="tab" on older builds,
-       data-testid="stTab" on newer) and attribute selectors kept missing
-       on the Streamlit Community Cloud runtime while matching the local
-       .venv (1.58) -- same code, different rendered DOM. The ARIA
-       role="tab" is the one attribute BaseWeb sets on the tab button in
-       EVERY version, so lead with it; the data-* selectors stay as extra
-       coverage. Target the button plus every plausible text wrapper (p /
-       div / span), and use !important -- Streamlit sizes the inner <p> in
-       rem itself, which otherwise wins over a plain rule. */
-    button[role="tab"],
-    button[data-testid="stTab"],
-    button[data-baseweb="tab"] {
-        padding-top: 0.4rem;
-        padding-bottom: 0.4rem;
-        margin-right: 1.25rem;
-    }
-    /* Target ONLY the tab's text <p>, via the version-stable role="tab".
-       An earlier pass also matched div/span wrappers with blanket
-       !important; on Streamlit 1.60 that compounded into oversized, clunky
-       tabs. A single !important on the <p>'s font-size is enough to beat
-       Streamlit's own rem sizing without blowing up the layout. */
-    button[role="tab"] p,
-    button[data-testid="stTab"] p,
-    button[data-baseweb="tab"] p {
-        font-size: 1.25rem !important;
-        font-weight: 700;
-    }
-    button[role="tab"][aria-selected="true"] p,
-    button[data-testid="stTab"][aria-selected="true"] p,
-    button[data-baseweb="tab"][aria-selected="true"] p {
-        color: #A4243A;
-    }
-    /* Heading scale -- two tiers, author-tuned on the deploy.
-       Tier A: page title (h1) sized to match the tab labels (both 1.25rem,
-       bold) -- title must be no larger than the tabs. Tier B: section
-       headings (h3 = st.subheader, the one consistent section-heading
-       style -- bold-markdown pseudo-headings were converted to
-       st.subheader so every section heading matches) a clear step down at
-       1.05rem. h2 = st.header, currently unused; kept between the tiers.
-       High specificity + !important is REQUIRED: on Streamlit 1.60 (the
-       Cloud runtime) the framework sizes headings via a CLASS selector,
-       which outranks a bare `h1 { ...!important }` (specificity is checked
-       before importance), so plain rules applied locally on 1.58 but lost
-       on the deploy. Prefixing with the stable stApp / stHeading container
-       selectors raises specificity above Streamlit's own rule. */
-    .stApp h1,
-    [data-testid="stAppViewContainer"] h1,
-    [data-testid="stHeadingWithActionElements"] h1 { font-size: 1.5rem !important; }
-    .stApp h2,
-    [data-testid="stAppViewContainer"] h2,
-    [data-testid="stHeadingWithActionElements"] h2 { font-size: 1.15rem !important; }
-    .stApp h3,
-    [data-testid="stAppViewContainer"] h3,
-    [data-testid="stHeadingWithActionElements"] h3 { font-size: 1.05rem !important; }
 
-    /* Desktop page width (author feedback 2026-08-14). layout="wide" removes
-       Streamlit's width limit entirely, which is right for the report tables
-       and wrong for everything else: on a large monitor a number box holding
-       "1.0" ran the full screen and caption paragraphs ran past a readable
-       line length. Cap the column here; the few tables that genuinely need
-       the whole screen break out of it below.
-
-       60rem, not 1200px, so this scales with the font-size knob at the top of
-       this block instead of fighting it. Tune this one number. It has no
-       effect on a phone, where the viewport is already narrower than the cap.
-
-       LEFT-justified, not centred (author feedback 2026-08-14). Streamlit
-       centres the block with margin:auto, which put the capped reading column
-       in the middle of the screen while a full-width table was centred on the
-       VIEWPORT -- so the wide tables started further left than every heading
-       above them and read as misaligned rather than wide. One shared left
-       edge for everything is what makes the mixed widths look deliberate. */
-    .stApp [data-testid="stMainBlockContainer"],
-    .stApp .block-container {
-        max-width: 60rem;
-        margin-left: 0 !important;
-        margin-right: auto !important;
-    }
-
-    /* Break-out for tables too wide to read inside the cap. Any
-       st.container(key="fullbleed_*") keeps the shared left edge and simply
-       extends to the right -- no negative margins, which is what made the
-       first attempt straddle the page.
-
-       Only above 64rem: below that the viewport is already narrower than the
-       cap, so there is nothing to break out of and the table should just be
-       the width of the phone. The 8rem keeps the right edge clear of the
-       viewport even at the widest block-container padding, so the PAGE never
-       gets a horizontal scrollbar of its own. */
-    @media (min-width: 64rem) {
-        [class*="st-key-fullbleed"] {
-            width: calc(100vw - 8rem);
-            max-width: calc(100vw - 8rem);
-        }
-    }
-
-    /* Type-vs-pick convention (author feedback 2026-08-14). Every box carried
-       the same pale-pink secondaryBackgroundColor, so a search line and the
-       dropdown under it were indistinguishable and there was no landmark to
-       scroll back to. Typed fields get a white fill and a maroon outline;
-       dropdowns, radios and checkboxes keep the flat pink, untouched. Fill and
-       outline are two separate cues, so this survives colour-blindness.
-
-       Every input type needs the SAME two-part treatment: paint the fill and
-       the outline on the outer rounded element, then force the inner ones
-       transparent. Miss the second half and the inner <input> keeps painting
-       Streamlit's pink straight over the white (which is what sent the
-       Search foods box back to pink); do the second half with white instead
-       of transparent and the square inner element clips the outer's rounded
-       corners. stTextInputRootElement / stTextAreaRootElement are Streamlit's
-       own handles for the outer element -- more precise than the BaseWeb
-       attribute, which is kept alongside as a fallback.
-
-       2px is the number to tune if the outline reads loud. */
-    [data-testid="stTextInputRootElement"],
-    [data-testid="stTextAreaRootElement"],
-    [data-testid="stTextInput"] [data-baseweb="input"],
-    [data-testid="stTextArea"] textarea {
-        background-color: #ffffff !important;
-        border: 2px solid #A4243A !important;
-    }
-    [data-testid="stTextInput"] [data-baseweb="base-input"],
-    [data-testid="stTextInput"] input,
-    [data-testid="stTextArea"] [data-baseweb="base-input"] {
-        background-color: transparent !important;
-    }
-    /* Number inputs are built differently and MUST be targeted by their
-       container. Streamlit hands BaseWeb a Root override zeroing all four
-       border-radii AND all four border widths, then puts the radius, the
-       border and `overflow: hidden` on stNumberInputContainer instead. An
-       earlier pass styled [data-baseweb="input"] here, which drew a square
-       2px box inside a rounded clipping parent -- so every +/- box rendered
-       with its corners visibly cut off while text inputs looked fine. The
-       step buttons keep Streamlit's pale pink on purpose: white where you
-       type, pink where you click is the same convention as the dropdowns. */
-    [data-testid="stNumberInputContainer"] {
-        background-color: #ffffff !important;
-        border: 2px solid #A4243A !important;
-    }
-    /* Every nested wrapper, by attribute AND by structure. The pink sits on
-       one of BaseWeb's inner divs and which one has moved between releases;
-       naming only [data-baseweb="input"] left it painting over the white, so
-       the Nutrition Targets tab -- which is nothing BUT number inputs -- still
-       looked entirely pink. The step buttons are <button> elements, so these
-       div selectors leave their pale pink alone, which is what we want. */
-    [data-testid="stNumberInputContainer"] [data-baseweb="input"],
-    [data-testid="stNumberInputContainer"] [data-baseweb="base-input"],
-    [data-testid="stNumberInputContainer"] > div,
-    [data-testid="stNumberInputContainer"] > div > div,
-    [data-testid="stNumberInputField"] {
-        background-color: transparent !important;
-    }
-    /* Streamlit signals keyboard focus by turning the border maroon -- now the
-       resting state, so focus would be invisible. Restore it as a soft ring.
-       The number input carries focus as a `.focused` class on its container
-       as well as :focus-within, so match both. */
-    [data-testid="stTextInputRootElement"]:focus-within,
-    [data-testid="stTextAreaRootElement"]:focus-within,
-    [data-testid="stTextArea"] textarea:focus,
-    [data-testid="stNumberInputContainer"]:focus-within,
-    [data-testid="stNumberInputContainer"].focused {
-        box-shadow: 0 0 0 3px rgba(164, 36, 58, 0.25) !important;
-    }
-
-    /* Mobile tab strip (author feedback 2026-08-14). The desktop sizing above
-       is deliberate and unchanged; below 640px those same 1.25rem bold labels
-       are oversized for the screen. The strip still scrolls -- that is fine and
-       the labels stay full length -- the text just should not shout. Tune the
-       1rem. */
-    @media (max-width: 640px) {
-        button[role="tab"] p,
-        button[data-testid="stTab"] p,
-        button[data-baseweb="tab"] p {
-            font-size: 1rem !important;
-        }
-        button[role="tab"],
-        button[data-testid="stTab"],
-        button[data-baseweb="tab"] {
-            margin-right: 0.75rem;
-        }
-    }
-
-    /* Tab scroll arrows: make them read as a control. Streamlit's own styling
-       is a ~2rem button with a 60%-faded grey chevron over a gradient that
-       only turns opaque 40% of the way across, so tab text bleeds under the
-       arrow. Use the app's maroon, widen to a thumb-sized target, enlarge the
-       chevron, and bring the gradient opaque at 25% so the icon always sits on
-       solid ground. #fff is Streamlit's default light background -- no
-       backgroundColor is set in .streamlit/config.toml, and the app already
-       hardcodes light-theme colours elsewhere (see _note). */
-    [data-testid="stTabsScrollLeft"],
-    [data-testid="stTabsScrollRight"] {
-        color: #A4243A !important;
-        width: 2.75rem !important;
-    }
-    [data-testid="stTabsScrollLeft"] svg,
-    [data-testid="stTabsScrollRight"] svg {
-        width: 1.5rem !important;
-        height: 1.5rem !important;
-    }
-    [data-testid="stTabsScrollRight"] {
-        background-image: linear-gradient(to right, rgba(255, 255, 255, 0), #ffffff 25%) !important;
-    }
-    [data-testid="stTabsScrollLeft"] {
-        background-image: linear-gradient(to left, rgba(255, 255, 255, 0), #ffffff 25%) !important;
-    }
-
-    /* Table toolbar: search, download CSV, fullscreen, column visibility
-       (author feedback 2026-08-14). Streamlit ships these at opacity:0 and
-       reveals them only on :hover -- which means that on a phone, where there
-       is no hover at all, four useful controls are completely undiscoverable.
-       Park them permanently at 55% and go solid on interaction.
-
-       top is pinned to one value for both states because Streamlit animates
-       it from -1rem to -2.65rem on hover; with the toolbar always visible
-       that became a visible jump.
-
-       These are two DIFFERENT quantities, not one knob -- setting them equal
-       (the first attempt) left far too much white space above every table.
-       `top` is fixed by the toolbar's own height, or it overlaps the table it
-       sits above. `margin-top` only has to cover the SHORTFALL between that
-       height and the gap Streamlit already leaves after a caption, so it is
-       the smaller number. If the toolbar ends up touching the caption, raise
-       margin-top in 0.2rem steps and leave top alone. */
-    [data-testid="stElementToolbar"] {
-        opacity: 0.55 !important;
-        top: -1.7rem !important;
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
-    }
-    [data-testid="stElementToolbar"]:hover,
-    [data-testid="stElementToolbar"]:focus-within {
-        opacity: 1 !important;
-    }
-    [data-testid="stDataFrame"] {
-        margin-top: 0.5rem;
-    }
-
-    /* Zebra banding (Change 1.6, author request 2026-08-15): Excel-style
-       alternating row tints for the two hand-built lists this app has --
-       the Ingredients rows (Feed Recipes tab) and the "Everything given"
-       intake list (Daily Intake Record tab, 19 rows on the example day).
-       Neither is an actual <table>, so this is CSS over the
-       st.container(key=...) -> .st-key-<key> hook already used for the
-       full-bleed tables above, with the row id folded into the key so
-       every row gets its own selector.
-
-       Both classes get the SAME padding, so striped and unstriped rows
-       stay aligned -- only zebrarow gets a fill colour. */
-    [class*="st-key-zebrarow"],
-    [class*="st-key-plainrow"] {
-        padding: 0.35rem 0.5rem;
-        border-radius: 0.35rem;
-    }
-    /* Pull the ingredient row's two lines together. Streamlit's default
-       20px vertical gap between the name line and the amount/unit line
-       left them reading as two separate things rather than one ingredient
-       (author, 2026-08-15).
-
-       The selector has NO descendant part on purpose: st.container()
-       renders the keyed class ON the stVerticalBlock itself, so
-       `.st-key-x [data-testid="stVerticalBlock"]` matches only the nested
-       blocks inside the columns and leaves the 20px gap that actually
-       separates the two lines untouched (measured, after that first
-       attempt did nothing). */
-    [class*="st-key-zebrarow_ingr"],
-    [class*="st-key-plainrow_ingr"] {
-        gap: 0.15rem;
-    }
-    [class*="st-key-zebrarow"] {
-        /* #f8f9fb is not a new colour -- it's the grey Streamlit already
-           paints behind the report tables' header rows (sampled off a
-           rendered screenshot; body rows are #ffffff, grid lines #e4e5e8).
-           Reusing it means the app has one grey doing all of its neutral
-           work, in the hand-built lists and the tables alike.
-
-           Grey, not pink, deliberately: in this app maroon and pale pink
-           already carry meaning (maroon outline = "type here", pale pink
-           = "pick from a list"). An Ingredients row already holds white
-           outlined boxes and a pink unit dropdown -- a fourth pink tone
-           behind them would put four shades of pink in one row and the
-           band would compete with colour that means something. Grey sits
-           outside that vocabulary and can only read as furniture.
-
-           Deliberately subtle (about 3% off white -- 2-5% is the usual
-           range for banding-as-furniture). If it disappears on the
-           deploy, #f4f4f6 is the same idea a shade stronger. */
-        background-color: #f8f9fb;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown(f"<style>{_stylesheet()}</style>", unsafe_allow_html=True)
 
 init_state()
 
