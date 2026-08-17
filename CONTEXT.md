@@ -189,38 +189,69 @@ blenderized-tubefeed-calculator/
 │           ├── nutrients.csv        # the nutrient registry (what to track, why, and target_type)
 │           ├── formulas.csv         # commercial formula profiles (CSV)
 │           └── thinning_liquids.csv # thinning liquid presets (CSV)
-├── src/
+├── src/                              # NEVER imports streamlit — that is what
+│   │                                 # makes everything here unit-testable
 │   ├── __init__.py
-│   ├── data_loader.py               # CSV → pandas DataFrames (WORKING)
-│   ├── build_parquet.py             # one-time: CSV → parquet (WORKING)
-│   ├── models.py                    # @dataclass Ingredient, Recipe, Profile
-│   ├── nutrients.py                 # per-country nutrient registry (load_registry, NutrientDef)
-│   ├── calculator.py               # core math: recipe → nutrient profile
-│   ├── measures.py                  # household-measure → grams
-│   ├── targets.py                   # load DRI / tube-feed targets
-│   └── report.py                    # profile + targets → tier-based adequacy report
+│   ├── data_loader.py               # CSV → pandas DataFrames
+│   ├── build_parquet.py             # one-time: CSV → parquet
+│   ├── models.py                    # @dataclass Ingredient, Recipe, NutrientProfile
+│   ├── nutrients.py                 # nutrient registry + thinning-liquid presets
+│   ├── calculator.py                # core math: recipe → nutrient profile
+│   ├── intake.py                    # Intake Record aggregation; blend naming; fluids rule
+│   ├── measures.py                  # household-measure → grams; recipe-card grouping
+│   ├── food_search.py               # the three-layer CNF search, and find_food()
+│   ├── label_extract.py             # nutrition-label photo → per-100 g values
+│   ├── recipe_io.py                 # recipe ↔ .xlsx
+│   ├── day_io.py                    # a whole record ↔ .xlsx
+│   ├── targets.py                   # the blank targets scaffold (no defaults, ever)
+│   └── report.py                    # totals + targets → adequacy tables, comparator
 ├── reference/                        # bug-free reference solutions (per phase; learning project only)
 │   ├── __init__.py
 │   ├── data_loader.py               # Phase 2 reference (verified working)
 │   ├── build_parquet.py             # Phase 2 reference (verified working)
 │   └── README.md
-├── app/
-│   └── streamlit_app.py             # the UI
-├── scripts/
+├── app/                              # the Streamlit layer — see MAINTAINING.md,
+│   │                                 # "Where new code goes"
+│   ├── __init__.py
+│   ├── streamlit_app.py             # the page: three tabs, in the order they appear
+│   ├── add_food.py                  # the reusable add-a-food component
+│   ├── ui_common.py                 # _note() and _narrow()
+│   └── styles.css                   # the stylesheet (plain CSS, not a Python string)
+├── scripts/                          # check_*.py drive the real app via AppTest;
+│   │                                 # GitHub Actions runs every one on each push
+│   ├── check_app_imports.py         # the app imports without raising
+│   ├── check_blend_switching.py     # switching blends keeps your work
+│   ├── check_day_save_load.py       # a saved record round-trips
+│   ├── check_export_sheets.py       # near-identical blends stay distinguishable
+│   ├── check_food_search.py         # search is wired up; the duplicate-food note
+│   ├── check_label_photo_fill.py    # label photo → filled custom-food form
+│   ├── check_recipe_record.py       # per-blend flow test + named chart note
+│   ├── check_tab_restructure.py     # every section is where it should be
 │   ├── verify_backend.py            # full backend integration test
-│   ├── check_app_imports.py         # app import smoke test
 │   └── trace_calculation.py         # hand-checkable calculation + registry trace
-├── tests/
+├── tests/                            # ~236 unit tests over src/, run in ~1 second
 ├── notebooks/
 │   ├── 00_explore_cnf.ipynb         # data-exploration sandbox
 │   ├── 01_learn_cnf.ipynb           # guided CNF learning notebook (9 parts, executed)
 │   └── PHASE2_SPEC.md               # spec, hint list, verification for Phase 2
 ├── BUSINESS_CASE.md                  # Week 1 deliverable + full methodology
 ├── CONTEXT.md                       # this file (internal project management)
+├── FEED_LOG_REWORK.md                # design doc for the Intake Record model;
+│                                     #   cited by ~30 comments in src/ — live reference,
+│                                     #   not a finished plan
+├── MAINTAINING.md                    # day-to-day workflows; where new code goes
 ├── README.md                         # newbie-friendly setup + usage guide
 ├── requirements.txt
 └── .gitignore
 ```
+
+**`HANDOFF.md` was retired 2026-08-17.** It was a paste-ready prompt for
+handing the project to a different AI agent (Cline + GLM-5.2), written
+2026-07-19 and untouched since 2026-07-31 while everything around it moved.
+Nothing in `src/` or `app/` ever cited it. Older §9 entries below still
+refer to it, and are left as written — they are a record of what was true
+at the time. To read it: `git log --diff-filter=D -- HANDOFF.md` for the
+commit that removed it, then `git show <commit>^:HANDOFF.md`.
 
 ---
 
@@ -288,7 +319,8 @@ it.
 | **4 — Ship + Pitch** | Live app + write-up | Polish from RD pilot feedback, validation appendix, AI-assist features (label-photo extraction, PDF → formulas), possible JSON save/load |
 
 > **One definition of Week 3.** This row, `BUSINESS_CASE.md` §12, and
-> `HANDOFF.md` Phase 2 previously disagreed about whether the AI-assist
+> `HANDOFF.md` Phase 2 (retired 2026-08-17) previously disagreed about
+> whether the AI-assist
 > features belonged to Week 3. Settled 2026-07-30: **they are Week 4.**
 > Week 3 is durability plus the recipe record and the food-search
 > rework. Custom food entry from a
@@ -670,7 +702,8 @@ author can compare their fixes or unblock themselves if stuck for too long.
       code 12 as "unknown" would flag every meat/fish/oil ingredient and
       never fire where it matters — a warning that cries wolf teaches
       the RD to ignore the coverage note, so it then fails silently on
-      the day it is real. Full evidence: `HANDOFF.md` item 8.
+      the day it is real. Full evidence: `HANDOFF.md` item 8
+      (retired 2026-08-17; `git log --diff-filter=D -- HANDOFF.md` finds it).
     - **`"N/M ingredients"` → `"N/M sources"`** in
       `report.py::_coverage_text`. The denominator counts three
       different kinds of thing and only one is an ingredient: the real
@@ -1822,8 +1855,52 @@ this session) — display-only throughout; `intake_log`,
     grams/amounts; targets-tab widgets show 2250/100/2250 + weight 75;
     computed totals as above) all pass.
 
----
+2026-08-17 — **codebase cleanup, six phases, one commit each.** No
+behaviour change anywhere: every phase was a move, a deletion of
+something unreachable, or a reorder, verified after each by the full
+gate (pytest, all eight `check_*.py`, `black --check`, `ruff`).
 
+The rule it applied, which had held in practice but was never written
+down: **`src/` never imports Streamlit; anything not needing Streamlit
+belongs there.** That boundary is what makes `src/` unit-testable, and it
+is now stated in `MAINTAINING.md` under "Where new code goes".
+
+`app/streamlit_app.py`: **4,235 → 3,100 lines.** Tests 215 → 236.
+
+1. Retired 178 lines of `if __name__ == "__main__":` smoke tests from five
+   `src/` modules — hand-run leftovers from before pytest, never run by
+   CI. Kept `build_parquet.py`'s block: that one is the real CSV→parquet
+   build step. Deleted `calculator.volume_to_match_formula_kcal()`, the
+   one function left with no caller at all. **Kept** `data_loader`'s
+   `load_all()` and friends despite a scan calling them dead — the scan
+   excluded same-module callers and missed that `notebooks/PHASE2_SPEC.md`
+   specifies them and `reference/data_loader.py` mirrors them.
+2. Stylesheet → `app/styles.css` (313 lines), read once behind
+   `@st.cache_data`. Byte-identical to what was inline.
+3. Four Streamlit-free helpers → `src/`, each with the tests it could not
+   have before: thinning-liquid presets → `nutrients.py`, `find_food()` →
+   `food_search.py`, `default_counts_as_fluid()` → `intake.py`,
+   `color_status()` → `report.py` (beside `_adequacy_status()`, which
+   produces the strings it matches on).
+4. `render_add_food_ui()` (570 lines) → `app/add_food.py`, with the
+   label-API ledger and food-search index that only it used. `app/` is now
+   a package: `__init__.py`, `add_food.py`, `ui_common.py`, `styles.css`.
+   The body is verbatim bar one call; the rendered widget-key set is
+   byte-identical.
+5. Each tab is now ONE contiguous block. The file used to open
+   `recipes_tab` three times and `record_tab` three times, so its reading
+   order matched the page in neither direction; a dependency scan found
+   nothing load-bearing about it. Verified by comparing keyed widgets,
+   subheader order (i.e. page order) and the whole `session_state` key set
+   before and after, plus driving the documented widget-state landmines by
+   hand (rename via `on_change`, New blend, thinning, delete blend).
+6. Docs: this folder map corrected (it listed 8 of 14 `src/` modules and 3
+   of 9 scripts); `MAINTAINING.md` gained the `src/`-vs-`app/` rule;
+   `HANDOFF.md` retired. **`FEED_LOG_REWORK.md` was NOT retired** as the
+   plan first proposed — ~30 comments in `src/` cite it, so it is a live
+   specification, not a finished plan.
+
+---
 ## 10. Quick-start guide (how to run the app)
 
 After restarting your computer:

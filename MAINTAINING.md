@@ -113,6 +113,40 @@ build, so the formatter always wins.
 
 ---
 
+## Where new code goes: `src/` or `app/`
+
+One rule decides it:
+
+> **`src/` never imports Streamlit. `app/` is the Streamlit layer.**
+> Anything that doesn't need Streamlit belongs in `src/`.
+
+This isn't style — it's what makes the project testable. Code in `src/`
+can be called directly by a test, so it's covered by the ~236 tests in
+`tests/`, which run in about a second. Code in `app/` can only be reached
+by starting the whole app through Streamlit's `AppTest`, which is what the
+`scripts/check_*.py` files do: slower, clumsier, and far harder to write a
+sharp test in.
+
+So when you add something, ask: *does this need to draw on the screen?*
+
+- **No** — a calculation, a naming rule, a lookup, a formatting decision →
+  put it in `src/`, and write a test for it.
+- **Yes** — a widget, a layout, a button handler → it goes in `app/`.
+
+A good sign you've got it right: the thing in `src/` can be explained
+without mentioning the app at all.
+
+`app/` itself is a small package, not one file:
+
+| File | What's in it |
+|---|---|
+| `streamlit_app.py` | The page: the three tabs, in the order they appear |
+| `add_food.py` | The reusable "add a food" search-and-entry component |
+| `ui_common.py` | Two shared helpers, `_note()` and `_narrow()` |
+| `styles.css` | The stylesheet (plain CSS, not a Python string) |
+
+---
+
 ## The strongest check: your own spreadsheet as referee
 
 Your EN spreadsheet computes Peptamen 1.5 at any volume, and the app's
