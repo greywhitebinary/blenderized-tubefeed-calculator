@@ -221,6 +221,7 @@ blenderized-tubefeed-calculator/
 │   │                                 # GitHub Actions runs every one on each push
 │   ├── check_app_imports.py         # the app imports without raising
 │   ├── check_blend_switching.py     # switching blends keeps your work
+│   ├── check_blend_without_volume.py # a volume-less blend degrades, never crashes
 │   ├── check_day_save_load.py       # a saved record round-trips
 │   ├── check_export_sheets.py       # near-identical blends stay distinguishable
 │   ├── check_food_search.py         # search is wired up; the duplicate-food note

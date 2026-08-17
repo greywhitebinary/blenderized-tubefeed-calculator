@@ -1530,19 +1530,33 @@ with recipes_tab:
     # everything else uses two, so the same blend read 0.720 here and 0.72
     # below.
     #
-    # The WARNING it wrapped stays, and is why this block still resolves
-    # the blend: a blend with ingredients but no measured volume can't
-    # produce densities, and this is the only place that says so in the
-    # open. The "Full density summary" expander further down carries the
-    # same message, but it is collapsed by default.
-    if selected_blend["ingredients"]:
-        try:
-            resolve_blend_profile(selected_blend, na, st.session_state.custom_foods)
-        except InvalidBlendError:
-            st.warning(
-                "This blend has ingredients but no measured volume yet — "
-                "densities can't be computed until you enter one below."
-            )
+    # The WARNING it wrapped stays: a blend with ingredients but no measured
+    # volume can't produce densities, and this is the only place that says so
+    # in the open. The "Full density summary" expander further down carries
+    # the same message, but it is collapsed by default.
+    #
+    # The volume is read off the number_input's OWN state, not off the blend
+    # dict (bug fixed 2026-08-17). That widget renders BELOW this line and
+    # only writes `selected_blend["measured_volume_mL"]` when it runs, so on
+    # the render where an RD types a volume the dict still held the old 0 and
+    # this warning stayed on screen until they touched something else --
+    # telling them to do the thing they had just done. Streamlit fills a
+    # widget's session_state entry before the script runs, so the key holds
+    # THIS run's value; the stored volume is the fallback for a blend whose
+    # widget has not rendered yet. Same fix as the blend-name selectbox above.
+    #
+    # Checked directly rather than through resolve_blend_profile(): that
+    # raises InvalidBlendError on exactly this condition, so calling it here
+    # computed a whole nutrient profile just to learn whether a number was
+    # zero.
+    _volume_now = st.session_state.get(
+        f"vol_{selected_blend_id}", selected_blend["measured_volume_mL"]
+    )
+    if selected_blend["ingredients"] and float(_volume_now or 0.0) <= 0:
+        st.warning(
+            "This blend has ingredients but no measured volume yet — "
+            "densities can't be computed until you enter one below."
+        )
 
     st.divider()
 
@@ -2524,22 +2538,69 @@ with record_tab:
         key="delivery_method_input",
     )
 
-    # Always-visible summary line — aggregated NUTRIENT totals, never a
-    # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a
-    # meaningful single number). See FEED_LOG_REWORK.md section 3.4.
-    _banner_totals = aggregate_intake(
-        st.session_state.intake_log,
-        st.session_state.blends,
-        na,
-        custom_foods=st.session_state.custom_foods,
-    )
-    _b_kcal = _banner_totals.nutrient_totals.get("energy_kcal", 0.0)
-    _b_protein = _banner_totals.nutrient_totals.get("protein_g", 0.0)
-    _b_fluid = _banner_totals.fluid_provided_mL
-    st.markdown(
-        f"**Today: ~{_b_kcal:.0f} kcal | {_b_protein:.0f} g protein | "
-        f"{_b_fluid:.0f} mL fluid provided**"
-    )
+    # A blend that an Intake Record row points at but that has no measured
+    # volume USED TO CRASH THE WHOLE PAGE (fixed 2026-08-17): aggregate_intake()
+    # resolves each referenced blend, resolve_blend_profile() raised
+    # InvalidBlendError, and nothing caught it. Reachable in ordinary use --
+    # load the example record and clear the volume.
+    #
+    # Checked up front, by name, rather than caught from the exception: the
+    # RD needs to know WHICH blend to go and fix, and the exception message
+    # is written for a developer.
+    #
+    # Totals are deliberately NOT shown while this is true. Skipping the
+    # unusable rows and totalling the rest would silently understate the
+    # day -- it would look like the patient received less than they did,
+    # which is the failure mode this project treats as unacceptable.
+    _unusable_blends = []
+    for _bid in {
+        r.get("source_id") for r in st.session_state.intake_log if r.get("source_type") == "blend"
+    }:
+        _b = st.session_state.blends.get(_bid)
+        if _b is None:
+            continue
+        try:
+            resolve_blend_profile(_b, na, st.session_state.custom_foods)
+        except InvalidBlendError:
+            _unusable_blends.append(_b["name"] or f"Blend {_bid}")
+
+    if _unusable_blends:
+        intake_totals = None
+        _names = ", ".join(f'"{n}"' for n in sorted(_unusable_blends))
+        _is_are = "is" if len(_unusable_blends) == 1 else "are"
+        st.warning(
+            f"Today's totals can't be worked out yet. {_names} {_is_are} in the "
+            "Intake Record below but has no measured final volume, so there is no "
+            "density to multiply by. Add the volume on the Feed Recipes tab, under "
+            "Blend details."
+            if len(_unusable_blends) == 1
+            else f"Today's totals can't be worked out yet. {_names} are in the "
+            "Intake Record below but have no measured final volume, so there is no "
+            "density to multiply by. Add a volume for each on the Feed Recipes tab, "
+            "under Blend details."
+        )
+    else:
+        # Always-visible summary line — aggregated NUTRIENT totals, never a
+        # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a
+        # meaningful single number). See FEED_LOG_REWORK.md section 3.4.
+        #
+        # Computed ONCE here and reused by the daily-totals section further
+        # down this tab, which used to call aggregate_intake() a second time
+        # with byte-identical arguments -- the whole day aggregated twice on
+        # every rerun.
+        intake_totals = aggregate_intake(
+            st.session_state.intake_log,
+            st.session_state.blends,
+            na,
+            custom_foods=st.session_state.custom_foods,
+        )
+        _b_kcal = intake_totals.nutrient_totals.get("energy_kcal", 0.0)
+        _b_protein = intake_totals.nutrient_totals.get("protein_g", 0.0)
+        _b_fluid = intake_totals.fluid_provided_mL
+        st.markdown(
+            f"**Today: ~{_b_kcal:.0f} kcal | {_b_protein:.0f} g protein | "
+            f"{_b_fluid:.0f} mL fluid provided**"
+        )
 
     # --- Add tube feed ---
     with st.expander("➕ 💉 Add tube feed"):
@@ -2778,14 +2839,14 @@ with record_tab:
     # --- Daily totals, adequacy, micro screen, per-kg, per-source
     # breakdown -- all computed from the Intake Record via
     # src.intake.aggregate_intake() (design doc section 3.5). ---
-    intake_totals = aggregate_intake(
-        st.session_state.intake_log,
-        st.session_state.blends,
-        na,
-        custom_foods=st.session_state.custom_foods,
-    )
-
-    if not st.session_state.intake_log:
+    #
+    # `intake_totals` comes from the banner block above: computed once per
+    # rerun, and None when a blend in the record has no measured volume
+    # (the warning there names it). Everything below needs real totals, so
+    # it is all skipped in that case rather than shown half-filled.
+    if intake_totals is None:
+        pass
+    elif not st.session_state.intake_log:
         _note("Add rows to the Intake Record above to see daily totals.")
     else:
         # --- Per-source subtotal breakdown (design doc section 3.5) ---
@@ -2938,7 +2999,12 @@ with record_tab:
     st.subheader("Chart Note")
     st.caption("Copy-paste into your own chart. No patient-identifying fields.")
 
-    if not st.session_state.intake_log:
+    if intake_totals is None:
+        st.caption(
+            "A blend in the Intake Record has no measured volume, so the "
+            "totals this note quotes can't be worked out yet."
+        )
+    elif not st.session_state.intake_log:
         st.caption("Add Intake Record rows above to generate a chart note.")
     else:
         _ordered_note_rows = sorted_intake_log(st.session_state.intake_log)
@@ -3024,8 +3090,12 @@ with record_tab:
     # same rows in one workbook is how they drift apart.
     st.subheader("Save this record")
 
+    # The report half needs totals; the RELOADABLE half never did. When a
+    # blend has no measured volume the download therefore still works, just
+    # without the worked-out sheets -- an RD must never be unable to save
+    # their work because one number is missing (2026-08-17).
     _report_sheets: dict[str, pd.DataFrame] = {}
-    if st.session_state.intake_log:
+    if intake_totals is not None and st.session_state.intake_log:
         _report_sheets["Adequacy"] = generate_adequacy_report(
             intake_totals.nutrient_totals,
             targets,
@@ -3040,10 +3110,14 @@ with record_tab:
         )[0]
         _report_sheets["Per-Source Breakdown"] = generate_source_breakdown(intake_totals)
 
-    _wl = generate_water_ledger(intake_totals.water_sources)
-    if not _wl.empty:
-        _report_sheets["Water Sources"] = _wl
-    if st.session_state.intake_log:
+    if intake_totals is not None:
+        _wl = generate_water_ledger(intake_totals.water_sources)
+        if not _wl.empty:
+            _report_sheets["Water Sources"] = _wl
+    # `_note_text` only exists when the Chart Note block above produced one,
+    # which it can't without totals -- so this is guarded on intake_totals
+    # too, not just on there being rows.
+    if intake_totals is not None and st.session_state.intake_log:
         _report_sheets["Chart Note"] = pd.DataFrame({"Chart note": [_note_text]})
 
     # Chronological, and each row tagged with the readable source name so
