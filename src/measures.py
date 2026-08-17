@@ -122,6 +122,62 @@ def scale_measure_label(description: str | None, quantity: float) -> str:
     return f"{count * quantity:g} {rest}"
 
 
+def group_ingredients_for_card(ingredients: list[dict]) -> list[dict]:
+    """Collapse ingredient rows that would render as the same recipe-card
+    line, summing their grams. First-occurrence order is preserved.
+
+    FOR THE RECIPE CARD ONLY (author, 2026-08-16). The card is the "hand
+    it to a caregiver" artefact, where the same food listed twice reads as
+    a mistake. Nothing else collapses: the editable rows, the export, the
+    Nutrition view and the stored blend all stay row-per-entry, and the
+    nutrient maths never sees this function. Merging the STORED rows was
+    considered and rejected -- see this plan's Context, or
+    compute_ingredient_breakdown() in src/calculator.py for the separate
+    per-FOOD reading that already exists.
+
+    The group key is deliberately conservative -- every field the card
+    actually PRINTS:
+
+        (food_code, food_description, unit, measure_label, measure_grams)
+
+    Rows differing in unit or measure stay separate lines, because there
+    is no honest way to merge "1 large egg" with "75 g" -- and the card
+    prints the measure, so a merged line would have to pick one and lie
+    about the other. Two rows of "1 extra large" DO merge, and the card's
+    existing rendering then scales the label to "2 extra large" via
+    scale_measure_label() with no extra formatting.
+
+    food_description is in the key for the same reason, and it is not
+    redundant with food_code: the Dilution What-If writes its added liquid
+    as "Water (added to thin)" against the SAME CNF code as a plain
+    "Water, municipal" ingredient. Merging those would print one
+    description and silently drop the other, hiding the fact that some of
+    the water was there to thin the blend.
+
+    `counts_as_fluid` is deliberately NOT part of the key. A card line is
+    an amount and a description; the fluid flag cannot change it, so
+    splitting on it would leave two lines the card renders identically.
+
+    Grams are summed, never recomputed, so the total across the returned
+    list always equals the total across the input -- the one property that
+    would let the card disagree with the nutrient maths if it broke.
+    """
+    grouped: dict[tuple, dict] = {}
+    for ing in ingredients:
+        key = (
+            ing.get("food_code"),
+            ing.get("food_description"),
+            ing.get("unit", "g"),
+            ing.get("measure_label"),
+            ing.get("measure_grams"),
+        )
+        if key in grouped:
+            grouped[key]["grams"] += ing.get("grams", 0.0)
+        else:
+            grouped[key] = {**ing, "grams": ing.get("grams", 0.0)}
+    return list(grouped.values())
+
+
 def load_measure_lookup() -> pd.DataFrame:
     """Build a lookup table: Food_Code + Measure_Code → grams + description.
 

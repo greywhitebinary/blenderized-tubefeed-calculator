@@ -18,7 +18,12 @@ from pathlib import Path
 
 import pytest
 
-from src.measures import is_bare_gram_weight, load_measure_lookup, scale_measure_label
+from src.measures import (
+    group_ingredients_for_card,
+    is_bare_gram_weight,
+    load_measure_lookup,
+    scale_measure_label,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CNF_MEASURE_NAME = PROJECT_ROOT / "cnf_fcen_all-files-data_2026" / "Measure_Name.csv"
@@ -142,3 +147,119 @@ class TestScaleMeasureLabel:
     def test_missing_label_does_not_raise(self):
         assert scale_measure_label(None, 2) == "2"
         assert scale_measure_label("", 2) == "2"
+
+
+class TestGroupIngredientsForCard:
+    """The recipe card collapses rows that would print identically; nothing
+    else in the app does (author, 2026-08-16). The editable rows, the
+    export, the Nutrition view and the stored blend all stay
+    row-per-entry -- merging the STORED rows was considered and rejected,
+    because a row carries a unit, a household measure and a fluid flag that
+    have no correct merged value.
+    """
+
+    @staticmethod
+    def _ing(code, grams, unit="g", label=None, measure_grams=None, desc="Food"):
+        return {
+            "id": id((code, grams, unit, label)),
+            "food_code": code,
+            "food_description": desc,
+            "grams": grams,
+            "unit": unit,
+            "counts_as_fluid": False,
+            "measure_label": label,
+            "measure_grams": measure_grams,
+        }
+
+    def test_identical_rows_merge_with_grams_summed(self):
+        rows = [self._ing(1, 50.0), self._ing(1, 75.0)]
+        out = group_ingredients_for_card(rows)
+        assert len(out) == 1
+        assert out[0]["grams"] == pytest.approx(125.0)
+
+    def test_the_same_food_at_different_measures_stays_two_lines(self):
+        """ "1 large egg" and "75 g" have no honest merged measure, and the
+        card PRINTS the measure -- a merged line would have to pick one and
+        misstate the other."""
+        rows = [
+            self._ing(1, 50.0, label="1 large", measure_grams=50.0),
+            self._ing(1, 75.0),
+        ]
+        assert len(group_ingredients_for_card(rows)) == 2
+
+    def test_the_same_food_in_g_and_mL_stays_two_lines(self):
+        rows = [self._ing(1, 100.0, unit="g"), self._ing(1, 100.0, unit="mL")]
+        assert len(group_ingredients_for_card(rows)) == 2
+
+    def test_matching_household_measures_merge_so_the_card_can_scale_them(self):
+        """Two "1 extra large" rows become one row of two, which the card's
+        existing scale_measure_label() call then renders "2 extra large"."""
+        rows = [
+            self._ing(1, 56.0, label="1 extra large", measure_grams=56.0),
+            self._ing(1, 56.0, label="1 extra large", measure_grams=56.0),
+        ]
+        out = group_ingredients_for_card(rows)
+        assert len(out) == 1
+        assert out[0]["grams"] == pytest.approx(112.0)
+        assert (
+            scale_measure_label(out[0]["measure_label"], out[0]["grams"] / out[0]["measure_grams"])
+            == "2 extra large"
+        )
+
+    def test_the_fluid_flag_does_not_split_a_line(self):
+        """A card line is an amount and a description, so the flag cannot
+        change it -- splitting on it would leave two identical lines."""
+        a = self._ing(1, 50.0)
+        b = self._ing(1, 50.0)
+        b["counts_as_fluid"] = True
+        assert len(group_ingredients_for_card([a, b])) == 1
+
+    def test_first_occurrence_order_is_preserved(self):
+        rows = [self._ing(1, 10.0), self._ing(2, 20.0), self._ing(1, 30.0)]
+        assert [r["food_code"] for r in group_ingredients_for_card(rows)] == [1, 2]
+
+    def test_different_foods_never_merge(self):
+        rows = [self._ing(1, 10.0), self._ing(2, 20.0), self._ing(3, 30.0)]
+        assert len(group_ingredients_for_card(rows)) == 3
+
+    def test_an_empty_list_returns_empty(self):
+        assert group_ingredients_for_card([]) == []
+
+    def test_total_grams_are_conserved(self):
+        """THE regression that matters. Grams are summed, never recomputed,
+        so the card can never disagree with the nutrient maths about how
+        much food is in the blend."""
+        rows = [
+            self._ing(1, 50.0),
+            self._ing(1, 75.0),
+            self._ing(2, 20.0, unit="mL"),
+            self._ing(2, 30.0),
+            self._ing(3, 12.5, label="1 cup", measure_grams=12.5),
+        ]
+        assert sum(r["grams"] for r in group_ingredients_for_card(rows)) == pytest.approx(
+            sum(r["grams"] for r in rows)
+        )
+
+    def test_the_source_rows_are_not_mutated(self):
+        """The caller keeps handing the real session_state list in, so
+        merging must never write back into it."""
+        rows = [self._ing(1, 50.0), self._ing(1, 75.0)]
+        group_ingredients_for_card(rows)
+        assert [r["grams"] for r in rows] == [50.0, 75.0]
+
+    def test_the_same_food_code_under_different_descriptions_stays_two_lines(self):
+        """Reachable in the real app: the Dilution What-If writes its added
+        liquid as "Water (added to thin)" against the SAME CNF code as a
+        plain "Water, municipal" ingredient. The card prints descriptions,
+        so merging these would hide that some water was there to thin the
+        blend."""
+        rows = [
+            self._ing(5068, 250.0, desc="Water, municipal"),
+            self._ing(5068, 150.0, desc="Water (added to thin)"),
+        ]
+        out = group_ingredients_for_card(rows)
+        assert len(out) == 2
+        assert [r["food_description"] for r in out] == [
+            "Water, municipal",
+            "Water (added to thin)",
+        ]

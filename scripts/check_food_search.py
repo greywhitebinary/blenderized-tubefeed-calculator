@@ -88,4 +88,53 @@ options = search("skyr")
 assert not options, f"'skyr' should find nothing in CNF, got: {options[:5]}"
 print("OK: 'skyr' correctly finds nothing rather than a lookalike")
 
+# --- The duplicate-food nudge (2026-08-16) -----------------------------
+# Adding a food already in the blend is ALLOWED and makes a second row --
+# the app never merges stored ingredient rows. The note just catches an
+# accidental repeat where it happens. It hangs off the same search ->
+# select -> amount flow this file already drives, so it is checked here
+# rather than in a script of its own.
+#
+# The food has to be selected by CODE, not by searching "banana" and
+# trusting the first hit: CNF's top banana result is "Banana, dehydrated
+# or banana powder", a genuinely different food from the example blend's
+# "Banana, raw", and the note is correct to stay silent for it.
+#
+# Needs a blend that HAS ingredients, so load the example day first. That
+# replaces the starter blend, and the add-food component is keyed
+# "blend_<id>_*", so the prefix has to be re-derived afterwards rather than
+# reused from the top of this file.
+next(b for b in at.button if "example" in b.label.lower()).click().run()
+assert not at.exception, at.exception
+box_key = [t.key for t in at.text_input if t.key and t.key.endswith("_search")][0]
+prefix = box_key[: -len("_search")]
+blend = at.session_state["blends"][at.session_state["selected_blend_id"]]
+present = next(i for i in blend["ingredients"] if "Banana" in i["food_description"])
+
+
+def note_for(term, food_code):
+    """Search, select that exact food, give it an amount, return the note."""
+    search(term)
+    sel = next(s for s in at.selectbox if s.key == f"{prefix}_food_select")
+    match = next((o for o in sel.options if f"[{food_code}]" in o), None)
+    assert match, f"[{food_code}] not among results for {term!r}"
+    sel.set_value(match).run()
+    qty = [n for n in at.number_input if n.key == f"{prefix}_qty"]
+    nomeasure = [n for n in at.number_input if n.key == f"{prefix}_grams_nomeasure"]
+    (qty or nomeasure)[0].set_value(1 if qty else 100).run()
+    assert not at.exception, at.exception
+    return [c.value for c in at.caption if "already in this blend" in c.value]
+
+
+notes = note_for("banana", present["food_code"])
+assert notes, f"no duplicate note for a food already in the blend ({present!r})"
+assert (
+    f"{present['grams']:.0f} g" in notes[0]
+), f"the note should carry the grams already present ({present['grams']:.0f}); got {notes[0]!r}"
+print(f"OK: adding a food already in the blend says so -- {notes[0]!r}")
+
+notes = note_for("broccoli", 2375)
+assert not notes, f"a food NOT in the blend was reported as a duplicate: {notes}"
+print("OK: a food not in the blend gets no note")
+
 print("=== FOOD SEARCH APPTEST PASSED ===")

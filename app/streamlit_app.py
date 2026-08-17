@@ -72,7 +72,12 @@ from src.calculator import (
     required_daily_volume,
     COMMERCIAL_FORMULAS,
 )
-from src.measures import load_measure_lookup, get_measures_for_food, scale_measure_label
+from src.measures import (
+    load_measure_lookup,
+    get_measures_for_food,
+    scale_measure_label,
+    group_ingredients_for_card,
+)
 from src.food_search import MIN_QUERY_LEN, build_index, search_foods
 from src.label_extract import (
     MAX_EXTRACTIONS_PER_DAY,
@@ -707,6 +712,7 @@ def render_add_food_ui(
     key_prefix: str,
     add_button_label: str = "Add",
     show_counts_as_fluid_toggle: bool = False,
+    existing_food_codes: dict[int, float] | None = None,
 ) -> dict | None:
     """Render the CNF-search / custom-food-from-label add-a-food UI.
 
@@ -719,6 +725,17 @@ def render_add_food_ui(
     `key_prefix` must be unique per call site
     (e.g. "blend_3" vs "oral_dialog") so two simultaneous instances of this
     component never collide on widget keys.
+
+    existing_food_codes: {food_code: grams already present}. When the food
+    about to be added is already in that mapping, a note says so before the
+    Add button (author, 2026-08-16). It NEVER blocks or merges -- adding a
+    food twice is legitimate, and the app deliberately keeps both rows (see
+    group_ingredients_for_card() in src/measures.py, which collapses them
+    on the recipe card only). This just means an accidental repeat is
+    caught where it happens. Only the CNF branch can use it: a custom food
+    from a label gets a fresh negative code every time, so there is nothing
+    to match on. Left None by the oral-intake dialog, where eating the same
+    food twice in a day is an ordinary entry rather than a possible slip.
 
     show_counts_as_fluid_toggle: when True, renders an editable
     counts_as_fluid checkbox (seeded with the same auto-default used
@@ -883,6 +900,12 @@ def render_add_food_ui(
             st.caption(f"Type at least {MIN_QUERY_LEN} characters to search.")
 
         if food_code is not None and calculated_grams > 0:
+            _already_grams = (existing_food_codes or {}).get(food_code)
+            if _already_grams:
+                st.caption(
+                    f"{food_desc} is already in this blend "
+                    f"({_already_grams:.0f} g). Adding it again makes a second row."
+                )
             default_fluid = default_counts_as_fluid(food_desc, sel_group_code)
             if show_counts_as_fluid_toggle:
                 final_fluid = st.checkbox(
@@ -2634,6 +2657,13 @@ with recipes_tab:
 
     # --- Add ingredient (reusable component, section 3.3) ---
     st.subheader(f'Add ingredient to "{selected_blend["name"]}"')
+    # Totals per food ACROSS every row, so a food split over three rows
+    # reports the sum rather than whichever row happened to be last.
+    _existing_grams: dict[int, float] = {}
+    for _ing in selected_blend["ingredients"]:
+        _code = _ing.get("food_code")
+        if _code is not None:
+            _existing_grams[_code] = _existing_grams.get(_code, 0.0) + _ing.get("grams", 0.0)
     new_ingredient = render_add_food_ui(
         fn,
         na,
@@ -2641,6 +2671,7 @@ with recipes_tab:
         fg,
         key_prefix=f"blend_{selected_blend_id}",
         add_button_label="Add to blend",
+        existing_food_codes=_existing_grams,
     )
     if new_ingredient is not None:
         st.session_state.next_ingr_id += 1
@@ -2875,8 +2906,18 @@ with recipes_tab:
             # (author's choice); st.code so it gets Streamlit's own copy
             # button, the same idiom the Chart Note (Daily Intake Record
             # tab) already uses.
+            #
+            # The card COLLAPSES rows that would print identically -- the
+            # same food, same unit, same measure -- and sums their grams
+            # (author, 2026-08-16). Adding egg twice reads as a mistake on
+            # something handed to a caregiver. This is the ONLY place that
+            # collapses: the numbered rows above, the export, the
+            # Nutrition view and the stored blend all stay row-per-entry,
+            # so the card can legitimately show fewer lines than the
+            # selector's item count. group_ingredients_for_card() owns the
+            # rule, including why "1 large egg" never merges with "75 g".
             _card_lines = [selected_blend["name"] or f"Blend {selected_blend_id}"]
-            for ing in selected_blend["ingredients"]:
+            for ing in group_ingredients_for_card(selected_blend["ingredients"]):
                 _label = ing.get("measure_label")
                 _measure_grams = ing.get("measure_grams")
                 _unit = ing.get("unit", "g")
