@@ -1462,14 +1462,15 @@ with recipes_tab:
     # to the Recipe Record section, which sits ~800 lines further down the
     # tab, past the density panel and the Dilution What-If.
     #
-    # Second person here on purpose (author's wording, 2026-08-17). It
-    # describes how the app behaves, and that is where this app uses "you"
-    # -- "Nothing is added until you press Add", "it never overwrites what
-    # you have". Copy about what the NUMBERS mean stays impersonal (the
-    # comparator's caption, the adequacy tables).
+    # Written as an INSTRUCTION throughout (author, 2026-08-17), which is
+    # what makes the second person correct here: the house rule is
+    # impersonal for statements of fact, second person for instructions.
+    # As a fact it would read "Blends stay saved while switching between
+    # them" -- accurate, but this line exists to reassure someone who
+    # thinks they have lost work, and that reports rather than reassures.
     st.caption(
-        "Your blends stay saved while you switch between them. To keep "
-        "them for next time, scroll down to save your recipe record."
+        "Switch between blends freely; nothing is lost. To keep them for "
+        "next time, scroll down to save your recipe record."
     )
 
     if bsel2.button("➕ New blend", width="stretch"):
@@ -1622,7 +1623,7 @@ with recipes_tab:
             st.caption(
                 '"Counts as fluid" drives the Daily Intake Record tab\'s '
                 "Fluids provided row (full-volume I&O convention) — auto-checked for CNF "
-                "Beverages and mL-basis custom foods, always your call "
+                "Beverages and mL-basis custom foods, and left to the dietitian "
                 "otherwise (e.g. soup has no validated rule of thumb)."
             )
             for i, ing in enumerate(selected_blend["ingredients"]):
@@ -2074,12 +2075,17 @@ with recipes_tab:
 
     # --- Dilution what-if (operates on the selected blend) ---
     st.subheader("Dilution What-If")
+    # Was "What would thinning this blend with water cost you?" until
+    # 2026-08-17. Two problems, both the author's: it addressed the reader
+    # in what is a statement of fact, and "cost" reads as MONEY in a
+    # country with public healthcare, when the thing being spent is
+    # density. Say the effect plainly instead.
     st.caption(
-        "**What would thinning this blend with water cost you?** Move the "
-        "slider to see the density drop before you commit to anything.  \n"
+        "**What does thinning this blend with water do to its density?** "
+        "Move the slider to see the drop before you commit to anything.  \n"
         "This is a calculation, not a change: the blend above is untouched "
-        "until you save the thinned version as its own blend, which you can "
-        "do at the bottom of this section.  \n"
+        "until the thinned version is saved as its own blend, at the bottom "
+        "of this section.  \n"
         "Thinning with broth, juice or milk isn't a dilution, it's a recipe "
         "change — add it as an ingredient instead, where every nutrient is "
         "counted rather than just calories and protein."

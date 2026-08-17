@@ -113,6 +113,44 @@ build, so the formatter always wins.
 
 ---
 
+## Writing copy for the app
+
+Four rules. They exist because this is clinical reference text read by
+Canadian dietitians, not a consumer app.
+
+**1. Impersonal for facts, second person for instructions.**
+
+| Kind | Voice | Example |
+|---|---|---|
+| A statement of fact | impersonal | "Rows are compared at one daily volume." |
+| An instruction | second person | "Move the slider to see the drop." |
+
+If a line is doing both, split it. The blend selector's caption is written
+entirely as an instruction — "Switch between blends freely; nothing is
+lost." — because as a fact it would read "Blends stay saved while switching
+between them", which reports rather than reassures, and reassurance is that
+line's whole job.
+
+**2. UK and Canadian spelling, never American.** fibre, colour, centre,
+litre, analyse. (CSS property names like `background-color` are API tokens,
+not prose — leave those alone.)
+
+**3. No American turns of phrase.** The one that has actually appeared is
+**"your call"** — replaced with "left to the dietitian", which also names
+who decides. Others to watch: "reach out", "heads-up", "gotten", "off of",
+"different than", "going forward", "circle back".
+
+**4. Do not say "cost" when you mean effect or impact.** This app is used
+in countries with public healthcare, where "cost" reads as money. The
+Dilution What-If used to ask "what would thinning this blend cost you?"
+when the thing being spent is density; it now asks what thinning "does to
+its density". Same for "expensive", "pay for", "worth it".
+
+Copy changes go past the author before they land — the wording gets
+iterated, and the author is the clinical expert on how it should sound.
+
+---
+
 ## Where new code goes: `src/` or `app/`
 
 One rule decides it:
