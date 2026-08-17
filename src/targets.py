@@ -61,16 +61,3 @@ def empty_targets(pack: str = DEFAULT_PACK) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 # Smoke test
 # ---------------------------------------------------------------------------
-
-
-if __name__ == "__main__":
-    print("Loading empty (blank) targets scaffold...")
-    targets = empty_targets()
-    print(f"  {len(targets)} target keys available for entry\n")
-
-    print(f"{'Nutrient':<25} {'Target':>10}")
-    print("-" * 37)
-    for name, val in targets.items():
-        print(f"  {name:<23} {val:>10.1f}")
-
-    print("\n✅ Targets smoke test passed (no defaults — blank scaffold only).")

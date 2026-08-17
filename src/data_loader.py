@@ -161,12 +161,3 @@ def load_all(data_dir: Path = CNF_DIR) -> dict[str, pd.DataFrame]:
         "measure_weight_conversion": load_measure_weight_conversion(data_dir),
         "food_group": load_food_group(data_dir),
     }
-
-
-if __name__ == "__main__":
-    # Quick smoke test when run directly
-    tables = load_all()
-    for name, df in tables.items():
-        print(f"{name}: {df.shape[0]} rows × {df.shape[1]} cols")
-        print(f"  columns: {list(df.columns)}")
-        print()

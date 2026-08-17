@@ -26,7 +26,7 @@ from pathlib import Path
 
 try:
     from src.models import Ingredient, Recipe, NutrientProfile, Delivery
-    from src.nutrients import NUTRIENT_CODES, NUTRIENT_LABELS, DEFAULT_PACK
+    from src.nutrients import NUTRIENT_CODES, DEFAULT_PACK
 except ImportError:
     # Allow running as a script (python src/calculator.py) without the
     # project root on sys.path — fall back to a relative-style import.
@@ -36,7 +36,7 @@ except ImportError:
         NutrientProfile,
         Delivery,
     )
-    from nutrients import NUTRIENT_CODES, NUTRIENT_LABELS, DEFAULT_PACK
+    from nutrients import NUTRIENT_CODES, DEFAULT_PACK
 
 
 # ---------------------------------------------------------------------------
@@ -697,32 +697,14 @@ def compare_with_formula(
     }
 
 
-def volume_to_match_formula_kcal(
-    profile: NutrientProfile,
-    formula_name: str,
-    daily_volume_mL: float,
-) -> float:
-    """How much BTF volume is needed to match the formula's kcal at the same volume?
-
-    formula_kcal = formula_kcal_per_mL × daily_volume_mL
-    btf_volume_needed = formula_kcal / btf_kcal_per_mL
-
-    This answers: "The formula gives X kcal at 1200 mL — how much BTF do I
-    need to get the same X kcal?"
-
-    Args:
-        profile:         The BTF recipe's NutrientProfile.
-        formula_name:    Key into COMMERCIAL_FORMULAS.
-        daily_volume_mL: The formula's daily volume.
-
-    Returns:
-        BTF volume (mL) needed to match the formula's kcal output.
-    """
-    formula = COMMERCIAL_FORMULAS[formula_name]
-    formula_kcal = formula["kcal_per_mL"] * daily_volume_mL
-    if profile.kcal_per_mL <= 0:
-        return float("inf")
-    return formula_kcal / profile.kcal_per_mL
+# REMOVED 2026-08-16: volume_to_match_formula_kcal(profile, formula_name,
+# daily_volume_mL) -- "the formula gives X kcal at 1200 mL, how much of this
+# blend matches it?". Nothing called it. Its only caller was this module's
+# own __main__ smoke test, retired in the same commit, and it was almost
+# certainly orphaned when generate_regimen_summary() went in the intake
+# rework. The question it answered is a reasonable one; if it comes back,
+# it belongs in the comparator (src/report.py::generate_comparator_table),
+# which now puts blends and formulas side by side at one shared volume.
 
 
 # ---------------------------------------------------------------------------
@@ -752,102 +734,3 @@ def label_to_per_100g(label_value: float, serving_size_g: float) -> float:
 # ---------------------------------------------------------------------------
 # Smoke test
 # ---------------------------------------------------------------------------
-
-
-if __name__ == "__main__":
-    # Quick test: build a simple recipe and calculate its profile.
-    # Uses real CNF data — chicken breast + rice + canola oil.
-    import sys
-
-    sys.path.insert(0, ".")
-
-    from src.data_loader import load_nutrient_amount, load_food_name
-
-    print("Loading CNF data...")
-    na = load_nutrient_amount()
-    fn = load_food_name()
-
-    # Find some food codes to test with
-    def find_food(description: str) -> int:
-        match = fn[fn["Food_Description_EN"].str.contains(description, case=False, na=False)]
-        if len(match) == 0:
-            raise ValueError(f"No food found for '{description}'")
-        return int(match.iloc[0]["Food_Code"])
-
-    chicken_code = find_food("Chicken, broiler, breast, skinless, boneless, meat, raw")
-    rice_code = find_food("Grains, rice, white, long-grain, parboiled, cooked")
-    oil_code = find_food("Vegetable oil, canola")
-
-    print(f"  Chicken breast: Food_Code {chicken_code}")
-    print(f"  Rice (cooked):  Food_Code {rice_code}")
-    print(f"  Canola oil:     Food_Code {oil_code}")
-
-    # Build a test recipe: 200g chicken, 150g rice, 15g oil, 200mL water, 550mL final
-    recipe = Recipe(
-        name="Test chicken-rice blend",
-        ingredients=[
-            Ingredient(food_code=chicken_code, food_description="Chicken breast", grams=200),
-            Ingredient(food_code=rice_code, food_description="Rice, cooked", grams=150),
-            Ingredient(food_code=oil_code, food_description="Canola oil", grams=15),
-        ],
-        added_water_mL=200,
-        measured_final_volume_mL=550,
-    )
-
-    print(f"\nRecipe: {recipe.name}")
-    print(
-        f"  {len(recipe.ingredients)} ingredients, {recipe.added_water_mL} mL added water, "
-        f"{recipe.measured_final_volume_mL} mL measured volume"
-    )
-
-    print("\nCalculating profile...")
-    profile = calculate_profile(recipe, na)
-
-    print("\n--- Nutrient totals (per recipe) ---")
-    for name in NUTRIENT_CODES:
-        val = profile.nutrient_totals.get(name, 0.0)
-        label = NUTRIENT_LABELS[name]
-        print(f"  {label:<25} {val:>10.1f}")
-
-    print("\n--- Densities (primary outputs) ---")
-    print(f"  kcal/mL:         {profile.kcal_per_mL:.3f}")
-    print(f"  protein g/mL:    {profile.protein_per_mL:.3f}")
-    print(f"  free water frac: {profile.free_water_fraction:.3f}")
-
-    # Daily totals at 1200 mL/day
-    daily = calculate_daily_totals(profile, 1200)
-    print("\n--- Daily totals at 1200 mL/day ---")
-    for name in ["energy_kcal", "protein_g", "fibre_g", "sodium_mg", "potassium_mg"]:
-        val = daily.get(name, 0.0)
-        label = NUTRIENT_LABELS[name]
-        print(f"  {label:<25} {val:>10.1f}")
-
-    # Dilution what-if: add 100 mL water
-    diluted = dilute(profile, added_liquid_mL=100, liquid_water_g=100)
-    print("\n--- After adding 100 mL water ---")
-    print(f"  New volume:      {diluted.measured_final_volume_mL:.0f} mL")
-    print(f"  kcal/mL:         {diluted.kcal_per_mL:.3f} (was {profile.kcal_per_mL:.3f})")
-    print(f"  protein g/mL:    {diluted.protein_per_mL:.3f} (was {profile.protein_per_mL:.3f})")
-    print(
-        f"  free water frac: {diluted.free_water_fraction:.3f} (was {profile.free_water_fraction:.3f})"
-    )
-
-    # Required volume to meet 1800 kcal, 75g protein
-    req_vol = required_daily_volume(profile, target_kcal=1800, target_protein_g=75)
-    print("\n--- Required daily volume for 1800 kcal + 75g protein ---")
-    print(f"  {req_vol:.0f} mL")
-
-    # Formula comparison
-    comparison = compare_with_formula(profile, "Peptamen 1.5", 1200)
-    print("\n--- BTF vs Peptamen 1.5 at 1200 mL/day ---")
-    print(
-        f"  BTF:     {comparison['btf']['kcal']:.0f} kcal, {comparison['btf']['protein_g']:.1f} g protein"
-    )
-    print(
-        f"  Formula: {comparison['formula']['kcal']:.0f} kcal, {comparison['formula']['protein_g']:.1f} g protein"
-    )
-
-    vol_needed = volume_to_match_formula_kcal(profile, "Peptamen 1.5", 1200)
-    print(f"\n  BTF volume needed to match Peptamen 1.5's kcal: {vol_needed:.0f} mL")
-
-    print("\n✅ Calculator smoke test passed.")

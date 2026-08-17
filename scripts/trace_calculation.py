@@ -45,11 +45,14 @@ from src.data_loader import load_food_name, load_nutrient_amount
 from src.models import Ingredient, Recipe
 from src.calculator import (
     NUTRIENT_CODES,
-    NUTRIENT_LABELS,
     calculate_profile,
     calculate_daily_totals,
 )
-from src.nutrients import registry_by_name, DEFAULT_PACK
+
+# NUTRIENT_LABELS from its own module, not re-exported via calculator
+# (2026-08-16). calculator.py imported it only to pass it through, and once
+# that module's __main__ smoke test was retired nothing there used it.
+from src.nutrients import NUTRIENT_LABELS, registry_by_name, DEFAULT_PACK
 
 pd.set_option("display.width", 120)
 pd.set_option("display.float_format", lambda v: f"{v:,.3f}")

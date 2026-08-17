@@ -246,20 +246,3 @@ NUTRIENT_LABELS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Smoke test
 # ---------------------------------------------------------------------------
-
-
-if __name__ == "__main__":
-    print("Loading Canada nutrient registry...")
-    registry = load_registry()
-    print(f"  {len(registry)} nutrients loaded\n")
-
-    for tier in VALID_TIERS:
-        rows = [d for d in registry if d.tier == tier]
-        print(f"{tier} ({len(rows)}):")
-        for d in rows:
-            print(
-                f"  {d.name:<20} code={d.code:<4} on_label={d.on_label!s:<5} {d.label} ({d.unit})"
-            )
-        print()
-
-    print("✅ Nutrients registry smoke test passed.")
