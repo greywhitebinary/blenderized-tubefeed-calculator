@@ -1095,10 +1095,22 @@ with top_l:
     recipe_name = _narrow(1, 1).text_input("Patient / record label", key="recipe_name_input")
 
 st.title(f"🥕🥦🥤 {recipe_name or 'BTF record'} 💉💧🍌")
-st.caption(
-    "⚠️ Under development. Estimates to inform clinical judgment, not to replace it. "
-    "Check the numbers before you act on them."
-)
+# One paragraph, disclaimer first then orientation (author, 2026-08-19).
+# Sitting under the title is prominent enough that neither half can be
+# missed, which is what lets the whole thing be set smaller than a normal
+# caption -- see the st-key-pagenote rule in app/styles.css.
+#
+# It says "First time here?" and is shown to everyone, every visit, because
+# the app cannot know who is new: nothing persists, so there is no returning
+# user to recognise.
+with st.container(key="pagenote"):
+    st.caption(
+        "⚠️ Under development. Estimates to inform clinical judgment, not to replace it. "
+        "Check the numbers before you act on them. "
+        "First time here? Watch the 3-minute demo or load the example record. "
+        "Work left to right: set optional targets, build or select a blend, "
+        "then record what was actually given that day."
+    )
 
 
 # ===========================================================================
@@ -1265,24 +1277,6 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
 # "at 4, not above 4" 2026-08-16).
 COMPARATOR_BLEND_PICKER_THRESHOLD = 4
 
-
-# Orientation for a first visit (author, 2026-08-19). Sits here, directly
-# above the tab bar, because "work left to right" describes THAT bar and
-# nothing else on the page explains the order. The demo and example-record
-# buttons it names render higher up, above the title, so the first sentence
-# points backwards -- acceptable because both are on the same screen, and
-# the alternative (leading the page with instructions, before the title has
-# said what the tool is) reads worse.
-#
-# A plain caption rather than a banner, and always shown, because the app
-# CANNOT KNOW who is new: nothing persists, so every visit looks like a
-# first visit. That costs a returning RD one line of grey text they learn
-# to skip, which is the honest price of having no accounts.
-st.caption(
-    "First time here? Watch the 3-minute demo or load the example record. "
-    "Work left to right: set optional targets, build or select a blend, "
-    "then record what was actually given that day."
-)
 
 targets_tab, recipes_tab, record_tab = st.tabs(
     ["Nutrition Targets", "Feed Recipes", "Daily Intake Record"]

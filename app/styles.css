@@ -311,3 +311,17 @@ button[data-baseweb="tab"][aria-selected="true"] p {
        deploy, #f4f4f6 is the same idea a shade stronger. */
     background-color: #f8f9fb;
 }
+
+/* The page note under the title: the "under development" disclaimer and
+   the first-time orientation, merged into one paragraph
+   (author, 2026-08-19). Set smaller than a normal caption because its
+   position directly under the title already makes it unmissable, so it
+   does not need size as well -- and because it is shown on every visit,
+   not just a first one, the app having no way to tell those apart.
+
+   Streamlit's caption is 0.875rem; against the 125% root above that is
+   ~17.5px, and 0.75rem is ~15px. Tune this one number. */
+[class*="st-key-pagenote"] p {
+    font-size: 0.75rem;
+    line-height: 1.5;
+}
