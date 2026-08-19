@@ -325,3 +325,21 @@ button[data-baseweb="tab"][aria-selected="true"] p {
     font-size: 0.75rem;
     line-height: 1.5;
 }
+
+/* The footer: disclaimers, the Health Canada attribution, and the contact
+   links (author, 2026-08-19). Set below the page note deliberately, so the
+   page reads in three steps rather than two:
+
+       body text          1rem   what you came to read
+       page note          0.75rem  orientation, worth reading once
+       footer             0.7rem   boilerplate, conventionally set small
+
+   Against the 125% root above, 0.7rem is ~14px. Not smaller than that:
+   this is a clinical tool read on whatever screen is to hand, and the
+   attribution here is a condition of using Health Canada's data, so it
+   has to stay legible. Tune this one number. */
+[class*="st-key-pagefooter"] p,
+[class*="st-key-pagefooter"] li {
+    font-size: 0.7rem;
+    line-height: 1.55;
+}

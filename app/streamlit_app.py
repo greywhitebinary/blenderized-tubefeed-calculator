@@ -3215,42 +3215,48 @@ _SUBSTACK_MARK = (
     '22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/></svg>'
 )
 st.divider()
-st.caption(
-    "- ⚠️ **Under development.** A calculator for dietitians and the teams supporting "
-    "blenderized tube feeding, and anyone is welcome to use it. It is built to inform "
-    "clinical judgment, not to replace it. Please use with caution and check numbers "
-    "before acting on them.\n"
-    "- Using this tool creates no dietitian–client or other professional relationship, and "
-    "it is no substitute for professional medical advice, diagnosis or treatment. For "
-    "anything about a specific person's care, ask their own physician, registered "
-    "dietitian or qualified health provider, and never delay that advice because of "
-    "something calculated here.\n"
-    # Attribution required by Health Canada's CNF copyright guidelines
-    # (author supplied them, 2026-08-19). Two of their five conditions were
-    # unmet before this line existed: "Health Canada be identified as the
-    # source", and that the reproduction not be represented as official or
-    # as affiliated with or endorsed by them. Their requested form is
-    # "Canadian Nutrient File, Health Canada, <year>" -- name first, year
-    # last, which is why this reads differently from the search label.
-    #
-    # The last sentence is not required by Health Canada: it stops this
-    # line implying CNF is the source of the 33 commercial formulas, which
-    # come from manufacturers' product guides (cited per row in
-    # formulas.csv's source and verified columns).
-    "- Food values come from the Canadian Nutrient File, Health Canada, 2026, "
-    "used under Health Canada's copyright guidelines. This is not an official "
-    "version and is not affiliated with or endorsed by Health Canada. "
-    "Commercial formula values come from each manufacturer's published "
-    "product information.\n"
-    "- Issues or feedback? Please [open an issue at GitHub]"
-    "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
-    "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).\n"
-    # Points at the first post, not the publication root: that post reads
-    # as an about page (author, 2026-08-19), and the root is a reverse-
-    # chronological feed whose top item will not be an introduction for
-    # long. To be repointed when the essay about this tool is written.
-    f"- {_SUBSTACK_MARK}"
-    "[About Feed. Form. Flow.]"
-    "(https://feedformflow.substack.com/p/feed-form-flow)",
-    unsafe_allow_html=True,
-)
+# Set smaller than the page note above it (author, 2026-08-19), giving
+# three deliberate steps: body text, then the orientation note at
+# 0.75rem, then this at 0.7rem. Boilerplate is conventionally set below
+# body size, and this block is long -- five bullets, one of them a dense
+# attribution paragraph. See st-key-pagefooter in app/styles.css.
+with st.container(key="pagefooter"):
+    st.caption(
+        "- ⚠️ **Under development.** A calculator for dietitians and the teams supporting "
+        "blenderized tube feeding, and anyone is welcome to use it. It is built to inform "
+        "clinical judgment, not to replace it. Please use with caution and check numbers "
+        "before acting on them.\n"
+        "- Using this tool creates no dietitian–client or other professional relationship, and "
+        "it is no substitute for professional medical advice, diagnosis or treatment. For "
+        "anything about a specific person's care, ask their own physician, registered "
+        "dietitian or qualified health provider, and never delay that advice because of "
+        "something calculated here.\n"
+        # Attribution required by Health Canada's CNF copyright guidelines
+        # (author supplied them, 2026-08-19). Two of their five conditions were
+        # unmet before this line existed: "Health Canada be identified as the
+        # source", and that the reproduction not be represented as official or
+        # as affiliated with or endorsed by them. Their requested form is
+        # "Canadian Nutrient File, Health Canada, <year>" -- name first, year
+        # last, which is why this reads differently from the search label.
+        #
+        # The last sentence is not required by Health Canada: it stops this
+        # line implying CNF is the source of the 33 commercial formulas, which
+        # come from manufacturers' product guides (cited per row in
+        # formulas.csv's source and verified columns).
+        "- Food values come from the Canadian Nutrient File, Health Canada, 2026, "
+        "used under Health Canada's copyright guidelines. This is not an official "
+        "version and is not affiliated with or endorsed by Health Canada. "
+        "Commercial formula values come from each manufacturer's published "
+        "product information.\n"
+        "- Issues or feedback? Please [open an issue at GitHub]"
+        "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
+        "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).\n"
+        # Points at the first post, not the publication root: that post reads
+        # as an about page (author, 2026-08-19), and the root is a reverse-
+        # chronological feed whose top item will not be an introduction for
+        # long. To be repointed when the essay about this tool is written.
+        f"- {_SUBSTACK_MARK}"
+        "[About Feed. Form. Flow.]"
+        "(https://feedformflow.substack.com/p/feed-form-flow)",
+        unsafe_allow_html=True,
+    )
