@@ -4,15 +4,16 @@ Work out the calories, protein, fluid and micronutrients in a home-blended
 tube feed, and see what happens when you change it.
 
 Built for registered dietitians, on the **Canadian Nutrient File (CNF)
-2026**. Estimates only — RD clinical judgment is the final authority.
+2026**. It gives estimates; the clinical judgment stays with the
+dietitian using it.
 
 ### ▶ Try it: **https://btfcalc.streamlit.app**
 
-**[Watch the 3-minute demo](https://vimeo.com/1216832087)** — the tool from
-targets to chart note.
+**[Watch the 3-minute demo](https://vimeo.com/1216832087)**, which follows
+the tool from targets through to the chart note.
 
-No install, no account, nothing to set up. Click **"Load example day"** in
-the top row to see a worked case with a nine-ingredient blend, a
+There is nothing to install and no account to create. Click **"Load example
+record"** in the top row to see a worked case with a nine-ingredient blend, a
 commercial formula, water flushes and one oral food.
 
 ![The Daily Intake Record tab: the day's intake summarised in one line, a per-source breakdown of energy, macros and minerals split into Tube Feed, Food & Drink and Total, and a water ledger showing where every millilitre came from](docs/screenshot-daily-intake-record.png)
@@ -32,7 +33,7 @@ commercial formula, water flushes and one oral food.
 - **Compares against commercial formulas.** 33 adult Canadian tube-feeding
   formulas, filterable by manufacturer, at a daily volume you choose.
 - **Searches 5,993 CNF foods** by all your words in any order, with typo
-  tolerance. It never auto-picks a food for you.
+  tolerance. It never chooses a food for you.
 - **Reads a nutrition label from a photo** into a form you check against
   the label in your hand. A nutrient that isn't printed comes back blank,
   never as zero.
@@ -52,18 +53,18 @@ commercial formula, water flushes and one oral food.
 - **No default targets anywhere.** Targets start blank and you enter
   patient-specific values, or leave them blank and read the totals. A
   population default is not defensible for tube-fed patients.
-- **A zero can mean "never measured," not "none present."** The report's
+- **A zero can mean "never measured", not "none present".** The report's
   *Coverage* column shows how many of your sources actually supplied a
   value for each nutrient, and rows where nothing did are hidden rather
   than shown as a confident 0.
 - **No patient data is stored.** The app keeps nothing server-side. Saved
   days download to your own machine, and they contain whatever you typed
-  in the day label.
+  in the record label.
 - **Estimates only.** This tool cannot measure viscosity, tube flow or
   tolerance, and it does not compute targets or assess anyone.
 - **It is a calculator, not a clinician.** It does not recommend a feeding
   plan or decide anything about a patient. The dietitian using it makes
-  those calls and remains responsible for them.
+  those decisions and remains responsible for them.
 - **Using it creates no professional relationship.** See the
   [medical disclaimer](#medical-disclaimer) below.
 
@@ -85,8 +86,8 @@ It opens at http://localhost:8501. The CNF data ships with the repo, so
 there is nothing else to download.
 
 **Optional:** the label-photo feature calls the Anthropic API. Without a
-key the photo control simply doesn't appear and you type labels in by
-hand, exactly as before the feature existed. To enable it, put your own
+key the photo control does not appear, and labels are typed in by hand
+exactly as before the feature existed. To enable it, put your own
 key in `.streamlit/secrets.toml`:
 
 ```toml
@@ -97,7 +98,7 @@ You are billed for your own usage. Caps live in `src/label_extract.py`.
 
 ## Check that you can trust the numbers
 
-The maths has four hops: load CNF data, scale by grams, divide by
+The math has four steps: load CNF data, scale by grams, divide by
 measured volume, multiply by daily volume. You can check every one with a
 calculator and a browser, without reading any code.
 
@@ -136,16 +137,16 @@ for updating formulas from manufacturer PDFs.
 
 ## How it's built
 
-Streamlit and pandas, with the maths in plain Python under `src/`.
+Streamlit and pandas, with the math in plain Python under `src/`.
 
-- 154 unit tests, plus 9 verification checks, six of which drive the real
-  UI through Streamlit's `AppTest`
+- 236 unit tests, plus 9 verification checks, eight of which drive the
+  real UI through Streamlit's `AppTest`
 - GitHub Actions runs all of it on every push and fails the build on lint
 - `src/` is Streamlit-free, so the calculations are testable without a
   browser
 
 ```
-app/streamlit_app.py   the UI
+app/                   the UI: the page, the add-a-food component, styles
 src/                   calculator, data loading, nutrient registry, file I/O
 data/packs/canada/     editable reference data
 scripts/               verification checks
@@ -170,12 +171,11 @@ to adapt it for another country's data.
   [GitHub issue](https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues).
   Public, so the next person with the same question finds the answer.
 - **To find me:** [LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/)
-- **Anything else:** greywhitebinary@gmail.com
+- **To read more:** [Feed. Form. Flow.](https://feedformflow.substack.com)
 
-**What I can't help with: anything about a specific person's care.** That
-isn't reluctance, it's the limit of what anyone can responsibly do from
-the outside — I can't examine, monitor or follow up, and the people who
-can are already on your team. See the disclaimer below.
+**I can't advise on a specific person's care.** I'm a registered
+dietitian, but not your dietitian. See the
+[medical disclaimer](#medical-disclaimer) below.
 
 ## Who this is for
 
@@ -183,7 +183,7 @@ Built for dietitians and the other healthcare professionals who support
 blenderized tube feeding.
 
 If you're a patient, a parent or a caregiver doing this at home, you're
-welcome to use it. The numbers are the same numbers. What differs is what
+welcome to use it. The numbers are the same. What differs is what
 happens next: bring what you find to your own healthcare team, who can
 weigh it against everything else they know about the person in front of
 them.
