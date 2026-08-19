@@ -3183,7 +3183,21 @@ with record_tab:
 # these routes have a human gate in front of them.
 #
 # Contact sits AFTER "ask their own physician" on purpose: the limit is
-# read before the invitation to write.
+# read before the invitation to write. The Substack line (author,
+# 2026-08-19) sits last, with the other two invitations: the app is shared
+# from btfcalc.feedformflow.com, so the publication is the same identity
+# arriving from the other direction.
+#
+# The Substack mark is INLINE SVG rather than a hotlinked image: no request
+# leaves the page for it, nothing breaks if Substack moves the file, and
+# fill:currentColor makes it take the caption's own colour, so it works in
+# either theme without a second asset.
+_SUBSTACK_MARK = (
+    '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" '
+    'style="vertical-align:-1px;margin-right:.3em;fill:currentColor">'
+    '<path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 18.11 '
+    '22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/></svg>'
+)
 st.divider()
 st.caption(
     "- ⚠️ **Under development.** A calculator for dietitians and the teams supporting "
@@ -3198,5 +3212,8 @@ st.caption(
     "- Built on the Canadian Nutrient File (CNF) 2026.\n"
     "- Issues or feedback? Please [open an issue at GitHub]"
     "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
-    "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/)."
+    "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).\n"
+    f'- <a href="https://feedformflow.substack.com">{_SUBSTACK_MARK}'
+    "Read more at Feed. Form. Flow.</a>",
+    unsafe_allow_html=True,
 )
