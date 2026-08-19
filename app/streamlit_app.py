@@ -1266,6 +1266,24 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
 COMPARATOR_BLEND_PICKER_THRESHOLD = 4
 
 
+# Orientation for a first visit (author, 2026-08-19). Sits here, directly
+# above the tab bar, because "work left to right" describes THAT bar and
+# nothing else on the page explains the order. The demo and example-record
+# buttons it names render higher up, above the title, so the first sentence
+# points backwards -- acceptable because both are on the same screen, and
+# the alternative (leading the page with instructions, before the title has
+# said what the tool is) reads worse.
+#
+# A plain caption rather than a banner, and always shown, because the app
+# CANNOT KNOW who is new: nothing persists, so every visit looks like a
+# first visit. That costs a returning RD one line of grey text they learn
+# to skip, which is the honest price of having no accounts.
+st.caption(
+    "First time here? Watch the 3-minute demo or load the example record. "
+    "Work left to right: set optional targets, build or select a blend, "
+    "then record what was actually given that day."
+)
+
 targets_tab, recipes_tab, record_tab = st.tabs(
     ["Nutrition Targets", "Feed Recipes", "Daily Intake Record"]
 )
