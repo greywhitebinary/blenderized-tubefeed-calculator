@@ -1095,18 +1095,19 @@ with top_l:
     recipe_name = _narrow(1, 1).text_input("Patient / record label", key="recipe_name_input")
 
 st.title(f"🥕🥦🥤 {recipe_name or 'BTF record'} 💉💧🍌")
-# One paragraph, disclaimer first then orientation (author, 2026-08-19).
-# Sitting under the title is prominent enough that neither half can be
-# missed, which is what lets the whole thing be set smaller than a normal
-# caption -- see the st-key-pagenote rule in app/styles.css.
+# Orientation only (author, 2026-08-19). The disclaimer that used to open
+# this line is gone from the top: the footer already carries it in full --
+# under development, informs judgment rather than replacing it, check the
+# numbers -- and saying it twice on one page made the top note longer
+# without making it safer. Verified against the footer before removing.
 #
 # It says "First time here?" and is shown to everyone, every visit, because
 # the app cannot know who is new: nothing persists, so there is no returning
-# user to recognise.
+# user to recognise. That, plus its position directly under the title, is
+# why it is set smaller than a normal caption (st-key-pagenote in
+# app/styles.css).
 with st.container(key="pagenote"):
     st.caption(
-        "⚠️ Under development. Estimates to inform clinical judgment, not to replace it. "
-        "Check the numbers before you act on them. "
         "First time here? Watch the 3-minute demo or load the example record. "
         "Work left to right: set optional targets, build or select a blend, "
         "then record what was actually given that day."
@@ -3224,7 +3225,6 @@ st.caption(
     "anything about a specific person's care, ask their own physician, registered "
     "dietitian or qualified health provider, and never delay that advice because of "
     "something calculated here.\n"
-    "- Built on the Canadian Nutrient File (CNF) 2026.\n"
     "- Issues or feedback? Please [open an issue at GitHub]"
     "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
     "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).\n"

@@ -180,7 +180,7 @@ def render_add_food_ui(
     add_mode = st.radio(
         "Source",
         [
-            "Search foods from the Canadian Nutrient File",
+            "Search foods from the Canadian Nutrient File 2026",
             "Enter a Canada Nutrition Facts label (custom food)",
         ],
         horizontal=True,
@@ -189,7 +189,9 @@ def render_add_food_ui(
 
     result: dict | None = None
 
-    if add_mode == "Search foods from the Canadian Nutrient File":  # else: NFt label form
+    # This string is the radio OPTION above and this COMPARISON: one pair.
+    # Editing either alone silently disables the whole CNF search branch.
+    if add_mode == "Search foods from the Canadian Nutrient File 2026":  # else: NFt label form
         # Food-group filter: CNF's own 23 native CNF_Food_Group categories
         # — narrows the search pool *before* the substring search below.
         group_options = ["All"] + sorted(fg_df["CNF_Food_Group_Description_EN"].tolist())
