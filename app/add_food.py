@@ -180,7 +180,7 @@ def render_add_food_ui(
     add_mode = st.radio(
         "Source",
         [
-            "Search foods from the Canadian Nutrient File 2026",
+            "Search foods from the 2026 Canadian Nutrient File (CNF)",
             "Enter a Canada Nutrition Facts label (custom food)",
         ],
         horizontal=True,
@@ -191,7 +191,14 @@ def render_add_food_ui(
 
     # This string is the radio OPTION above and this COMPARISON: one pair.
     # Editing either alone silently disables the whole CNF search branch.
-    if add_mode == "Search foods from the Canadian Nutrient File 2026":  # else: NFt label form
+    #
+    # It also carries the only on-screen expansion of "CNF", which four
+    # other captions use bare (the recipe import, the counts-as-fluid note,
+    # the water ledger, the Dilution What-If). Dropping the parenthetical
+    # leaves those four undefined for a first-time reader.
+    if (
+        add_mode == "Search foods from the 2026 Canadian Nutrient File (CNF)"
+    ):  # else: NFt label form
         # Food-group filter: CNF's own 23 native CNF_Food_Group categories
         # — narrows the search pool *before* the substring search below.
         group_options = ["All"] + sorted(fg_df["CNF_Food_Group_Description_EN"].tolist())
