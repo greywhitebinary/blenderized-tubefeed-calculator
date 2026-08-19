@@ -1106,6 +1106,19 @@ st.title(f"🥕🥦🥤 {recipe_name or 'BTF record'} 💉💧🍌")
 # user to recognise. That, plus its position directly under the title, is
 # why it is set smaller than a normal caption (st-key-pagenote in
 # app/styles.css).
+# A quiet byline (author, 2026-08-19). The app is shared as
+# btfcalc.feedformflow.com, but that domain FORWARDS to
+# btfcalc.streamlit.app, so the address bar loses the branding the
+# reader arrived through and "Feed. Form. Flow." reaches the footer as
+# a name they have never seen. Naming it here fixes that, and tells
+# anyone who bookmarked the streamlit URL whose tool this is.
+#
+# Deliberately not a link: an outbound link at the top of the page
+# invites leaving before anything has been done. The footer carries
+# the clickable one.
+with st.container(key="pagebyline"):
+    st.caption("A Feed. Form. Flow. project")
+
 with st.container(key="pagenote"):
     st.caption(
         "First time here? Watch the 3-minute demo or load the example record. "
@@ -3248,15 +3261,21 @@ with st.container(key="pagefooter"):
         "version and is not affiliated with or endorsed by Health Canada. "
         "Commercial formula values come from each manufacturer's published "
         "product information.\n"
+        # Links the first post, not the publication root: that post reads as
+        # an about page (author, 2026-08-19), whereas the root is a reverse-
+        # chronological feed whose top item will not stay an introduction. To
+        # be repointed when the essay about this tool is written.
+        #
+        # "is a ... project" rather than "About Feed. Form. Flow.": the app is
+        # shared as btfcalc.feedformflow.com but that domain FORWARDS to
+        # btfcalc.streamlit.app, so a reader arrives with the branding stripped
+        # from the address bar. The sentence says what the name is, instead of
+        # assuming it is already known.
+        f"- {_SUBSTACK_MARK}"
+        "BTF Calculator is a [Feed. Form. Flow.]"
+        "(https://feedformflow.substack.com/p/feed-form-flow) project.\n"
         "- Issues or feedback? Please [open an issue at GitHub]"
         "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
-        "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).\n"
-        # Points at the first post, not the publication root: that post reads
-        # as an about page (author, 2026-08-19), and the root is a reverse-
-        # chronological feed whose top item will not be an introduction for
-        # long. To be repointed when the essay about this tool is written.
-        f"- {_SUBSTACK_MARK}"
-        "[About Feed. Form. Flow.]"
-        "(https://feedformflow.substack.com/p/feed-form-flow)",
+        "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).",
         unsafe_allow_html=True,
     )
