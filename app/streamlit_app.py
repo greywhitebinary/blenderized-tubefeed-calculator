@@ -1106,21 +1106,20 @@ st.title(f"🥕🥦🥤 {recipe_name or 'BTF record'} 💉💧🍌")
 # user to recognise. That, plus its position directly under the title, is
 # why it is set smaller than a normal caption (st-key-pagenote in
 # app/styles.css).
-# A quiet byline (author, 2026-08-19). The app is shared as
-# btfcalc.feedformflow.com, but that domain FORWARDS to
-# btfcalc.streamlit.app, so the address bar loses the branding the
-# reader arrived through and "Feed. Form. Flow." reaches the footer as
-# a name they have never seen. Naming it here fixes that, and tells
-# anyone who bookmarked the streamlit URL whose tool this is.
 #
-# Deliberately not a link: an outbound link at the top of the page
-# invites leaving before anything has been done. The footer carries
-# the clickable one.
-with st.container(key="pagebyline"):
-    st.caption("A Feed. Form. Flow. project")
-
+# It opens with a quiet byline, in the SAME paragraph rather than a line of
+# its own (author, 2026-08-19). The app is shared as
+# btfcalc.feedformflow.com, but that domain FORWARDS to
+# btfcalc.streamlit.app, so the address bar loses the branding the reader
+# arrived through, and "Feed. Form. Flow." then reaches the footer as a name
+# they have never seen. Naming it here fixes that, and tells anyone who
+# bookmarked the streamlit URL whose tool this is.
+#
+# Deliberately not a link: an outbound link at the top of the page invites
+# leaving before anything has been done. The footer carries the clickable one.
 with st.container(key="pagenote"):
     st.caption(
+        "A Feed. Form. Flow. project. "
         "First time here? Watch the 3-minute demo or load the example record. "
         "Work left to right: set optional targets, build or select a blend, "
         "then record what was actually given that day."
