@@ -3225,6 +3225,23 @@ st.caption(
     "anything about a specific person's care, ask their own physician, registered "
     "dietitian or qualified health provider, and never delay that advice because of "
     "something calculated here.\n"
+    # Attribution required by Health Canada's CNF copyright guidelines
+    # (author supplied them, 2026-08-19). Two of their five conditions were
+    # unmet before this line existed: "Health Canada be identified as the
+    # source", and that the reproduction not be represented as official or
+    # as affiliated with or endorsed by them. Their requested form is
+    # "Canadian Nutrient File, Health Canada, <year>" -- name first, year
+    # last, which is why this reads differently from the search label.
+    #
+    # The last sentence is not required by Health Canada: it stops this
+    # line implying CNF is the source of the 33 commercial formulas, which
+    # come from manufacturers' product guides (cited per row in
+    # formulas.csv's source and verified columns).
+    "- Food values come from the Canadian Nutrient File, Health Canada, 2026, "
+    "used under Health Canada's copyright guidelines. This is not an official "
+    "version and is not affiliated with or endorsed by Health Canada. "
+    "Commercial formula values come from each manufacturer's published "
+    "product information.\n"
     "- Issues or feedback? Please [open an issue at GitHub]"
     "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
     "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).\n"
