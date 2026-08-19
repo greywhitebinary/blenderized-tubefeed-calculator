@@ -46,44 +46,52 @@ jobs:
       - name: Run pytest
         run: pytest tests/ -v
 
-      # --- The nine verification checks ---------------------------------
-      # Unit tests can't see the app. These can: six of the nine drive the
-      # real Streamlit UI (AppTest), and the others parse the real 565k-row
-      # CNF data -- which is where this project's actual regressions have
-      # happened.
+      # --- The verification checks --------------------------------------
+      # Unit tests can't see the app. These can: the check_*.py scripts
+      # drive the real Streamlit UI (AppTest), and the two named separately
+      # below parse the real 565k-row CNF data -- which is where this
+      # project's actual regressions have happened.
       #
       # They were previously run by hand. Every one finishes in under two
       # seconds -- including verify_backend.py, whose "too slow to gate a
       # push" note turned out to be wrong when measured (0.53s from a cold
       # checkout with no Parquet cache). There was never a reason to leave
       # them out.
+      #
+      # DISCOVERED, NOT LISTED (2026-08-19). This file used to name every
+      # check_*.py as its own step, and twice that list fell behind the
+      # directory: check_blend_switching.py and check_blend_without_volume.py
+      # were both added without a step, so the regression check guarding a
+      # crash fix never ran here. Naming them individually gave a prettier
+      # failure in the GitHub UI and a silently incomplete gate, which is
+      # exactly the trade this file's header rejects. The loop below runs
+      # whatever is in scripts/, so a new check is covered the moment it is
+      # written; it echoes each name, so a failure still says which one.
 
       - name: Backend modules (src/ against real CNF)
         run: python scripts/verify_backend.py
 
-      - name: App imports
-        run: python scripts/check_app_imports.py
-
       - name: Hand-traced calculation cross-check
         run: python scripts/trace_calculation.py
 
-      - name: AppTest - tab structure
-        run: python scripts/check_tab_restructure.py
-
-      - name: AppTest - recipe record save/load
-        run: python scripts/check_recipe_record.py
-
-      - name: AppTest - food search
-        run: python scripts/check_food_search.py
-
-      - name: AppTest - save and reopen a day
-        run: python scripts/check_day_save_load.py
-
-      - name: AppTest - label photo fills the form
-        run: python scripts/check_label_photo_fill.py
-
-      - name: AppTest - export sheet dedupe
-        run: python scripts/check_export_sheets.py
+      # check_app_imports.py had its own step here until 2026-08-19. The
+      # loop runs it too, and alphabetically it runs FIRST, so the
+      # fail-fast-if-the-app-won't-import behaviour is unchanged.
+      - name: AppTest checks (every scripts/check_*.py)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          scripts=(scripts/check_*.py)
+          if [ ${#scripts[@]} -eq 0 ]; then
+            echo "No scripts/check_*.py found -- the gate would pass vacuously."
+            exit 1
+          fi
+          echo "Running ${#scripts[@]} checks."
+          for s in "${scripts[@]}"; do
+            echo "::group::$s"
+            python "$s"
+            echo "::endgroup::"
+          done
 
       # --- Lint: BLOCKING since 2026-07-30 ----------------------------
       # These carried continue-on-error while ~5,600 lines of pre-existing
