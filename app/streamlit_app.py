@@ -3216,7 +3216,12 @@ st.caption(
     "- Issues or feedback? Please [open an issue at GitHub]"
     "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
     "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).\n"
+    # Points at the first post, not the publication root: that post reads
+    # as an about page (author, 2026-08-19), and the root is a reverse-
+    # chronological feed whose top item will not be an introduction for
+    # long. To be repointed when the essay about this tool is written.
     f"- {_SUBSTACK_MARK}"
-    "[Read more at Feed. Form. Flow.](https://feedformflow.substack.com)",
+    "[About Feed. Form. Flow.]"
+    "(https://feedformflow.substack.com/p/feed-form-flow)",
     unsafe_allow_html=True,
 )

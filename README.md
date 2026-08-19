@@ -171,7 +171,7 @@ to adapt it for another country's data.
   [GitHub issue](https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues).
   Public, so the next person with the same question finds the answer.
 - **To find me:** [LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/)
-- **To read more:** [Feed. Form. Flow.](https://feedformflow.substack.com)
+- **About the publication:** [Feed. Form. Flow.](https://feedformflow.substack.com/p/feed-form-flow)
 
 **I can't advise on a specific person's care.** I'm a registered
 dietitian, but not your dietitian. See the
