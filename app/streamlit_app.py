@@ -1117,12 +1117,27 @@ st.title(f"🥕🥦🥤 {recipe_name or 'BTF record'} 💉💧🍌")
 #
 # Deliberately not a link: an outbound link at the top of the page invites
 # leaving before anything has been done. The footer carries the clickable one.
+# The Substack mark is INLINE SVG rather than a hotlinked image: no request
+# leaves the page for it, and nothing breaks if Substack moves the file.
+# fill is Substack's brand orange (#FF6719), not currentColor: a logo keeps
+# its own colour, and currentColor made the mark inherit the link colour
+# (author, 2026-08-19). The orange reads on both the light and dark ground.
+_SUBSTACK_MARK = (
+    '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" '
+    'style="vertical-align:-1px;margin-right:.3em;fill:#FF6719">'
+    '<path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 18.11 '
+    '22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/></svg>'
+)
+
 with st.container(key="pagenote"):
     st.caption(
-        "A Feed. Form. Flow. project. "
+        f"{_SUBSTACK_MARK}"
+        "A [Feed. Form. Flow.]"
+        "(https://feedformflow.substack.com/p/feed-form-flow) project. "
         "First time here? Watch the 3-minute demo or load the example record. "
         "Work left to right: set optional targets, build or select a blend, "
-        "then record the daily intake and see the totals."
+        "then record the daily intake and see the totals.",
+        unsafe_allow_html=True,
     )
 
 
@@ -3208,29 +3223,18 @@ with record_tab:
 # these routes have a human gate in front of them.
 #
 # Contact sits AFTER "ask their own physician" on purpose: the limit is
-# read before the invitation to write. The Substack line (author,
-# 2026-08-19) sits last, with the other two invitations: the app is shared
-# from btfcalc.feedformflow.com, so the publication is the same identity
-# arriving from the other direction.
+# read before the invitation to write.
 #
-# The Substack mark is INLINE SVG rather than a hotlinked image: no request
-# leaves the page for it, nothing breaks if Substack moves the file, and
-# fill:currentColor makes it take the caption's own colour, so it works in
-# either theme without a second asset.
-# fill is Substack's brand orange (#FF6719), not currentColor: a logo keeps
-# its own colour, and currentColor made the mark inherit the link blue
-# (author, 2026-08-19). The orange reads on both the light and dark ground.
-_SUBSTACK_MARK = (
-    '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" '
-    'style="vertical-align:-1px;margin-right:.3em;fill:#FF6719">'
-    '<path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 18.11 '
-    '22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/></svg>'
-)
+# The publication is NOT named here. It was, briefly, but the footer is
+# fourth of four blocks of boilerplate and the link was buried under three
+# paragraphs of disclaimer; it now leads the page note instead (author,
+# 2026-08-19). Naming it in both places put it twice on one page.
+#
 st.divider()
 # Set smaller than the page note above it (author, 2026-08-19), giving
 # three deliberate steps: body text, then the orientation note at
 # 0.75rem, then this at 0.7rem. Boilerplate is conventionally set below
-# body size, and this block is long -- five bullets, one of them a dense
+# body size, and this block is long -- four bullets, one of them a dense
 # attribution paragraph. See st-key-pagefooter in app/styles.css.
 with st.container(key="pagefooter"):
     st.caption(
@@ -3260,21 +3264,7 @@ with st.container(key="pagefooter"):
         "version and is not affiliated with or endorsed by Health Canada. "
         "Commercial formula values come from each manufacturer's published "
         "product information.\n"
-        # Links the first post, not the publication root: that post reads as
-        # an about page (author, 2026-08-19), whereas the root is a reverse-
-        # chronological feed whose top item will not stay an introduction. To
-        # be repointed when the essay about this tool is written.
-        #
-        # "is a ... project" rather than "About Feed. Form. Flow.": the app is
-        # shared as btfcalc.feedformflow.com but that domain FORWARDS to
-        # btfcalc.streamlit.app, so a reader arrives with the branding stripped
-        # from the address bar. The sentence says what the name is, instead of
-        # assuming it is already known.
-        f"- {_SUBSTACK_MARK}"
-        "BTF Calculator is a [Feed. Form. Flow.]"
-        "(https://feedformflow.substack.com/p/feed-form-flow) project.\n"
         "- Issues or feedback? Please [open an issue at GitHub]"
         "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
         "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).",
-        unsafe_allow_html=True,
     )

@@ -9,4 +9,10 @@
 # not per-rerun).
 [theme]
 primaryColor = "#A4243A"
+# Links take the same maroon rather than Streamlit's default link blue
+# (author, 2026-08-19): "matches the rest of the colour scheme". Set through
+# the theme rather than a rule in app/styles.css, so it reaches every link
+# Streamlit renders along with their hover and visited states, and so there
+# is no !important fight with Streamlit's own stylesheet.
+linkColor = "#A4243A"
 secondaryBackgroundColor = "#f9e8eb"
