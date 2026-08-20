@@ -28,6 +28,7 @@ from src.recipe_io import (
     AMBIGUOUS,
     MATCH_BY_CODE,
     MATCH_BY_DESCRIPTION,
+    MATCH_CUSTOM,
     RECIPE_FORMAT_VERSION,
     UNMATCHED,
     ParsedRecipe,
@@ -41,7 +42,7 @@ from src.recipe_io import (
 )
 from io import BytesIO
 
-from src.recipe_io import INGREDIENTS_SHEET, RECIPE_SHEET
+from src.recipe_io import CUSTOM_FOODS_SHEET, INGREDIENTS_SHEET, RECIPE_SHEET
 
 
 def _write_v1_workbook(blend) -> bytes:
@@ -522,3 +523,142 @@ class TestMultipleRecipes:
     def test_filename_says_when_a_file_holds_several(self):
         assert suggested_filename("Morning blend") == "btf-recipe_Morning-blend.xlsx"
         assert suggested_filename("3 blends", count=3) == "btf-recipes_3-blends.xlsx"
+
+
+# ---------------------------------------------------------------------------
+# Custom foods (format v3): a food typed in from a Nutrition Facts label
+# (app/add_food.py) lives only in session state under a negative code. The
+# Custom foods sheet is what stops that data from being silently dropped
+# when the recipe reloads -- before this, resolve_ingredients() couldn't
+# find the code in CNF, couldn't match the description either, and the
+# ingredient came back UNMATCHED and quietly vanished from the blend.
+# ---------------------------------------------------------------------------
+
+
+def _strip_custom_foods_sheet(data: bytes) -> bytes:
+    """Simulate a v2 file: written before the Custom foods sheet existed."""
+    sheets = pd.read_excel(BytesIO(data), sheet_name=None, engine="openpyxl")
+    sheets.pop(CUSTOM_FOODS_SHEET, None)
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        for name, frame in sheets.items():
+            frame.to_excel(writer, sheet_name=name, index=False)
+    return buffer.getvalue()
+
+
+class TestCustomFoods:
+    @staticmethod
+    def _blend_with_custom(name, volume, cnf_foods, custom_ingredients):
+        """A blend mixing ordinary CNF ingredients with label-entered ones.
+
+        `cnf_foods` is (code, description, grams) triples; `custom_ingredients`
+        is (code, description, grams, unit) quads -- custom foods can be
+        entered on an mL basis, which CNF ingredients in this helper never are.
+        """
+        ingredients = [
+            {
+                "food_code": code,
+                "food_description": desc,
+                "grams": grams,
+                "unit": "g",
+                "counts_as_fluid": False,
+            }
+            for code, desc, grams in cnf_foods
+        ] + [
+            {
+                "food_code": code,
+                "food_description": desc,
+                "grams": grams,
+                "unit": unit,
+                "counts_as_fluid": False,
+            }
+            for code, desc, grams, unit in custom_ingredients
+        ]
+        return {"name": name, "measured_volume_mL": volume, "ingredients": ingredients}
+
+    def test_a_custom_food_round_trips_and_resolves_as_match_custom(self, food_name_df):
+        """THE bug this sheet exists to fix: a label-entered food used to
+        vanish from the reloaded blend, with nothing telling the RD why."""
+        blend = self._blend_with_custom(
+            "Morning blend",
+            1000.0,
+            [(1704, "Banana, raw", 100.0)],
+            [(-1, "Homemade formula (custom)", 250.0, "mL")],
+        )
+        session_custom_foods = {-1: {"energy_kcal": 150.0, "protein_g": 5.0}}
+
+        data = recipe_to_workbook_bytes(blend, custom_foods=session_custom_foods)
+        parsed = workbook_bytes_to_recipe(data)
+
+        assert parsed.custom_foods == session_custom_foods
+
+        resolved = resolve_ingredients(parsed, food_name_df)
+        by_code = {r.food_code: r for r in resolved}
+        assert by_code[1704].status == MATCH_BY_CODE
+
+        custom_row = by_code[-1]
+        assert custom_row.status == MATCH_CUSTOM
+        assert custom_row.food_description == "Homemade formula (custom)"
+        assert custom_row.custom_nutrients == {"energy_kcal": 150.0, "protein_g": 5.0}
+        # An exact match straight from the file's own data -- nothing for
+        # a human to confirm, unlike a description guess.
+        assert custom_row.needs_confirmation is False
+
+    def test_only_the_custom_foods_actually_used_are_written(self):
+        """The session dict can hold custom foods from OTHER blends
+        entirely; a saved file should not carry foods that aren't in it."""
+        session_custom_foods = {
+            -1: {"energy_kcal": 100.0},
+            -2: {"energy_kcal": 200.0},
+            -3: {"energy_kcal": 300.0},
+        }
+        blend = self._blend_with_custom(
+            "Morning blend", 1000.0, [], [(-1, "Only this one (custom)", 100.0, "g")]
+        )
+
+        data = recipe_to_workbook_bytes(blend, custom_foods=session_custom_foods)
+        parsed = workbook_bytes_to_recipe(data)
+
+        assert parsed.custom_foods == {-1: {"energy_kcal": 100.0}}
+
+    def test_a_v2_file_with_no_custom_foods_sheet_still_loads(self, blend):
+        """Files RDs already saved must not be orphaned by this change --
+        they simply carry no custom foods, exactly as before."""
+        v2 = _strip_custom_foods_sheet(recipe_to_workbook_bytes(blend))
+        parsed = workbook_bytes_to_recipe(v2)
+
+        assert parsed.custom_foods == {}
+        assert len(parsed.ingredients) == 2  # the ordinary CNF ingredients still load
+
+    def test_two_blends_sharing_one_custom_food_share_it_in_the_file_too(self):
+        """Multi-recipe files have ONE Custom foods sheet -- codes are
+        file-scoped, not recipe-scoped, so both recipes read back the same
+        values for the same code."""
+        session_custom_foods = {-1: {"energy_kcal": 175.0, "sodium_mg": 80.0}}
+        entries = [
+            (
+                self._blend_with_custom(
+                    "Morning blend",
+                    1000.0,
+                    [],
+                    [(-1, "Shared custom food (custom)", 200.0, "g")],
+                ),
+                None,
+            ),
+            (
+                self._blend_with_custom(
+                    "Evening blend",
+                    800.0,
+                    [],
+                    [(-1, "Shared custom food (custom)", 150.0, "g")],
+                ),
+                None,
+            ),
+        ]
+
+        data = recipes_to_workbook_bytes(entries, custom_foods=session_custom_foods)
+        recipes = workbook_bytes_to_recipes(data)
+
+        assert len(recipes) == 2
+        assert recipes[0].custom_foods == session_custom_foods
+        assert recipes[1].custom_foods == session_custom_foods

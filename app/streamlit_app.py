@@ -85,6 +85,7 @@ from src.day_io import (
 from src.recipe_io import (
     AMBIGUOUS,
     MATCH_BY_CODE,
+    MATCH_CUSTOM,
     UNMATCHED,
     RecipeFileError,
     recipe_to_workbook_bytes,
@@ -208,7 +209,11 @@ def _confirm_recipe_import(entries) -> None:
             st.rerun()
         return
 
-    needs_review = sum(1 for _, resolved in entries for r in resolved if r.status != MATCH_BY_CODE)
+    # needs_confirmation, not "status != MATCH_BY_CODE": MATCH_CUSTOM is
+    # also an exact match (the file names both the code and the per-100 g
+    # numbers, same as MATCH_BY_CODE names the code) and must not count
+    # toward "needs review" (Format v3, 2026-08-20).
+    needs_review = sum(1 for _, resolved in entries for r in resolved if r.needs_confirmation)
     if needs_review:
         st.caption(
             f"{needs_review} of {total_rows} rows need you to confirm which "
@@ -233,6 +238,9 @@ def _confirm_recipe_import(entries) -> None:
             amount_label = f"{row.grams:g} {row.unit}"
             if row.status == MATCH_BY_CODE:
                 st.write(f"✅ **{row.food_description}** — {amount_label}")
+                choices.append(row.food_code)
+            elif row.status == MATCH_CUSTOM:
+                st.write(f"✅ **{row.food_description}** — {amount_label} (from the saved label)")
                 choices.append(row.food_code)
             elif row.status == AMBIGUOUS:
                 picked = st.selectbox(
@@ -275,6 +283,24 @@ def _confirm_recipe_import(entries) -> None:
         key="recipe_import_confirm",
         width="stretch",
     ):
+        # A file's negative custom-food codes are file-scoped -- the
+        # session may already hold a DIFFERENT food under the same code.
+        # Renumber ONCE for the whole file, not per recipe, so two blends
+        # in this import that share one custom food land on the same new
+        # code rather than being split into two copies. Allocated exactly
+        # the way add_food.py hands out a code for a freshly-typed label
+        # (author's rule: an imported ingredient must never end up
+        # pointing at a pre-existing session custom food, 2026-08-20).
+        code_remap: dict[int, int] = {}
+        for (_parsed, resolved), choices in zip(entries, choices_by_recipe):
+            for row, code in zip(resolved, choices):
+                if code is None or row.status != MATCH_CUSTOM or code in code_remap:
+                    continue
+                new_code = st.session_state.next_custom_code
+                st.session_state.next_custom_code -= 1
+                st.session_state.custom_foods[new_code] = dict(row.custom_nutrients or {})
+                code_remap[code] = new_code
+
         for (parsed, resolved), choices in zip(entries, choices_by_recipe):
             if not any(c is not None for c in choices):
                 continue
@@ -290,10 +316,13 @@ def _confirm_recipe_import(entries) -> None:
                 if code is None:
                     continue
                 st.session_state.next_ingr_id += 1
+                # Custom rows use the REMAPPED code, never the file's own
+                # -- see code_remap above.
+                food_code = code_remap[code] if row.status == MATCH_CUSTOM else int(code)
                 blend["ingredients"].append(
                     {
                         "id": st.session_state.next_ingr_id,
-                        "food_code": int(code),
+                        "food_code": food_code,
                         "food_description": row.food_description,
                         "grams": row.grams,
                         "unit": row.unit,
@@ -2366,9 +2395,11 @@ with recipes_tab:
             # Falls back to the selected blend purely so the disabled
             # button still has valid bytes to hold.
             data=(
-                recipes_to_workbook_bytes(_savable)
+                recipes_to_workbook_bytes(_savable, custom_foods=st.session_state.custom_foods)
                 if _savable
-                else recipe_to_workbook_bytes(selected_blend, _ft_state)
+                else recipe_to_workbook_bytes(
+                    selected_blend, _ft_state, custom_foods=st.session_state.custom_foods
+                )
             ),
             file_name=(
                 suggested_filename(_savable[0][0].get("name", ""))

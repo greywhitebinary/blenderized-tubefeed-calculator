@@ -11,7 +11,7 @@ re-open in three weeks, and email to a colleague.
 
 THE FILE
 --------
-One .xlsx workbook, two sheets — chosen so a single file serves both
+One .xlsx workbook, three sheets — chosen so a single file serves both
 readers without a conversion step:
 
   Sheet "Recipe"       one row PER BLEND: recipe id, name, measured
@@ -22,6 +22,11 @@ readers without a conversion step:
                        description, amount, unit, counts-as-fluid, and the
                        household measure it was entered/edited in (blank
                        when there isn't one).
+  Sheet "Custom foods" per-100 g values for ingredients an RD typed in
+                       from a Nutrition Facts label rather than looked up
+                       in CNF. One row per (food code, nutrient) — same
+                       long format day_io.py uses for the same reason
+                       (Format v3, 2026-08-20).
 
 A recipe is not a flat table — it has one set of facts about the batch
 and a repeating list of ingredients — so two sheets is simply how a
@@ -54,6 +59,19 @@ recipe row and unlabelled ingredients, which is unambiguous, so every
 ingredient is assigned to that one recipe. Nothing an RD has already
 saved is orphaned by the v2 layout.
 
+v3 files add the "Custom foods" sheet described above. A food entered
+from a Nutrition Facts label (app/add_food.py) lives only in session
+state, keyed by a negative code CNF has never heard of. Before v3, that
+code went into the Ingredients sheet and nothing else — on reload,
+resolve_ingredients() couldn't find it in CNF, fell through to matching
+on the description, found nothing there either (there's no clinical name
+typed anywhere for a label food), and the ingredient came back UNMATCHED
+and quietly dropped out of the rebuilt blend. v1 and v2 files simply have
+no Custom foods sheet; they still load, and a custom-food ingredient in
+one of them behaves exactly as it always has (UNMATCHED) — this format
+bump only stops NEW files from losing that data, it doesn't repair old
+ones.
+
 Every ingredient row carries BOTH the CNF food code and the description.
 The code is what lets a file the app wrote reload with identical numbers.
 The description is what makes the file readable by a human, and typeable
@@ -84,10 +102,16 @@ import pandas as pd
 # file so a future reader can tell what it's looking at.
 #   v1  single recipe per file; no id columns.
 #   v2  many recipes per file; "Recipe id"/"Recipe name" link the sheets.
-RECIPE_FORMAT_VERSION = 2
+#   v3  adds the "Custom foods" sheet -- see FORMAT VERSIONS above.
+RECIPE_FORMAT_VERSION = 3
 
 RECIPE_SHEET = "Recipe"
 INGREDIENTS_SHEET = "Ingredients"
+# Long format (one row per food code/nutrient), same layout day_io.py
+# uses for the same data -- but NOT imported from there. The two file
+# formats are independent on purpose: a breaking change to one sheet
+# layout must never silently ship as a breaking change to the other.
+CUSTOM_FOODS_SHEET = "Custom foods"
 
 # The columns that tie an ingredient row to its recipe. Named here rather
 # than inline because the reader has to test for their presence to tell a
@@ -128,6 +152,11 @@ _INGREDIENT_COLUMNS = [
 # Per-ingredient outcomes from resolve_ingredients().
 MATCH_BY_CODE = "matched_by_code"
 MATCH_BY_DESCRIPTION = "matched_by_description"
+# A negative code the file's own Custom foods sheet has values for. Not a
+# CNF match at all -- there's no CNF row to check it against -- but just
+# as exact: the file names both the code and the per-100 g numbers, so
+# there is nothing to confirm (Format v3, 2026-08-20).
+MATCH_CUSTOM = "match_custom"
 AMBIGUOUS = "ambiguous"
 UNMATCHED = "unmatched"
 
@@ -147,8 +176,8 @@ class ResolvedIngredient:
     """One ingredient row after we've tried to tie it to a CNF food.
 
     Attributes:
-        status:           One of MATCH_BY_CODE / MATCH_BY_DESCRIPTION /
-                          AMBIGUOUS / UNMATCHED.
+        status:           One of MATCH_BY_CODE / MATCH_CUSTOM /
+                          MATCH_BY_DESCRIPTION / AMBIGUOUS / UNMATCHED.
         food_code:        The resolved CNF code, or None if unresolved.
         food_description: Description to display (from CNF where resolved,
                           else the text the RD typed).
@@ -163,6 +192,10 @@ class ResolvedIngredient:
                           options for a human to choose between.
         source_text:      What was actually in the file, kept for display
                           so the RD can see what they typed.
+        custom_nutrients: For MATCH_CUSTOM rows, the per-100 g values from
+                          the file's Custom foods sheet -- carried here so
+                          the caller doesn't have to reach back into the
+                          ParsedRecipe to find them.
     """
 
     status: str
@@ -175,6 +208,7 @@ class ResolvedIngredient:
     measure_grams: float | None = None
     candidates: list[tuple[int, str]] = field(default_factory=list)
     source_text: str = ""
+    custom_nutrients: dict[str, float] | None = None
 
     @property
     def needs_confirmation(self) -> bool:
@@ -199,6 +233,10 @@ class ParsedRecipe:
     format_version: int = RECIPE_FORMAT_VERSION
     ingredients: list[dict[str, Any]] = field(default_factory=list)
     row_warnings: list[str] = field(default_factory=list)
+    # File-scoped, not recipe-scoped: a multi-recipe file has ONE Custom
+    # foods sheet, and every ParsedRecipe read from that file shares it
+    # (Format v3, 2026-08-20).
+    custom_foods: dict[int, dict[str, float]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +246,7 @@ class ParsedRecipe:
 
 def recipes_to_workbook_bytes(
     entries: list[tuple[dict[str, Any], dict[str, Any] | None]],
+    custom_foods: dict[int, dict[str, float]] | None = None,
 ) -> bytes:
     """Serialise any number of blends (each with its flow test) to .xlsx.
 
@@ -217,6 +256,12 @@ def recipes_to_workbook_bytes(
             ingredient is {"food_code", "food_description", "grams",
             "unit", "counts_as_fluid"}. flow_test is optional
             {"date", "result", "notes"}.
+        custom_foods: the session's full label-entered-food table, keyed
+            by negative code. Only the codes actually referenced by
+            `entries` are written -- this is normally
+            st.session_state.custom_foods, which can hold foods from
+            other blends entirely, and a saved file should not carry
+            foods that aren't in it.
 
     Returns:
         Raw .xlsx bytes, ready to hand to st.download_button.
@@ -229,6 +274,7 @@ def recipes_to_workbook_bytes(
     """
     recipe_rows: list[dict[str, Any]] = []
     ingredient_rows: list[dict[str, Any]] = []
+    referenced_codes: set[int] = set()
 
     for recipe_id, (blend, flow_test) in enumerate(entries, start=1):
         ft = flow_test or {}
@@ -245,6 +291,9 @@ def recipes_to_workbook_bytes(
             }
         )
         for ing in blend.get("ingredients", []):
+            code = ing.get("food_code")
+            if code is not None:
+                referenced_codes.add(int(code))
             ingredient_rows.append(
                 {
                     # Repeated on every row so the sheet stands alone: an
@@ -271,23 +320,42 @@ def recipes_to_workbook_bytes(
     recipe_df = pd.DataFrame(recipe_rows, columns=_RECIPE_COLUMNS)
     ingredients_df = pd.DataFrame(ingredient_rows, columns=_INGREDIENT_COLUMNS)
 
+    # Long format (one row per nutrient), same reasoning as day_io.py's
+    # Custom foods sheet: the tracked nutrient set is data, not fixed, so
+    # a wide sheet would bake today's list into every saved file. Only the
+    # foods this file's ingredients actually point at are written -- the
+    # session dict passed in can hold custom foods from blends that never
+    # made it into `entries` at all.
+    custom_rows = [
+        {"Food code": code, "Nutrient": nutrient, "Per 100 g": float(value)}
+        for code, values in sorted((custom_foods or {}).items())
+        if code in referenced_codes
+        for nutrient, value in sorted(values.items())
+    ]
+    custom_df = pd.DataFrame(custom_rows, columns=["Food code", "Nutrient", "Per 100 g"])
+
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         recipe_df.to_excel(writer, sheet_name=RECIPE_SHEET, index=False)
         ingredients_df.to_excel(writer, sheet_name=INGREDIENTS_SHEET, index=False)
+        # Written even when empty (no rows), same as day_io.py -- a
+        # missing sheet and an empty sheet mean different things to the
+        # reader (see FORMAT VERSIONS), so v3+ files always carry it.
+        custom_df.to_excel(writer, sheet_name=CUSTOM_FOODS_SHEET, index=False)
     return buffer.getvalue()
 
 
 def recipe_to_workbook_bytes(
     blend: dict[str, Any],
     flow_test: dict[str, Any] | None = None,
+    custom_foods: dict[int, dict[str, float]] | None = None,
 ) -> bytes:
     """Serialise a single blend. Thin wrapper over recipes_to_workbook_bytes().
 
     Kept because saving one blend is still the common case and reads
     better at the call site than wrapping it in a list.
     """
-    return recipes_to_workbook_bytes([(blend, flow_test)])
+    return recipes_to_workbook_bytes([(blend, flow_test)], custom_foods=custom_foods)
 
 
 def suggested_filename(blend_name: str, count: int = 1) -> str:
@@ -534,6 +602,22 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
             }
         )
 
+    # --- Custom foods (v3+; absent from v1/v2 files, which simply produce
+    # an empty dict here -- see FORMAT VERSIONS). File-scoped rather than
+    # recipe-scoped, so every recipe in this file shares the one dict.
+    custom_foods: dict[int, dict[str, float]] = {}
+    custom_df = sheets.get(CUSTOM_FOODS_SHEET)
+    if custom_df is not None and "Food code" in custom_df.columns:
+        for _, row in custom_df.iterrows():
+            code = _coerce_float(row.get("Food code"))
+            nutrient = _coerce_str(row.get("Nutrient"))
+            value = _coerce_float(row.get("Per 100 g"))
+            if code is None or not nutrient or value is None:
+                continue  # an unreadable row is skipped, not fatal
+            custom_foods.setdefault(int(code), {})[nutrient] = value
+    for parsed in parsed_by_key.values():
+        parsed.custom_foods = custom_foods
+
     return [parsed_by_key[key] for key in order] or [ParsedRecipe()]
 
 
@@ -596,6 +680,25 @@ def resolve_ingredients(
             "measure_grams": ing.get("measure_grams"),
         }
         code = ing.get("food_code")
+
+        # Checked BEFORE the CNF lookup: a negative code the file's own
+        # Custom foods sheet has values for was never going to be in CNF
+        # anyway, and treating it as "not found there, try the words
+        # instead" would send a label-entered food's raw description
+        # through description-matching and very likely land it UNMATCHED
+        # (Format v3, 2026-08-20 -- this is the bug that motivated the
+        # sheet in the first place).
+        if code is not None and int(code) in parsed.custom_foods:
+            resolved.append(
+                ResolvedIngredient(
+                    status=MATCH_CUSTOM,
+                    food_code=int(code),
+                    food_description=ing.get("food_description", "") or "",
+                    custom_nutrients=dict(parsed.custom_foods[int(code)]),
+                    **common,
+                )
+            )
+            continue
 
         if code is not None:
             known = food_name_df[food_name_df[code_column] == code]

@@ -169,4 +169,69 @@ v1 = recipe_to_workbook_bytes(real_blend, {"date": None, "result": "Passed", "no
 assert len(workbook_bytes_to_recipes(v1)) == 1
 print("OK: a single-recipe file still reads as exactly one recipe")
 
+# --- 7. Custom-food import through the REAL upload/confirm UI, and the
+# code-collision case specifically (Format v3, 2026-08-20). A file's
+# negative custom-food codes are file-scoped: the session may already
+# hold a DIFFERENT food under the same code. Confirming an imported
+# recipe must renumber the file's code onto a fresh one -- an imported
+# ingredient must never end up silently pointing at whatever the session
+# happened to already have at that code.
+at.session_state["custom_foods"] = {-1: {"energy_kcal": 999.0}}
+at.session_state["next_custom_code"] = -2
+at.run()
+assert not at.exception, at.exception
+
+custom_blend = {
+    "name": "Imported blend",
+    "measured_volume_mL": 500.0,
+    "ingredients": [
+        {
+            "food_code": -1,
+            "food_description": "Homemade formula (custom)",
+            "grams": 250.0,
+            "unit": "mL",
+            "counts_as_fluid": True,
+        }
+    ],
+}
+custom_data = recipe_to_workbook_bytes(
+    custom_blend, custom_foods={-1: {"energy_kcal": 111.0, "protein_g": 5.0}}
+)
+
+uploader = next(f for f in at.file_uploader if f.label == "Load a recipe")
+uploader.set_value(
+    (
+        "imported.xlsx",
+        custom_data,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+).run()
+assert not at.exception, at.exception
+
+confirm_btn = next(b for b in at.button if b.key == "recipe_import_confirm")
+assert not confirm_btn.disabled, "the custom-food row should need no confirmation to be usable"
+confirm_btn.click().run()
+assert not at.exception, at.exception
+
+# The pre-existing session food at -1 must be untouched...
+assert at.session_state["custom_foods"][-1] == {
+    "energy_kcal": 999.0
+}, "importing a colliding custom code corrupted the session's existing food"
+# ...and the imported ingredient must have landed on a NEW code, with its
+# own values copied in under that code.
+imported_blend_id = max(at.session_state["blends"])
+imported = at.session_state["blends"][imported_blend_id]
+assert imported["name"] == "Imported blend"
+[imported_ingredient] = imported["ingredients"]
+new_code = imported_ingredient["food_code"]
+assert new_code != -1, "imported ingredient still points at the pre-existing session code"
+assert at.session_state["custom_foods"][new_code] == {
+    "energy_kcal": 111.0,
+    "protein_g": 5.0,
+}
+print(
+    f"OK: colliding custom code -1 remapped to {new_code} on import; "
+    "the pre-existing session food at -1 was untouched"
+)
+
 print("\n=== RECIPE RECORD APPTEST PASSED ===")
