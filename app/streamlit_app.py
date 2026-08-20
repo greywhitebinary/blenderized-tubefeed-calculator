@@ -3186,12 +3186,13 @@ with record_tab:
         width="stretch",
     )
     st.caption(
-        "Download this record as a spreadsheet. Reopen it later with "
-        "“Open a saved record” at the top of the page, or file it as it is. "
-        "The first worksheets hold what you entered (Record, Targets, Blends, "
-        "Ingredients, Intake, Custom foods) and the rest hold the calculated "
-        "reports: Adequacy, Micro Screen, Per-Source Breakdown, Water Sources "
-        "and Chart Note. The file stays on your computer."
+        "Download this record to your computer as a spreadsheet. Reopen it "
+        "later with “Open a saved record” at the top of the page, or file it "
+        "as it is. The first worksheets hold what you entered (Record, "
+        "Targets, Blends, Ingredients, Intake, Custom foods) and the rest hold "
+        "the calculated reports: Adequacy, Micro Screen, Per-Source Breakdown, "
+        "Water Sources and Chart Note. This record is not stored anywhere "
+        "else; the file you download is the only copy."
     )
 
 

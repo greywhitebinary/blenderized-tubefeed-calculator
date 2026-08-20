@@ -901,7 +901,7 @@ author can compare their fixes or unblock themselves if stuck for too long.
     so the format teaches itself. See `FEED_LOG_REWORK.md` §3.5.
   - **Layout revised 2026-08-09 at the author's direction** (the "as new
     features land" case, not a break in the pin): onboarding row (demo
-    video, Load example day) above the patient/day label, "Open a saved
+    video, Load example day) above the "Patient / record label" field, "Open a saved
     day" left top right; top padding 2.5rem → 3.75rem to clear
     Streamlit's header; footer reworded to four bullets with a contact
     line (GitHub issues + LinkedIn, no email).
@@ -1675,7 +1675,7 @@ this session) — display-only throughout; `intake_log`,
   dilution what-if, comparator, flow test), **Daily Intake Record**
   (the record editor with daily totals/adequacy/per-source breakdown/
   chart note/export directly beneath the record they summarize). Top
-  bar keeps only the patient/day label and "Load example day"; the
+  bar keeps only the "Patient / record label" field and "Load example day"; the
   sidebar is gone.
 - **Round 2 (3c42a3c):** patient weight gained a kg/lbs toggle; a
   dedicated "Add water flushes" expander with three precisions (single
