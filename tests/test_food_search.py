@@ -102,6 +102,13 @@ def food_name_df() -> pd.DataFrame:
         # first; only the qualifier tier fixes it.
         (20, "Broth, sweetened, ready to serve", "", 1),
         (21, "Broth, sweetened, condensed, canned", "", 1),
+        # For the plural-query fix (2026-08-20): CNF's real shape is a
+        # plain singular headword ("Carrot, baby, raw") plus a handful of
+        # unrelated rows that happen to contain the literal plural word
+        # ("carrots"). A query of "carrots" must find the singular food
+        # AND rank it above the incidental literal match.
+        (22, "Carrot, baby, raw", "", 11),
+        (23, "Babyfood, vegetables, jarred, carrots, all stages", "", 20),
     ]
     return pd.DataFrame(
         rows,
@@ -145,6 +152,52 @@ def test_tokenize_keeps_stopwords_when_nothing_else_survives():
     # Searching the literal word "and" should do something, not match
     # every food in the database via an empty token list.
     assert tokenize("and") == ["and"]
+
+
+# ---------------------------------------------------------------------------
+# _token_forms() -- query-side singular expansion (2026-08-20)
+# ---------------------------------------------------------------------------
+
+
+def test_token_forms_strips_plain_s():
+    assert food_search._token_forms("carrots") == ("carrots", "carrot")
+    assert food_search._token_forms("eggs") == ("eggs", "egg")
+    assert food_search._token_forms("oats") == ("oats", "oat")
+
+
+def test_token_forms_ies_becomes_y():
+    assert food_search._token_forms("strawberries") == ("strawberries", "strawberry")
+
+
+def test_token_forms_oes_drops_es():
+    assert food_search._token_forms("tomatoes") == ("tomatoes", "tomato")
+
+
+def test_token_forms_double_s_is_not_treated_as_the_plain_s_case():
+    # "molasses" still hits the "es" rule (which does not exclude "ss"),
+    # producing a harmless nonsense form -- but the plain "s" rule, which
+    # DOES exclude "ss", must not also fire and produce "molasse".
+    forms = food_search._token_forms("molasses")
+    assert forms[0] == "molasses"
+    assert "molasse" not in forms
+
+
+def test_token_forms_never_shorter_than_three_chars():
+    # "as" is too short to strip at all; "gas" strips to nothing because
+    # the rule requires len > 3 before stripping the plain "s".
+    assert food_search._token_forms("as") == ("as",)
+    assert food_search._token_forms("gas") == ("gas",)
+
+
+def test_token_forms_leaves_a_singular_query_alone():
+    # No plural-of-a-singular expansion: prefix matching already covers
+    # that direction, so _token_forms() has nothing to add.
+    assert food_search._token_forms("carrot") == ("carrot",)
+    assert food_search._token_forms("rice") == ("rice",)
+
+
+def test_token_forms_keeps_non_word_tokens_untouched():
+    assert food_search._token_forms("2%") == ("2%",)
 
 
 # ---------------------------------------------------------------------------
@@ -264,6 +317,33 @@ def test_inverted_tier_does_not_beat_headword_tier(index):
     """
     descriptions = _descriptions(search_foods("egg", index))
     assert descriptions.index("Egg Benedict") < descriptions.index("Bagel, egg")
+
+
+# ---------------------------------------------------------------------------
+# Plural queries, singular CNF (2026-08-20)
+# ---------------------------------------------------------------------------
+
+
+def test_plural_query_finds_the_singular_cnf_entry(index):
+    """The bug this fix exists for. CNF files "Carrot, baby, raw" in the
+    singular; a literal search for "carrots" alone would never reach it.
+    """
+    result = search_foods("carrots", index)
+    assert result.match_type == MATCH_DIRECT
+    assert "Carrot, baby, raw" in _descriptions(result)
+
+
+def test_plural_query_ranks_the_real_food_above_an_incidental_literal_match(index):
+    """Finding the row is only half the fix -- see _rows_matching()'s
+    docstring. Without the forms reaching the whole-word and headword
+    ranking tiers too, "carrots" finds "Carrot, baby, raw" but still
+    ranks the babyfood jar (which contains the literal word "carrots")
+    above it.
+    """
+    descriptions = _descriptions(search_foods("carrots", index))
+    assert descriptions.index("Carrot, baby, raw") < descriptions.index(
+        "Babyfood, vegetables, jarred, carrots, all stages"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -516,6 +596,104 @@ def test_real_cnf_basic_foods_rank_above_contains_foods():
     # dish name) puts any chicken egg above it now.
     benedict = next(d for d in egg if d.startswith("Egg Benedict"))
     assert egg.index(chicken_egg) < egg.index(benedict)
+
+
+@pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")
+def test_plural_queries_find_and_rank_the_real_singular_food():
+    """The plural-query fix (2026-08-20), against the real file.
+
+    Measured before this fix: "carrots" found 7 rows led by a babyfood
+    jar; "strawberries" found 1 row (also a babyfood jar); "tomatoes"
+    found 5 rows, none of them a plain tomato; "eggs" found 10 rows, none
+    of them a plain egg. Layer 2 (typo tolerance) never rescued any of
+    these, because it only runs when layer 1 finds nothing, and these
+    queries always found *something*.
+
+    Ranking, not just presence, was half the bug -- see
+    `_rows_matching()`'s docstring -- so this asserts rank, not just
+    membership.
+    """
+    frame = pd.read_csv(CNF_FOOD_NAME, encoding="utf-8-sig", low_memory=False)
+    index = build_index(frame)
+
+    cases = {
+        "carrots": "Carrot, baby, raw",
+        "strawberries": "Strawberry, frozen, unsweetened",
+        "tomatoes": "Tomato, green, raw",
+        "eggs": "Egg, chicken, dried, whole",
+    }
+    for query, expected in cases.items():
+        result = search_foods(query, index)
+        assert result.match_type == MATCH_DIRECT
+        descriptions = _descriptions(result)
+        assert expected in descriptions, f"{query!r} did not find {expected!r}"
+        assert descriptions.index(expected) < 3, (
+            f"{query!r}: {expected!r} ranked #{descriptions.index(expected) + 1}, "
+            f"top 3 was {descriptions[:3]}"
+        )
+
+
+@pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")
+def test_singular_queries_are_unchanged_by_the_plural_fix():
+    """Query-side expansion only ever ADDS candidate forms to try -- see
+    `_rows_matching()`'s docstring for why that direction is safe -- so a
+    query that already found its answer as a whole singular word must
+    return exactly what it returned before this fix.
+    """
+    frame = pd.read_csv(CNF_FOOD_NAME, encoding="utf-8-sig", low_memory=False)
+    index = build_index(frame)
+
+    expected_first_result = {
+        "carrot": "Carrot, baby, raw",
+        "tomato": "Tomato, green, raw",
+        "banana": "Banana, raw",
+    }
+    for query, expected in expected_first_result.items():
+        result = search_foods(query, index)
+        assert _descriptions(result)[0] == expected
+
+
+@pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")
+@pytest.mark.parametrize(
+    "query,expected_first",
+    [("beans", "Beans,"), ("oats", "Cereal, hot, oats"), ("greens", "Beet greens")],
+)
+def test_a_word_cnf_already_files_as_plural_still_leads_with_that_food(query, expected_first):
+    """CNF files some foods under the plural headword itself ("Beans,
+    adzuki, ...", "Cereal, hot, oats (oatmeal), ...", "Beet greens,
+    ..."). Singularising those queries reaches a far commoner stem --
+    "green" and "oat" appear all over CNF -- so the expansion drags in
+    mung beans and oat bagels. They are welcome to be in the results;
+    they are not welcome at the TOP, which is why the sort key ranks a
+    row that matched the words AS TYPED above one that only matched
+    after singularising.
+
+    Asserting the first row, not merely a non-empty result: "greens"
+    returned 114 rows with the first real leafy green at #74 before that
+    tier existed, which is a pass for any weaker assertion and a
+    complete failure for an RD (2026-08-20).
+    """
+    frame = pd.read_csv(CNF_FOOD_NAME, encoding="utf-8-sig", low_memory=False)
+    index = build_index(frame)
+    result = search_foods(query, index)
+    assert result.match_type == MATCH_DIRECT
+    assert _descriptions(result)[0].startswith(expected_first)
+
+
+@pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")
+def test_a_word_ending_in_double_s_is_not_mangled():
+    """ "molasses" ends in "ss", so the plain-s stripping rule in
+    `_token_forms()` -- which explicitly excludes "ss" -- must not fire
+    on it. It still hits the "es" rule ("molasses" -> "molass"), a
+    harmless nonsense form that simply matches nothing; "molasses"
+    itself, kept as the first form, still finds the real molasses foods.
+    """
+    frame = pd.read_csv(CNF_FOOD_NAME, encoding="utf-8-sig", low_memory=False)
+    index = build_index(frame)
+    result = search_foods("molasses", index)
+    assert result.match_type == MATCH_DIRECT
+    descriptions = _descriptions(result)
+    assert any("molasses" in d.lower() for d in descriptions)
 
 
 @pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")

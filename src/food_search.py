@@ -145,6 +145,13 @@ def tokenize(text: str) -> list[str]:
     Stopwords are dropped, but only when something else survives -- a
     search for the literal word "and" should still do *something* rather
     than silently match every food in the database.
+
+    Does NOT normalise singular/plural -- "carrots" and "carrot" tokenize
+    to themselves, unchanged. That normalisation happens separately and
+    only on the query side, in `_token_forms()` inside `_rows_matching()`
+    (2026-08-20): CNF descriptions are tokenized here exactly as CNF
+    wrote them, and only the RD's query is ever expanded to more forms.
+    See `_rows_matching()`'s docstring for why.
     """
     if not isinstance(text, str):
         return []
@@ -383,6 +390,45 @@ def load_qualifiers(pack: str = DEFAULT_PACK) -> dict[str, frozenset[str]]:
     return mapping
 
 
+def _token_forms(token: str) -> tuple[str, ...]:
+    """The word as typed, plus conservative singular candidates.
+
+    Query-side only -- see `_rows_matching()`'s docstring for why. Rules,
+    cheapest-and-most-specific first so e.g. "berries" hits the "ies"
+    rule rather than the plain "s" one:
+
+      ies -> y     ("strawberries" -> "strawberry"), len > 4
+      oes -> ""    ("tomatoes" -> "tomato"), len > 4
+      es  -> ""    ("dishes" -> "dish"; "leaves" -> "leav", which is not
+                    a word but matches nothing, which is harmless), len > 3
+      s   -> ""    ("carrots" -> "carrot", "eggs" -> "egg"), but not
+                    words ending "ss" ("molasses" must stay "molasses")
+                    or short enough that stripping leaves under 3 chars
+
+    Deliberately does not go the other way (singular query -> plural
+    form): prefix matching already finds "carrots" from a typed
+    "carrot", so generating a plural here would just be redundant work
+    on every keystroke.
+    """
+    candidates = []
+    if token.endswith("ies") and len(token) > 4:
+        candidates.append(token[:-3] + "y")
+    elif token.endswith("oes") and len(token) > 4:
+        candidates.append(token[:-2])
+    elif token.endswith("es") and len(token) > 3:
+        candidates.append(token[:-2])
+    elif token.endswith("s") and not token.endswith("ss") and len(token) > 3:
+        candidates.append(token[:-1])
+
+    ordered = [token]
+    seen = {token}
+    for form in candidates:
+        if len(form) >= 3 and form not in seen:
+            seen.add(form)
+            ordered.append(form)
+    return tuple(ordered)
+
+
 def _has_unrequested_qualifier(index: SearchIndex, position: int, query_tokens: list[str]) -> bool:
     """Does this row carry a flavour/processing qualifier the RD did not type?
 
@@ -404,13 +450,52 @@ def _has_unrequested_qualifier(index: SearchIndex, position: int, query_tokens: 
 
 
 def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tuple, int]]:
-    """Rows where every query word prefixes some word of the food.
+    """Rows where every query word -- or a conservative singular form of
+    it -- prefixes some word of the food.
+
+    PLURAL QUERIES, SINGULAR CNF (2026-08-20). CNF files most whole foods
+    in the singular ("Carrot, baby, raw", "Strawberry, frozen,
+    unsweetened", "Tomato, green, raw"), but prefix matching only reaches
+    from a singular query TO a plural entry ("carrot" is a prefix of
+    "carrots"), never the other way. A plural query typed the way an RD
+    actually types -- "carrots", "strawberries", "tomatoes" -- searched
+    only for the literal word "carrots" and so found the handful of CNF
+    rows that happen to contain it verbatim (babyfood jars, mixed
+    vegetables) while the 23 real carrot entries stayed invisible.
+    Measured on the real file before this fix: "carrot" found 23 rows
+    led by "Carrot, baby, raw", "carrots" found 7 led by "Babyfood,
+    vegetables, jarred, carrots"; "strawberry" found 32, "strawberries"
+    found 1 ("Babyfood, fruit, jarred, apple and berries..."); "tomato"
+    found 50, "tomatoes" found 5, none of them a plain tomato; "eggs"
+    found 10, none of them a plain egg. Layer 2 (typo tolerance) never
+    rescued this, because it only runs when layer 1 finds NOTHING, and
+    "carrots" was never nothing.
+
+    The fix is QUERY-SIDE ONLY: each query token is expanded, here, to a
+    small set of forms via `_token_forms()` -- the word as typed plus
+    cheap singular candidates ("carrots" -> ("carrots", "carrot")) -- and
+    a token counts as matched when ANY of its forms matches. The index
+    built by `build_index()`, `tokenize()`'s output, and what counts as a
+    match against a DESCRIPTION word are all untouched. That asymmetry is
+    deliberate, not an oversight: expanding the query can only ever find
+    MORE rows than before, never fewer, so this cannot regress an
+    existing singular search. Expanding the index instead -- stemming
+    every CNF word at build time -- would touch the same three tiers
+    below AND the vocabulary the fuzzy layer spells against, for a much
+    larger surface to get wrong. A generated form that happens not to be
+    a real English word (the "es" rule turns "leaves" into "leav") is
+    harmless by the same logic: it simply matches no CNF word, exactly
+    like a query word that was never in the file.
 
     Returns (sort_key, row_position) pairs. The sort key ranks:
       1. description matches above alternate-name-only matches -- an RD
          recognises the CNF description, which is what they will see;
       2. whole-word matches above prefix-only ones, so typing "rice"
-         puts rice above "ricelike";
+         puts rice above "ricelike". A form matching a description word
+         EXACTLY counts as exact here, not just the token as typed --
+         otherwise a plural query such as "carrots" would win tier 1 via
+         its singular form but lose this tier's whole-word credit, and
+         rank behind foods it should rank above;
       3. foods whose HEADWORD (first word) a query word prefixes above
          foods that merely contain the word -- CNF files foods
          headword-first, so "Milk, fluid, ..." IS milk while "Cracker,
@@ -419,16 +504,38 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          is the complaint that motivated it. This tier sits BELOW tier 2
          deliberately: a prefix-only headword ("Eggplant, raw" for
          "egg") must not outrank a real whole-word match deeper in the
-         description ("Roll, dinner, egg");
-      4. CNF's inverted commodity filing ("Egg, chicken, ...") above
+         description ("Roll, dinner, egg"). This check also considers
+         every form of every token (2026-08-20): without it, "carrots"
+         found "Carrot, baby, raw" via tier 1 but still ranked babyfood
+         jars above it, because the headword check saw only the literal
+         "carrots" and "carrot" never appears as a headword;
+      4. rows that matched every word AS TYPED above rows that only
+         matched after singularising (2026-08-20). Singularising reaches
+         a commoner stem than the RD typed -- "greens" also searches
+         "green", which is scattered across CNF as an adjective ("green
+         gram", "green or yellow", "Tomato, green"), and "oats" also
+         searches "oat", which finds bagels and bread. Those foods
+         deserve to be IN the results; they do not deserve the top of
+         them. Measured when this tier was missing: "greens" returned
+         114 rows whose first real leafy green ("Beet greens, boiled")
+         sat at #74, past the 50-row page, so an RD typing "greens" saw
+         no greens at all.
+
+         It sits BELOW the headword tier on purpose. Above it, "carrots"
+         would rank the babyfood jars that contain the literal word
+         "carrots" over "Carrot, baby, raw" -- undoing the very fix the
+         forms expansion exists for. Below it, the headword decides the
+         plural case and this tier decides only what the headword tier
+         left tied, which is exactly the "greens" case;
+      5. CNF's inverted commodity filing ("Egg, chicken, ...") above
          natural-language dish names ("Egg Benedict", "Eggnog"). Both
-         can share a headword, and tier 5 alone cannot tell them apart
+         can share a headword, and tier 7 alone cannot tell them apart
          -- "Egg Benedict" is SHORTER than every real egg entry, which
          is how it ranked #1 for "egg" until this tier existed
          (2026-08-07 RD feedback, round 2). An RD looking for a dish
          types the dish ("chicken a la king"); a bare commodity word
          means the commodity;
-      5. a food with no UNREQUESTED flavour/processing qualifier above one
+      6. a food with no UNREQUESTED flavour/processing qualifier above one
          that has one -- "chicken" answered with "Chicken, broiler, back,
          meat and skin, batter dipped, fried" and "milk" with "Milk,
          condensed, sweetened, canned", both alphabetically ahead of the
@@ -454,7 +561,7 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          Demoting them would rank raw meat above cooked for "chicken",
          which is backwards for a blenderized-feed tool (author,
          2026-08-20).
-      6. alphabetically, as a stable last resort.
+      7. alphabetically, as a stable last resort.
 
          This used to be "shortest description first", on the theory that
          CNF's terse entries are its basic foods. Measured against the
@@ -463,11 +570,11 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          "Chicken, broiler, breast, skinless, boneless, meat, braised"
          (59), and "milk" with "Milk, dry whole" ahead of every fluid
          milk. Short and basic are not the same thing. Alphabetical
-         decides nothing about relevance -- tiers 1-5 have already done
+         decides nothing about relevance -- tiers 1-6 have already done
          that -- it just stops length from pretending to (author,
          2026-08-15).
 
-         Note what tiers 1-6 still cannot do (2026-08-20): nothing in a
+         Note what tiers 1-7 still cannot do (2026-08-20): nothing in a
          CNF description says breast is wanted more often than back, and
          nothing marks a plain sweet potato as more wanted than sweet
          potato LEAVES -- "sweet potato" still answers with the leaves
@@ -475,6 +582,12 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          differs on any tier above. Both need a curated preferred-foods
          list, the same shape as data/packs/<pack>/food_synonyms.csv.
     """
+    # Each query token expanded to itself plus conservative singular
+    # forms, computed ONCE for the whole query -- not per row -- because
+    # this function's caller runs it on every keystroke against every
+    # CNF row. See `_token_forms()`.
+    token_forms = [_token_forms(token) for token in query_tokens]
+
     scored: list[tuple[tuple, int]] = []
 
     for position in range(len(index.frame)):
@@ -483,24 +596,49 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
 
         matched_in_desc = True
         exact_words = 0
-        for token in query_tokens:
-            if token in desc_words:
+        for forms in token_forms:
+            if any(form in desc_words for form in forms):
                 exact_words += 1
                 continue
-            if any(word.startswith(token) for word in desc_words):
+            if any(word.startswith(form) for form in forms for word in desc_words):
                 continue
             # Not in the description -- try the alternate names.
-            if token in alt_words or any(word.startswith(token) for word in alt_words):
+            if any(form in alt_words for form in forms) or any(
+                word.startswith(form) for form in forms for word in alt_words
+            ):
                 matched_in_desc = False
                 continue
             break
         else:
             description = index.frame["Food_Description_EN"].iat[position]
             headword = index.desc_headword[position]
+            # Asked only of rows that already matched -- a few hundred at
+            # most, against 5,993 scanned -- because this runs on every
+            # keystroke. Skipped entirely for a token singularising left
+            # alone: with one form, "as typed" is the only way the row
+            # could have matched at all (2026-08-20).
+            matched_as_typed = all(
+                len(forms) == 1
+                or forms[0] in desc_words
+                or any(word.startswith(forms[0]) for word in desc_words)
+                or forms[0] in alt_words
+                or any(word.startswith(forms[0]) for word in alt_words)
+                for forms in token_forms
+            )
             sort_key = (
                 0 if matched_in_desc else 1,
                 0 if exact_words == len(query_tokens) else 1,
-                0 if any(h.startswith(t) for h in headword for t in query_tokens) else 1,
+                (
+                    0
+                    if any(
+                        h.startswith(form)
+                        for h in headword
+                        for forms in token_forms
+                        for form in forms
+                    )
+                    else 1
+                ),
+                0 if matched_as_typed else 1,
                 0 if index.desc_inverted[position] else 1,
                 1 if _has_unrequested_qualifier(index, position, query_tokens) else 0,
                 str(description).lower(),
