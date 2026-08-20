@@ -1117,27 +1117,19 @@ st.title(f"🥕🥦🥤 {recipe_name or 'BTF record'} 💉💧🍌")
 #
 # Deliberately not a link: an outbound link at the top of the page invites
 # leaving before anything has been done. The footer carries the clickable one.
-# The Substack mark is INLINE SVG rather than a hotlinked image: no request
-# leaves the page for it, and nothing breaks if Substack moves the file.
-# fill is Substack's brand orange (#FF6719), not currentColor: a logo keeps
-# its own colour, and currentColor made the mark inherit the link colour
-# (author, 2026-08-19). The orange reads on both the light and dark ground.
-_SUBSTACK_MARK = (
-    '<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" '
-    'style="vertical-align:-1px;margin-right:.3em;fill:#FF6719">'
-    '<path d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 18.11 '
-    '22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z"/></svg>'
-)
-
+# No Substack logo beside it (author, 2026-08-19). The mark earned its place
+# in the footer, where it labelled an invitation to go and read something.
+# Here the line is a byline -- it says who made this, not "go to Substack" --
+# and a brand logo in the first words on the page is louder than a byline
+# should be. It also put Substack's orange immediately against the maroon
+# link. The words carry it; git carries the SVG if it is ever wanted back.
 with st.container(key="pagenote"):
     st.caption(
-        f"{_SUBSTACK_MARK}"
         "A [Feed. Form. Flow.]"
         "(https://feedformflow.substack.com/p/feed-form-flow) project. "
         "First time here? Watch the 3-minute demo or load the example record. "
         "Work left to right: set optional targets, build or select a blend, "
-        "then record the daily intake and see the totals.",
-        unsafe_allow_html=True,
+        "then record the daily intake and see the totals."
     )
 
 
