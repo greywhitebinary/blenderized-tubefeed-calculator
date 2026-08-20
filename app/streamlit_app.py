@@ -2385,13 +2385,23 @@ with recipes_tab:
     )
     rr1, rr2 = st.columns(2)
     with rr1:
+        # "Download", not "Save" (author, 2026-08-16). A button saying
+        # Save implies there is unsaved work, which is what made switching
+        # blends feel risky when nothing was ever at stake. Same split the
+        # Daily Intake Record tab already uses: the SECTION says "Save this
+        # record", the BUTTON says "Download".
+        #
+        # Two gets "both", not "all 2" -- English doesn't take "all" with a
+        # pair (author, 2026-08-20). Lifted out of the call because a
+        # three-way conditional inline is unreadable.
+        if _n_savable <= 1:
+            _download_label = "💾 Download recipe"
+        elif _n_savable == 2:
+            _download_label = "💾 Download both recipes"
+        else:
+            _download_label = f"💾 Download all {_n_savable} recipes"
         st.download_button(
-            # "Download", not "Save" (author, 2026-08-16). A button saying
-            # Save implies there is unsaved work, which is what made
-            # switching blends feel risky when nothing was ever at stake.
-            # Same split the Daily Intake Record tab already uses: the
-            # SECTION says "Save this record", the BUTTON says "Download".
-            "💾 Download recipe" if _n_savable <= 1 else f"💾 Download all {_n_savable} recipes",
+            _download_label,
             # Falls back to the selected blend purely so the disabled
             # button still has valid bytes to hold.
             data=(
@@ -2414,7 +2424,11 @@ with recipes_tab:
                 else (
                     "Downloads to your computer."
                     if _n_savable == 1
-                    else f"One file containing all {_n_savable} blends that have ingredients."
+                    else (
+                        "One file containing both blends that have ingredients."
+                        if _n_savable == 2
+                        else f"One file containing all {_n_savable} blends that have ingredients."
+                    )
                 )
             ),
             width="stretch",
