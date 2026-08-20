@@ -2349,10 +2349,10 @@ with recipes_tab:
     _n_savable = len(_savable)
     st.caption(
         "Save your blends — ingredients, measured volume and flow test — as a "
-        "spreadsheet you keep. Re-open it here later, or edit it in Excel."
+        "spreadsheet. Re-open it here later, or read it in any spreadsheet program."
         if _n_savable != 1
         else "Save this blend — ingredients, measured volume and flow test — as a "
-        "spreadsheet you keep. Re-open it here later, or edit it in Excel."
+        "spreadsheet. Re-open it here later, or read it in any spreadsheet program."
     )
     rr1, rr2 = st.columns(2)
     with rr1:
@@ -2477,10 +2477,6 @@ with recipes_tab:
             # part -- leading with the feed name keeps it readable when truncated.
             format_func=lambda n: f"{n} — {COMMERCIAL_FORMULAS[n].get('brand') or 'Other'}",
             key="comparator_formula_select",
-        )
-        st.caption(
-            "Company narrows the list for scrolling — feeds you already "
-            "picked stay selected when you switch companies."
         )
 
         # Which of the RD's OWN blends join the table (Change 3,
@@ -3172,7 +3168,7 @@ with record_tab:
     ]
 
     st.download_button(
-        label="💾 Download this record (.xlsx)",
+        label="💾 Download this record",
         data=day_to_workbook_bytes(
             label=recipe_name,
             patient_weight=st.session_state.get("patient_weight_input", 0.0),
@@ -3190,13 +3186,12 @@ with record_tab:
         width="stretch",
     )
     st.caption(
-        "One file, two uses. Re-upload it with “Open a saved record” at the top "
-        "of the page to carry on where you left off, or file it as it is — the "
-        "first tabs hold what you entered (blends, ingredients, intake record, "
-        "targets, custom foods) and the rest hold the worked-out numbers "
-        "(adequacy, micro screen, per-source breakdown, water sources, chart "
-        "note). It downloads to your computer, and it holds whatever you typed "
-        "in the patient/day label."
+        "Download this record as a spreadsheet. Reopen it later with "
+        "“Open a saved record” at the top of the page, or file it as it is. "
+        "The first worksheets hold what you entered (Record, Targets, Blends, "
+        "Ingredients, Intake, Custom foods) and the rest hold the calculated "
+        "reports: Adequacy, Micro Screen, Per-Source Breakdown, Water Sources "
+        "and Chart Note. The file stays on your computer."
     )
 
 
