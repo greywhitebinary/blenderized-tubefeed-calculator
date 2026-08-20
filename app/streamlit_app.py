@@ -3244,9 +3244,9 @@ with st.container(key="pagefooter"):
         "before acting on them.\n"
         "- Using this tool creates no dietitian–client or other professional relationship, and "
         "it is no substitute for professional medical advice, diagnosis or treatment. For "
-        "anything about a specific person's care, ask their own physician, registered "
-        "dietitian or qualified health provider, and never delay that advice because of "
-        "something calculated here.\n"
+        "anything about a specific person's care, consult their physician, registered "
+        "dietitian, or other qualified health professional. Do not delay seeking that "
+        "advice because of anything calculated here.\n"
         # Attribution required by Health Canada's CNF copyright guidelines
         # (author supplied them, 2026-08-19). Two of their five conditions were
         # unmet before this line existed: "Health Canada be identified as the
