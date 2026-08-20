@@ -1122,7 +1122,7 @@ with st.container(key="pagenote"):
         "A Feed. Form. Flow. project. "
         "First time here? Watch the 3-minute demo or load the example record. "
         "Work left to right: set optional targets, build or select a blend, "
-        "then record what was actually given that day."
+        "then record the daily intake and see the totals."
     )
 
 
