@@ -35,6 +35,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from src import food_search
 from src.food_search import (
     find_food,
     MATCH_DIRECT,
@@ -42,6 +43,7 @@ from src.food_search import (
     MATCH_NONE,
     MATCH_SYNONYM,
     build_index,
+    load_qualifiers,
     load_synonyms,
     search_foods,
     tokenize,
@@ -78,6 +80,28 @@ def food_name_df() -> pd.DataFrame:
         # spoken, and this one is SHORTER than every real egg entry --
         # the case that motivated the inverted-filing sort tier.
         (13, "Egg Benedict", "", 22),
+        # Rows for the flavour/processing-qualifier ranking tier
+        # (2026-08-20). "Cracker, milk" gives a CONTAINS-match (no
+        # headword) with no qualifier, so it can be pitted against a
+        # HEADWORD match that does carry a qualifier -- proving tiers
+        # 1-4 still decide the outcome before the qualifier tier does.
+        (14, "Yogourt, plain, 2% M.F.", "", 1),
+        (15, "Yogourt, flavoured, 2% M.F.", "", 1),
+        (16, "Milk, condensed, sweetened, canned", "", 1),
+        (17, "Cracker, milk", "", 18),
+        # "boiled" is a cooking method, not a listed qualifier -- it must
+        # rank the same as an unmarked entry, not sort after it as if it
+        # carried an unrequested qualifier.
+        (18, "Chicken, breast, boiled, meat only", "", 13),
+        (19, "Chicken, breast, skinless, boneless", "", 13),
+        # For "a qualifier the RD typed is not penalised": both rows
+        # match "sweetened broth" and both carry "sweetened" (requested,
+        # so it must not count against either). Row 21 ALSO carries
+        # "condensed" (not requested). Chosen so alphabetical order alone
+        # -- "condensed..." < "ready..." -- would rank the wrong one
+        # first; only the qualifier tier fixes it.
+        (20, "Broth, sweetened, ready to serve", "", 1),
+        (21, "Broth, sweetened, condensed, canned", "", 1),
     ]
     return pd.DataFrame(
         rows,
@@ -240,6 +264,100 @@ def test_inverted_tier_does_not_beat_headword_tier(index):
     """
     descriptions = _descriptions(search_foods("egg", index))
     assert descriptions.index("Egg Benedict") < descriptions.index("Bagel, egg")
+
+
+# ---------------------------------------------------------------------------
+# Ranking tier 5 -- unrequested flavour/processing qualifiers (2026-08-20)
+# ---------------------------------------------------------------------------
+
+
+def test_plain_food_ranks_above_flavoured_or_sweetened(index):
+    """The problem this tier exists to fix.
+
+    Neither "yogurt" nor "milk" asks for a flavour or a processing step,
+    so the plain entry should lead -- not whichever qualifier happens to
+    sort first alphabetically ("condensed" < "fluid", "flavoured" <
+    "plain").
+    """
+    yogurt = _descriptions(search_foods("yogourt", index))
+    assert yogurt.index("Yogourt, plain, 2% M.F.") < yogurt.index("Yogourt, flavoured, 2% M.F.")
+
+    milk = _descriptions(search_foods("milk", index))
+    assert milk.index("Milk, fluid, 2% M.F.") < milk.index("Milk, condensed, sweetened, canned")
+
+
+def test_a_qualifier_the_rd_typed_is_not_penalised(index):
+    """Typing the qualifier requests it, so it must not count against a
+    food's ranking -- but an EXTRA, untyped qualifier still should.
+
+    Both rows below carry "sweetened", which "sweetened broth" asks for.
+    Row 21 also carries "condensed", which the query does not mention.
+    Chosen so alphabetical order alone ("condensed..." < "ready...")
+    would rank row 21 first -- proving any reordering here comes from
+    the qualifier tier, not from the alphabetical fallback.
+    """
+    descriptions = _descriptions(search_foods("sweetened broth", index))
+    assert descriptions.index("Broth, sweetened, ready to serve") < descriptions.index(
+        "Broth, sweetened, condensed, canned"
+    )
+
+
+def test_cooking_methods_are_not_treated_as_qualifiers(index):
+    """A "boiled" entry must not be demoted below an otherwise-identical
+    entry with no qualifier at all.
+
+    Cooking methods are deliberately excluded from
+    data/packs/canada/food_qualifiers.csv (see that file and
+    `load_qualifiers()`'s docstring). If "boiled" were wrongly treated as
+    a qualifier, this entry would sort AFTER "Chicken, breast, skinless,
+    boneless" instead of before it (alphabetically "boiled" < "skinless"
+    once the qualifier tier ties both at 0).
+    """
+    result = _descriptions(search_foods("chicken breast", index))
+    assert result.index("Chicken, breast, boiled, meat only") < result.index(
+        "Chicken, breast, skinless, boneless"
+    )
+
+
+def test_missing_qualifiers_file_is_not_fatal(index):
+    """Layers/tiers 1-4 must still work for a pack with no qualifier
+    table -- same degrade-safe contract as the missing-synonyms case."""
+    assert load_qualifiers("no-such-pack") == {}
+    no_pack_index = build_index(index.frame, pack="no-such-pack")
+    result = search_foods("milk", no_pack_index, pack="no-such-pack")
+    assert result.match_type == MATCH_DIRECT
+    assert "Milk, condensed, sweetened, canned" in _descriptions(result)
+
+
+def test_empty_qualifiers_file_is_not_fatal(index, tmp_path, monkeypatch):
+    """A qualifier CSV that exists but has zero bytes must degrade to "no
+    qualifiers", not raise -- the same contract as a missing file."""
+    pack_dir = tmp_path / "empty-pack"
+    pack_dir.mkdir()
+    (pack_dir / food_search.QUALIFIERS_CSV_NAME).write_text("")
+    monkeypatch.setattr(food_search, "PACKS_DIR", tmp_path)
+    food_search.load_qualifiers.cache_clear()
+    try:
+        assert food_search.load_qualifiers("empty-pack") == {}
+        no_pack_index = build_index(index.frame, pack="empty-pack")
+        result = search_foods("milk", no_pack_index, pack="empty-pack")
+        assert result.match_type == MATCH_DIRECT
+        assert "Milk, condensed, sweetened, canned" in _descriptions(result)
+    finally:
+        food_search.load_qualifiers.cache_clear()
+
+
+def test_tiers_one_through_four_outrank_the_qualifier_tier(index):
+    """A tier-3 HEADWORD match with a qualifier must still beat a
+    non-headword CONTAINS match without one.
+
+    "Milk, condensed, sweetened, canned" IS milk (headword match) but
+    carries two unrequested qualifiers; "Cracker, milk" merely CONTAINS
+    milk (no headword match) and carries none. The headword tier (3)
+    sits above the qualifier tier (5), so the real milk must still win.
+    """
+    milk = _descriptions(search_foods("milk", index))
+    assert milk.index("Milk, condensed, sweetened, canned") < milk.index("Cracker, milk")
 
 
 # ---------------------------------------------------------------------------

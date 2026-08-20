@@ -1,0 +1,14 @@
+qualifier,note
+flavoured,Added flavouring changes the nutrient profile from the plain food
+sweetened,Added sugar changes the nutrient profile from the plain food
+sugar added,Same signal as "sweetened" -- CNF uses both wordings
+battered,Added flour and oil from batter and frying -- not the plain food
+breaded,Added flour and oil from breading and frying -- not the plain food
+dehydrated,A dried concentrated form -- different nutrient density than fresh
+powder,A dried concentrated form -- different nutrient density than fresh
+condensed,Concentrated and usually sweetened -- not the fluid food
+evaporated,Concentrated by removing water -- not the fluid food
+instant,A quick-prep processed form -- often with added ingredients
+dry mix,A packaged mix -- not the plain food
+babyfood,A pureed packaged infant product -- not the plain food
+canned in syrup,Packed in sugar syrup -- not the plain food

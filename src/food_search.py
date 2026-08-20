@@ -83,6 +83,7 @@ import pandas as pd
 PACKS_DIR = Path(__file__).resolve().parent.parent / "data" / "packs"
 DEFAULT_PACK = "canada"
 SYNONYMS_CSV_NAME = "food_synonyms.csv"
+QUALIFIERS_CSV_NAME = "food_qualifiers.csv"
 
 #: Shortest query we will act on. One character matches most of CNF and
 #: tells the RD nothing.
@@ -194,6 +195,18 @@ class SearchIndex:
     desc_inverted: tuple[bool, ...]
     #: Every distinct word CNF uses, for the fuzzy layer to spell against.
     vocabulary: tuple[str, ...]
+    #: Which qualifiers (from data/packs/<pack>/food_qualifiers.csv) each
+    #: description carries, by name -- one frozenset per row. Computed
+    #: ONCE here rather than re-scanning the description string on every
+    #: query: build_index() runs once, search_foods() runs on every
+    #: keystroke, so the cost belongs here (author, 2026-08-20).
+    desc_qualifiers: tuple[frozenset[str], ...]
+    #: The qualifier vocabulary itself -- qualifier name -> the set of
+    #: description words that signal it ("sugar added" -> {"sugar",
+    #: "added"}). Carried alongside desc_qualifiers so the ranking tier
+    #: can tell whether the RD's query already asked for a qualifier it
+    #: finds, without re-reading the CSV per query.
+    qualifier_words: dict[str, frozenset[str]]
 
     def __len__(self) -> int:
         return len(self.frame)
@@ -239,7 +252,7 @@ def _headwords(raw_description: str, words: list[str]) -> tuple[str, ...]:
     return (words[0],)
 
 
-def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
+def build_index(food_name_df: pd.DataFrame, *, pack: str = DEFAULT_PACK) -> SearchIndex:
     """Tokenise a CNF Food_Name frame once, ready for repeated queries."""
     descriptions = food_name_df["Food_Description_EN"].fillna("")
     if "Alternate_Description_EN" in food_name_df.columns:
@@ -264,6 +277,12 @@ def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
     for bucket in alt_tokens:
         vocab.update(bucket)
 
+    qualifier_words = load_qualifiers(pack)
+    desc_qualifiers = tuple(
+        frozenset(name for name, words in qualifier_words.items() if words <= words_present)
+        for words_present in desc_tokens
+    )
+
     return SearchIndex(
         frame=food_name_df,
         desc_tokens=desc_tokens,
@@ -271,6 +290,8 @@ def build_index(food_name_df: pd.DataFrame) -> SearchIndex:
         desc_headword=desc_headword,
         desc_inverted=desc_inverted,
         vocabulary=tuple(sorted(vocab)),
+        desc_qualifiers=desc_qualifiers,
+        qualifier_words=qualifier_words,
     )
 
 
@@ -292,7 +313,13 @@ def load_synonyms(pack: str = DEFAULT_PACK) -> dict[str, str]:
     if not path.exists():
         return {}
 
-    frame = pd.read_csv(path, encoding="utf-8-sig")
+    # Same reasoning as load_qualifiers(): this file is hand-edited, so an
+    # unreadable one degrades to "no synonyms" rather than stopping the
+    # search from starting at all (2026-08-20).
+    try:
+        frame = pd.read_csv(path, encoding="utf-8-sig")
+    except pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError, OSError:
+        return {}
     mapping: dict[str, str] = {}
     for _, row in frame.iterrows():
         term = str(row.get("term", "")).strip().lower()
@@ -300,6 +327,80 @@ def load_synonyms(pack: str = DEFAULT_PACK) -> dict[str, str]:
         if term and cnf_words and cnf_words.lower() != "nan":
             mapping[term] = cnf_words
     return mapping
+
+
+def _qualifiers_csv_path(pack: str = DEFAULT_PACK) -> Path:
+    return PACKS_DIR / pack / QUALIFIERS_CSV_NAME
+
+
+@lru_cache(maxsize=8)
+def load_qualifiers(pack: str = DEFAULT_PACK) -> dict[str, frozenset[str]]:
+    """Map a flavour/processing qualifier to the description words that
+    signal it ("sugar added" -> {"sugar", "added"}).
+
+    Feeds the ranking tier in `_rows_matching()` that pushes a food with
+    an unrequested qualifier (flavoured, sweetened, powdered, ...) below
+    the plain version of the same food. Data, not code, per the same
+    reasoning as `load_synonyms()`: the vocabulary is a clinical
+    judgement call, and a dietitian should be able to edit it without
+    touching Python.
+
+    Deliberately excludes cooking methods (boiled, roasted, fried, raw,
+    steamed, ...). Demoting them would push RAW foods to the top of every
+    result, and raw meat is not what a blenderized feed wants ranked
+    first for a query like "chicken" -- that is a clinical judgement by
+    the author, not an oversight (2026-08-20).
+
+    Returns {} when the pack ships no qualifier file, and also when the
+    file exists but is empty -- same degrade-safe contract as
+    `load_synonyms()`: a missing or unusable qualifier table only costs
+    this one ranking tier, never the search itself.
+    """
+    path = _qualifiers_csv_path(pack)
+    if not path.exists():
+        return {}
+
+    try:
+        frame = pd.read_csv(path, encoding="utf-8-sig")
+    # Empty file, a stray comma in a note, a bad encoding, an unreadable
+    # file: this table is meant to be edited by a dietitian, not a
+    # programmer, so a typo in it must cost this one ranking tier and
+    # nothing else. Before this, a note containing a comma raised
+    # ParserError out of build_index() and took the entire search down
+    # with it -- the app's most-used control, felled by punctuation
+    # (2026-08-20).
+    except pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError, OSError:
+        return {}
+
+    mapping: dict[str, frozenset[str]] = {}
+    for _, row in frame.iterrows():
+        qualifier = str(row.get("qualifier", "")).strip().lower()
+        if not qualifier or qualifier == "nan":
+            continue
+        words = frozenset(tokenize(qualifier))
+        if words:
+            mapping[qualifier] = words
+    return mapping
+
+
+def _has_unrequested_qualifier(index: SearchIndex, position: int, query_tokens: list[str]) -> bool:
+    """Does this row carry a flavour/processing qualifier the RD did not type?
+
+    A qualifier counts as REQUESTED when every one of its words is
+    matched by a query token using the same rule the rest of this module
+    uses for query words: equal, or a prefix of, the word. So a query of
+    "flavoured yogurt" requests "flavoured" and does not penalise it.
+    """
+    for name in index.desc_qualifiers[position]:
+        words = index.qualifier_words.get(name)
+        if not words:
+            continue
+        requested = all(
+            any(token == word or word.startswith(token) for token in query_tokens) for word in words
+        )
+        if not requested:
+            return True
+    return False
 
 
 def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tuple, int]]:
@@ -327,7 +428,33 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          (2026-08-07 RD feedback, round 2). An RD looking for a dish
          types the dish ("chicken a la king"); a bare commodity word
          means the commodity;
-      5. alphabetically, as a stable last resort.
+      5. a food with no UNREQUESTED flavour/processing qualifier above one
+         that has one -- "chicken" answered with "Chicken, broiler, back,
+         meat and skin, batter dipped, fried" and "milk" with "Milk,
+         condensed, sweetened, canned", both alphabetically ahead of the
+         plain food an RD actually meant. Qualifiers come from
+         data/packs/<pack>/food_qualifiers.csv (flavoured, sweetened,
+         powder, condensed, ...) and are precomputed per row in
+         `build_index()`, not scanned here.
+
+         "Unrequested" is the load-bearing word: if the query itself asks
+         for the qualifier -- "flavoured yogurt", "strawberry yogurt" --
+         that food is not penalised. An RD who wants a flavoured food
+         types the flavour.
+
+         This tier is safe to add here, and only here, because
+         `_rows_matching()` has already thrown away every row that fails
+         to match all of `query_tokens` by the time this runs -- see the
+         `for ... else` below. The tier can only reorder foods that ALL
+         equally satisfied the RD's query; it can never hide or bury a
+         food the RD asked for by name.
+
+         Deliberately excludes cooking methods (boiled, braised, roasted,
+         raw, steamed, ...) -- see `load_qualifiers()`'s docstring.
+         Demoting them would rank raw meat above cooked for "chicken",
+         which is backwards for a blenderized-feed tool (author,
+         2026-08-20).
+      6. alphabetically, as a stable last resort.
 
          This used to be "shortest description first", on the theory that
          CNF's terse entries are its basic foods. Measured against the
@@ -336,14 +463,17 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
          "Chicken, broiler, breast, skinless, boneless, meat, braised"
          (59), and "milk" with "Milk, dry whole" ahead of every fluid
          milk. Short and basic are not the same thing. Alphabetical
-         decides nothing about relevance -- tiers 1-4 have already done
+         decides nothing about relevance -- tiers 1-5 have already done
          that -- it just stops length from pretending to (author,
          2026-08-15).
 
-         Note what this still cannot do: nothing in a CNF description
-         says breast is wanted more often than back, so no rule here can
-         put it first. That needs a curated preferred-foods list, the
-         same shape as data/packs/<pack>/food_synonyms.csv.
+         Note what tiers 1-6 still cannot do (2026-08-20): nothing in a
+         CNF description says breast is wanted more often than back, and
+         nothing marks a plain sweet potato as more wanted than sweet
+         potato LEAVES -- "sweet potato" still answers with the leaves
+         first, because neither food carries an unrequested qualifier or
+         differs on any tier above. Both need a curated preferred-foods
+         list, the same shape as data/packs/<pack>/food_synonyms.csv.
     """
     scored: list[tuple[tuple, int]] = []
 
@@ -372,6 +502,7 @@ def _rows_matching(index: SearchIndex, query_tokens: list[str]) -> list[tuple[tu
                 0 if exact_words == len(query_tokens) else 1,
                 0 if any(h.startswith(t) for h in headword for t in query_tokens) else 1,
                 0 if index.desc_inverted[position] else 1,
+                1 if _has_unrequested_qualifier(index, position, query_tokens) else 0,
                 str(description).lower(),
             )
             scored.append((sort_key, position))
