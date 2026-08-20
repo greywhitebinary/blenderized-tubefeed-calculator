@@ -85,6 +85,7 @@ from src.day_io import (
 from src.recipe_io import (
     AMBIGUOUS,
     MATCH_BY_CODE,
+    MATCH_BY_DESCRIPTION,
     MATCH_CUSTOM,
     UNMATCHED,
     RecipeFileError,
@@ -98,7 +99,7 @@ from src.targets import empty_targets
 
 # The Streamlit layer's own modules. Imported after the sys.path insert
 # above, which is what makes `app` importable as a package.
-from app.add_food import render_add_food_ui
+from app.add_food import render_add_food_ui, food_search_index
 from app.ui_common import _narrow, _note
 from src.report import (
     generate_adequacy_report,
@@ -216,8 +217,9 @@ def _confirm_recipe_import(entries) -> None:
     needs_review = sum(1 for _, resolved in entries for r in resolved if r.needs_confirmation)
     if needs_review:
         st.caption(
-            f"{needs_review} of {total_rows} rows need you to confirm which "
-            "CNF food is meant. Nothing is added until you press Add."
+            f"{needs_review} of {total_rows} rows were matched by name, not by "
+            "food code. Check the food and the amount on each one. Nothing is "
+            "added until you press Add."
         )
     else:
         st.caption(f"All {total_rows} rows matched by food code. Check them and press Add.")
@@ -242,28 +244,37 @@ def _confirm_recipe_import(entries) -> None:
             elif row.status == MATCH_CUSTOM:
                 st.write(f"✅ **{row.food_description}** — {amount_label} (from the saved label)")
                 choices.append(row.food_code)
-            elif row.status == AMBIGUOUS:
-                picked = st.selectbox(
-                    f'"{row.source_text}" — {amount_label}: which food?',
-                    options=[None] + [c[0] for c in row.candidates],
-                    format_func=lambda code, _row=row: (
-                        "— choose one —"
-                        if code is None
-                        else next(d for c, d in _row.candidates if c == code)
-                    ),
-                    key=f"recipe_pick_{r_index}_{index}",
-                )
-                choices.append(picked)
             elif row.status == UNMATCHED:
                 st.write(f'❌ "{row.source_text}" — {amount_label}: no CNF match, will be skipped.')
                 choices.append(None)
-            else:  # matched on description — likely right, still confirm
-                keep = st.checkbox(
-                    f'"{row.source_text}" → **{row.food_description}** — {amount_label}',
-                    value=True,
-                    key=f"recipe_keep_{r_index}_{index}",
+            elif row.status in (MATCH_BY_DESCRIPTION, AMBIGUOUS):  # found by searching, not code
+                heading = f'🔍 "{row.source_text}" — {amount_label}'
+                if row.interpreted_as and row.interpreted_as != row.source_text:
+                    heading += f', read as "{row.interpreted_as}"'
+                st.write(heading)
+                picked = st.selectbox(
+                    heading,
+                    options=[c[0] for c in row.candidates] + [None],
+                    format_func=lambda code, _row=row: (
+                        "— skip this row —"
+                        if code is None
+                        else next(d for c, d in _row.candidates if c == code)
+                    ),
+                    index=0,  # the best-ranked candidate, preselected
+                    key=f"recipe_pick_{r_index}_{index}",
+                    label_visibility="collapsed",
                 )
-                choices.append(row.food_code if keep else None)
+                choices.append(picked)
+            else:
+                # Unreachable today -- every status recipe_io defines is
+                # handled above. Kept because `choices` is zipped against
+                # `resolved` further down: a branch that appended nothing
+                # would shift every later row onto the wrong food, which
+                # is the one failure this screen exists to prevent. A new
+                # status should cost a skipped row, not a silent
+                # misalignment (2026-08-20).
+                st.write(f'❌ "{row.source_text}" — {amount_label}: will be skipped.')
+                choices.append(None)
         choices_by_recipe.append(choices)
 
     usable = sum(1 for choices in choices_by_recipe for c in choices if c is not None)
@@ -2455,7 +2466,8 @@ with recipes_tab:
             _note(str(exc))
         else:
             st.session_state["_pending_recipe"] = [
-                (_p, resolve_ingredients(_p, fn)) for _p in _parsed_list
+                (_p, resolve_ingredients(_p, fn, search_index=food_search_index(fn)))
+                for _p in _parsed_list
             ]
             st.session_state["_last_recipe_upload"] = _uploaded.name
             st.rerun()

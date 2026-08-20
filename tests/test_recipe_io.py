@@ -9,20 +9,32 @@ Two jobs are being checked here, and they carry different risk:
    reloads with different grams, every number downstream is wrong.
 
 2. TYPED-RECIPE MATCHING. Someone types a recipe in Excel with food names
-   but no CNF codes. The rule under test is that the module NEVER guesses:
-   an ambiguous name comes back as ambiguous with candidates, an unknown
-   name comes back as unmatched, and even a single clean match is flagged
-   for a human to confirm. Silently picking a food would be the dangerous
-   failure -- nothing errors, the RD just gets a plausible wrong number.
+   but no CNF codes. The rule under test is that the module NEVER
+   COMMITS a food without a human looking at it: a description that
+   finds candidates comes back with the best one preselected but still
+   flagged for confirmation, an unknown name comes back as unmatched,
+   and nothing is written to a blend until the RD presses Add. Silently
+   picking a food would be the dangerous failure -- nothing errors, the
+   RD just gets a plausible wrong number.
 
-No CNF load here: a handful of hand-built food rows stands in for
-Food_Name.csv, per the same rule as the rest of the suite.
+Most of this file uses a handful of hand-built food rows standing in for
+Food_Name.csv, per the same rule as the rest of the suite -- a test you
+can verify by eye beats a test that trusts whatever CNF happens to say.
+One class, TestResolvingAgainstRealCNF, is the exception: it loads the
+REAL CNF, because it exists to pin the actual regression that motivated
+routing resolve_ingredients() through src/food_search.py (2026-08-20)
+rather than a literal substring match. It's skipped when the raw CNF
+download isn't present, same as tests/test_food_search.py's real-data
+guards.
 """
 
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 import pytest
+
+from src.data_loader import load_food_name
 
 from src.recipe_io import (
     AMBIGUOUS,
@@ -289,10 +301,15 @@ class TestResolvingTypedRecipes:
         assert row.food_description == "Banana, raw"
         assert row.needs_confirmation is False
 
-    def test_an_ambiguous_description_is_never_guessed(self, food_name_df):
+    def test_multiple_matches_come_back_ranked_not_committed(self, food_name_df):
         """THE important one. 'chicken, broiler, breast' matches three CNF
-        foods with different numbers. The module must hand back the
-        options, not pick one."""
+        foods with different numbers. The module hands back all three,
+        ranked, with the first preselected as a PROPOSAL -- but nothing
+        is chosen for the RD, and the row still needs their confirmation
+        before it can be used (Change, 2026-08-20: search_foods() replaced
+        the old str.contains() match, which is why this is no longer
+        AMBIGUOUS -- the search reached these candidates directly, off the
+        RD's own words, not via a synonym or a typo guess)."""
         parsed = ParsedRecipe(
             ingredients=[
                 {
@@ -304,9 +321,11 @@ class TestResolvingTypedRecipes:
         )
         [row] = resolve_ingredients(parsed, food_name_df)
 
-        assert row.status == AMBIGUOUS
-        assert row.food_code is None  # nothing was chosen
+        assert row.status == MATCH_BY_DESCRIPTION
         assert len(row.candidates) == 3
+        # The preselection is candidates[0], not a silent commitment --
+        # it's exactly what the confirmation UI shows already selected.
+        assert row.food_code == row.candidates[0][0]
         assert row.needs_confirmation is True
 
     def test_a_single_description_match_still_asks_for_confirmation(self, food_name_df):
@@ -348,8 +367,9 @@ class TestResolvingTypedRecipes:
         )
         [row] = resolve_ingredients(parsed, food_name_df)
 
-        assert row.status == AMBIGUOUS
+        assert row.status == MATCH_BY_DESCRIPTION
         assert len(row.candidates) == 3
+        assert row.needs_confirmation is True
 
     def test_amounts_and_flags_survive_resolution(self, food_name_df):
         """Resolution is about identity only; it must not touch quantities."""
@@ -369,6 +389,116 @@ class TestResolvingTypedRecipes:
         assert row.grams == 250.0
         assert row.unit == "mL"
         assert row.counts_as_fluid is True
+
+    def test_a_file_the_app_wrote_resolves_entirely_by_code(self, food_name_df):
+        """Every row in a file this app wrote carries a food code, so none
+        of them should ever reach the search-by-name path -- checked here
+        by asking that nothing needs a human's eyes."""
+        parsed = ParsedRecipe(
+            ingredients=[
+                {
+                    "food_code": 1704,
+                    "food_description": "whatever the file said",
+                    "grams": 100.0,
+                    "unit": "g",
+                    "counts_as_fluid": False,
+                },
+                {
+                    "food_code": 2933,
+                    "food_description": "whatever the file said",
+                    "grams": 250.0,
+                    "unit": "mL",
+                    "counts_as_fluid": True,
+                },
+            ]
+        )
+        resolved = resolve_ingredients(parsed, food_name_df)
+
+        assert [r.status for r in resolved] == [MATCH_BY_CODE, MATCH_BY_CODE]
+        assert all(r.needs_confirmation is False for r in resolved)
+
+    def test_a_nonsense_word_stays_unmatched(self, food_name_df):
+        """A search that finds nothing has to say so, not invent a food."""
+        parsed = ParsedRecipe(
+            ingredients=[
+                {"food_code": None, "food_description": "zzqqxxnonsenseword", "grams": 10.0}
+            ]
+        )
+        [row] = resolve_ingredients(parsed, food_name_df)
+
+        assert row.status == UNMATCHED
+        assert row.food_code is None
+        assert row.candidates == []
+
+
+CNF_FOOD_NAME = (
+    Path(__file__).resolve().parent.parent / "cnf_fcen_all-files-data_2026" / "Food_Name.csv"
+)
+
+
+@pytest.mark.skipif(not CNF_FOOD_NAME.exists(), reason="raw CNF download not present")
+class TestResolvingAgainstRealCNF:
+    """The fixture-based tests above prove the mechanics; these pin the
+    actual regression that motivated this change (2026-08-20). Before it,
+    resolve_ingredients() matched descriptions with `str.contains()`, and
+    a straight substring match answered "wild rice" and "greek yogurt"
+    with NOTHING, because CNF files them as "Grains, rice, wild, dry" and
+    "Yogourt (yogurt), Greek style" -- an RD who typed either into a
+    recipe file would have seen the row come back unmatched and trusted
+    it. Skipped without the raw CNF download, like
+    tests/test_food_search.py's own real-data guards.
+    """
+
+    def test_wild_rice_and_greek_yogurt_are_found(self):
+        """THE regression. Both used to come back UNMATCHED; search_foods()
+        finds 3 and 9 real CNF foods for them respectively."""
+        fn_df = load_food_name()
+        parsed = ParsedRecipe(
+            ingredients=[
+                {"food_code": None, "food_description": "wild rice", "grams": 100.0},
+                {"food_code": None, "food_description": "greek yogurt", "grams": 100.0},
+            ]
+        )
+        wild_rice, greek_yogurt = resolve_ingredients(parsed, fn_df)
+
+        assert wild_rice.status == MATCH_BY_DESCRIPTION, wild_rice.status
+        assert len(wild_rice.candidates) == 3, wild_rice.candidates
+        assert "rice" in wild_rice.food_description.lower()
+
+        assert greek_yogurt.status == MATCH_BY_DESCRIPTION, greek_yogurt.status
+        assert len(greek_yogurt.candidates) == 9, greek_yogurt.candidates
+        assert "yogourt" in greek_yogurt.food_description.lower()
+
+    def test_candidates_are_ranked_and_capped_at_fifty(self):
+        """ "chicken" alone matches 344 real CNF foods. The dropdown a
+        human has to read caps at search_foods()'s own 50-row default,
+        and the row's preselected food_code is the top-ranked candidate,
+        not an arbitrary one."""
+        fn_df = load_food_name()
+        parsed = ParsedRecipe(
+            ingredients=[{"food_code": None, "food_description": "chicken", "grams": 50.0}]
+        )
+        [row] = resolve_ingredients(parsed, fn_df)
+
+        assert len(row.candidates) == 50
+        assert row.food_code == row.candidates[0][0]
+        assert row.food_description == row.candidates[0][1]
+
+    def test_a_synonym_match_reports_what_it_actually_searched(self):
+        """ "courgette" isn't a CNF word -- CNF calls it zucchini, and the
+        search only gets there via the curated synonym table. The row has
+        to say so: the RD typed one word and is about to be shown a
+        different one, and that substitution must never be silent."""
+        fn_df = load_food_name()
+        parsed = ParsedRecipe(
+            ingredients=[{"food_code": None, "food_description": "courgette", "grams": 50.0}]
+        )
+        [row] = resolve_ingredients(parsed, fn_df)
+
+        assert row.status == AMBIGUOUS
+        assert row.interpreted_as == "zucchini"
+        assert row.search_note
+        assert row.needs_confirmation is True
 
 
 # ---------------------------------------------------------------------------

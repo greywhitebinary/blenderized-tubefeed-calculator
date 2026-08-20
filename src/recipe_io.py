@@ -81,12 +81,32 @@ before anything commits.
 
 WHAT THIS MODULE DELIBERATELY DOES NOT DO
 -----------------------------------------
-It never silently guesses. A description that matches several CNF foods
-comes back as AMBIGUOUS with the candidates attached, and one that
-matches nothing comes back as UNMATCHED — both for a human to resolve.
-Guessing would be the dangerous failure here: nothing errors, an RD just
-gets a plausible wrong number in a clinical table. Same reasoning as the
-label-photo rule in CONTEXT.md §11.
+It never COMMITS a food without a human looking at it. A description
+that finds one or more CNF candidates comes back with a ranked BEST
+MATCH preselected — via src/food_search.py's three-layer search, not a
+literal substring match — so the RD sees a proposed food and amount on
+screen right away instead of an empty box demanding they pick blind. A
+description that finds nothing comes back UNMATCHED, for a human to
+resolve some other way.
+
+Preselecting is not the same as guessing, provided it stays visible.
+The proposal is drawn next to the exact text the RD typed, and nothing
+is written to a blend until they press Add — a wrong preselection costs
+a glance and a different dropdown pick, not a silent wrong number in a
+clinical table. That is the same distinction CONTEXT.md §11 draws for
+AI label extraction: a shortcut is allowed to be wrong, so it is never
+allowed to be the last word.
+
+This changed on 2026-08-20. The module used to match descriptions with
+`str.contains()`, and a straight substring match answered "wild rice"
+and "greek yogurt" with nothing at all, because CNF files those as
+"Grains, rice, wild, dry" and "Yogourt (yogurt), Greek style" — an RD
+who typed either one into a recipe file, saw the row come back
+UNMATCHED, and trusted that, would have hand-entered a food that was
+already in CNF. Routing through src/food_search.py's search instead
+(see that module's own docstring for the full argument) fixes the miss
+without touching the rule that made this module safe to begin with:
+still nothing commits without a human confirming it.
 """
 
 from __future__ import annotations
@@ -97,6 +117,8 @@ from io import BytesIO
 from typing import Any
 
 import pandas as pd
+
+from src.food_search import MATCH_DIRECT, SearchIndex, build_index, search_foods
 
 # Bumped only on a breaking change to the sheet layout. Written into every
 # file so a future reader can tell what it's looking at.
@@ -188,10 +210,19 @@ class ResolvedIngredient:
                           None if this row has no measure (Change 5,
                           2026-08-15).
         measure_grams:    Grams in ONE of measure_label, or None.
-        candidates:       For AMBIGUOUS rows, the (code, description)
-                          options for a human to choose between.
+        candidates:       For MATCH_BY_DESCRIPTION and AMBIGUOUS rows, the
+                          ranked (code, description) options search_foods()
+                          found -- food_code/food_description above are
+                          just candidates[0], preselected, not committed.
         source_text:      What was actually in the file, kept for display
                           so the RD can see what they typed.
+        interpreted_as:   What src/food_search.py actually searched for,
+                          when it differs from source_text (a synonym or a
+                          typo correction fired). "" when the search used
+                          source_text as typed (Change, 2026-08-20).
+        search_note:      search_foods()'s own UI-ready sentence about how
+                          it interpreted the query, or "" when there's
+                          nothing worth saying (Change, 2026-08-20).
         custom_nutrients: For MATCH_CUSTOM rows, the per-100 g values from
                           the file's Custom foods sheet -- carried here so
                           the caller doesn't have to reach back into the
@@ -208,6 +239,8 @@ class ResolvedIngredient:
     measure_grams: float | None = None
     candidates: list[tuple[int, str]] = field(default_factory=list)
     source_text: str = ""
+    interpreted_as: str = ""
+    search_note: str = ""
     custom_nutrients: dict[str, float] | None = None
 
     @property
@@ -469,14 +502,17 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
     except Exception as exc:  # noqa: BLE001 - surfaced to the RD as a message
         raise RecipeFileError(
             "That file couldn't be opened as a spreadsheet. Please upload an "
-            ".xlsx recipe file saved from this app, or one built from it."
+            ".xlsx recipe file saved from this app, or one built from it. "
+            "To create a file in the correct format, build the blend in this "
+            "app and press Download recipe."
         ) from exc
 
     if INGREDIENTS_SHEET not in sheets:
         raise RecipeFileError(
             f"This spreadsheet has no '{INGREDIENTS_SHEET}' sheet, so there's "
             "nothing to load. A recipe file needs a 'Recipe' sheet and an "
-            "'Ingredients' sheet."
+            "'Ingredients' sheet. To create a file in the correct format, "
+            "build the blend in this app and press Download recipe."
         )
 
     ingredients_df = sheets[INGREDIENTS_SHEET]
@@ -484,7 +520,9 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
         if column not in ingredients_df.columns:
             raise RecipeFileError(
                 f"The '{INGREDIENTS_SHEET}' sheet has no '{column}' column. "
-                "It needs at least 'Food description' and 'Amount'."
+                "It needs at least 'Food description' and 'Amount'. To create "
+                "a file in the correct format, build the blend in this app and "
+                "press Download recipe."
             )
 
     # --- Recipe sheet (optional: a hand-built file may only have ingredients)
@@ -647,25 +685,39 @@ def resolve_ingredients(
     food_name_df: pd.DataFrame,
     description_column: str = "Food_Description_EN",
     code_column: str = "Food_Code",
+    search_index: SearchIndex | None = None,
 ) -> list[ResolvedIngredient]:
-    """Tie each parsed ingredient to a CNF food, without ever guessing.
+    """Tie each parsed ingredient to a CNF food, without ever committing.
 
     A row carrying a food code is taken at its word (that's a file this
     app wrote, or someone who looked the code up). A row with only a
-    description is matched case-insensitively:
+    description is run through src/food_search.py's ranked search:
 
-      * exactly one match  -> MATCH_BY_DESCRIPTION, still flagged for
-                              confirmation, because "one match" is not the
-                              same as "the right match";
-      * several matches    -> AMBIGUOUS, with candidates attached;
-      * no match           -> UNMATCHED.
+      * the search finds candidates -> the first (best-ranked) one is
+                              preselected as food_code/food_description,
+                              all of them are attached as `candidates`,
+                              and the row is still flagged for
+                              confirmation either way — a search result
+                              is a proposal, not a decision. The status is
+                              MATCH_BY_DESCRIPTION when the search matched
+                              directly, or AMBIGUOUS when it only got
+                              there via a synonym or a typo correction —
+                              the bigger leap earns the more cautious
+                              label;
+      * no candidates       -> UNMATCHED.
+
+    `search_index` lets a caller that already built one (the app keeps a
+    cached, Streamlit-`cache_resource`'d index for its search box) hand it
+    in rather than paying to rebuild it here. None (the default) builds
+    one from `food_name_df`, which is what every existing caller and test
+    does and keeps doing without change.
 
     Nothing here mutates the recipe. The caller shows the result and lets
     the RD confirm — see CONTEXT.md §11 on why an uploaded recipe lands as
     a draft rather than committing itself.
     """
     resolved: list[ResolvedIngredient] = []
-    descriptions = food_name_df[description_column].astype(str)
+    index = search_index if search_index is not None else build_index(food_name_df)
 
     for ing in parsed.ingredients:
         common = {
@@ -722,34 +774,36 @@ def resolve_ingredients(
             )
             continue
 
-        hits = food_name_df[descriptions.str.contains(text, case=False, na=False, regex=False)]
-        if len(hits) == 1:
-            resolved.append(
-                ResolvedIngredient(
-                    status=MATCH_BY_DESCRIPTION,
-                    food_code=int(hits.iloc[0][code_column]),
-                    food_description=str(hits.iloc[0][description_column]),
-                    **common,
-                )
-            )
-        elif len(hits) > 1:
-            resolved.append(
-                ResolvedIngredient(
-                    status=AMBIGUOUS,
-                    food_code=None,
-                    food_description=text,
-                    candidates=[
-                        (int(r[code_column]), str(r[description_column]))
-                        for _, r in hits.head(25).iterrows()
-                    ],
-                    **common,
-                )
-            )
-        else:
+        # No `limit=` -- the module's DEFAULT_LIMIT (50) is the approved
+        # cap here too, same reasoning as the search box: a dropdown of
+        # 500 foods is not a search result (src/food_search.py).
+        result = search_foods(text, index)
+        if result.is_empty:
             resolved.append(
                 ResolvedIngredient(
                     status=UNMATCHED, food_code=None, food_description=text, **common
                 )
             )
+            continue
+
+        candidates = [
+            (int(r[code_column]), str(r[description_column])) for _, r in result.matches.iterrows()
+        ]
+        best_code, best_description = candidates[0]
+        resolved.append(
+            ResolvedIngredient(
+                # DIRECT means the RD's own words led straight there;
+                # anything else (a synonym swap, a typo correction) is a
+                # bigger leap, so it's held to the more cautious label
+                # even though both are just a preselected proposal.
+                status=MATCH_BY_DESCRIPTION if result.match_type == MATCH_DIRECT else AMBIGUOUS,
+                food_code=best_code,
+                food_description=best_description,
+                candidates=candidates,
+                interpreted_as=result.interpreted_as,
+                search_note=result.note,
+                **common,
+            )
+        )
 
     return resolved

@@ -134,6 +134,18 @@ def _food_search_index(group_code: int | None, _fn_df: pd.DataFrame):
     return build_index(pool)
 
 
+def food_search_index(fn_df):
+    """The unfiltered (all food groups) search index, shared with the search box.
+
+    Just `_food_search_index(None, fn_df)` under a public name -- it hits
+    the SAME `cache_resource` entry the search box above already
+    populates (group_code=None is "All"), so a caller outside this module
+    (the recipe import, streamlit_app.py) gets it for free rather than
+    building a second copy in memory (recipe_io.py Change, 2026-08-20).
+    """
+    return _food_search_index(None, fn_df)
+
+
 def render_add_food_ui(
     fn_df: pd.DataFrame,
     na_df: pd.DataFrame,
