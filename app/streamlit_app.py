@@ -1245,6 +1245,21 @@ def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
     return options, lookup_map
 
 
+def _queue_intake_toast(what: str) -> None:
+    """Confirm an Intake Record add, on the NEXT run.
+
+    All three adders append and then st.rerun(), so a toast raised here
+    would be thrown away with the run that raised it. Stashing it and
+    showing it at the top of the tab is what makes it survive.
+
+    It exists because the row lands BELOW the fold: the author watched a
+    first-time reading of this screen where clicking Add appeared to do
+    nothing, so the natural move was to click again, and only scrolling
+    revealed several identical rows (2026-08-21).
+    """
+    st.session_state["_intake_toast"] = f"Added to the record below: {what}"
+
+
 def _feeds_in_record() -> list[str]:
     """The commercial feeds named in the current Intake Record.
 
@@ -1339,7 +1354,8 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
         lookup_df,
         fg_df,
         key_prefix="oral_add",
-        add_button_label="Add",
+        add_button_label="Add to record below",
+        add_custom_button_label="Add custom food to record below",
         show_counts_as_fluid_toggle=True,
     )
     if new_food is not None:
@@ -1361,6 +1377,9 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
                 "measure_label": new_food["measure_label"],
                 "measure_grams": new_food["measure_grams"],
             }
+        )
+        _queue_intake_toast(
+            f"{new_food['food_description']}, {new_food['grams']:.0f} {new_food['unit']}"
         )
         st.rerun()
 
@@ -2692,6 +2711,10 @@ with recipes_tab:
 
 
 with record_tab:
+    _pending_toast = st.session_state.pop("_intake_toast", None)
+    if _pending_toast:
+        st.toast(_pending_toast, icon="✅")
+
     st.subheader("Intake Record")
     st.caption("Record tube feeds, water flushes, and food or drink by mouth, all in one place.")
 
@@ -2830,7 +2853,7 @@ with record_tab:
         tf_amount = tf3.number_input(
             "Volume (mL)", min_value=0.0, value=0.0, step=10.0, format="%g", key="tf_amount_input"
         )
-        if st.button("Add tube feed row", key="tf_add_btn"):
+        if st.button("Add to record below", key="tf_add_btn"):
             if tf_amount > 0:
                 tf_source_type, tf_source_id = _source_map[tf_source_label]
                 st.session_state.next_intake_id += 1
@@ -2846,6 +2869,7 @@ with record_tab:
                         "counts_as_fluid": tf_source_type == "flush",
                     }
                 )
+                _queue_intake_toast(f"{tf_source_label}, {tf_amount:.0f} mL")
                 st.rerun()
             else:
                 st.warning("Enter a volume greater than 0 mL.")
@@ -2863,7 +2887,7 @@ with record_tab:
     with st.expander("➕ 💧 Add water flushes"):
         _flush_mode = st.radio(
             "How do you want to count flushes?",
-            ["Single flush", "With feeds (calculated)", "Med flushes (daily, rough)"],
+            ["Single flush", "With feeds (calculated)", "Med flushes (daily)"],
             horizontal=True,
             key="flush_mode",
         )
@@ -2908,8 +2932,11 @@ with record_tab:
                 f"{_per_flush:.0f} mL = **{_flush_total:.0f} mL**"
             )
         else:
-            _flush_total = _narrow(1, 3).number_input(
-                "Med flushes (mL/day — a rough figure is fine)",
+            # _narrow(1, 1), not (1, 3): at a quarter of the page this
+            # label wrapped onto a second line. The label does not have to
+            # fit the width of the input under it (author, 2026-08-21).
+            _flush_total = _narrow(1, 1).number_input(
+                "Med flushes (mL/day - an approximate figure is fine)",
                 min_value=0.0,
                 value=100.0,
                 step=10.0,
@@ -2917,7 +2944,7 @@ with record_tab:
                 key="flush_med_amount",
             )
             _flush_label = "Med flushes"
-        if st.button("Add flush row", key="flush_add_btn"):
+        if st.button("Add to record below", key="flush_add_btn"):
             if _flush_total > 0:
                 st.session_state.next_intake_id += 1
                 st.session_state.intake_log.append(
@@ -2932,6 +2959,7 @@ with record_tab:
                         "counts_as_fluid": True,
                     }
                 )
+                _queue_intake_toast(f"{_flush_label}, {_flush_total:.0f} mL")
                 st.rerun()
             else:
                 st.warning("The flush total is 0 mL — nothing to add.")

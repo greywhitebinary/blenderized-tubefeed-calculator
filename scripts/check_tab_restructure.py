@@ -93,7 +93,7 @@ def main() -> None:
     # (c) flush helper: med-flush mode adds one labeled flush row.
     rows_before = len(at.session_state["intake_log"])
     flush_radio = next(r for r in at.radio if r.key == "flush_mode")
-    flush_radio.set_value("Med flushes (daily, rough)").run()
+    flush_radio.set_value("Med flushes (daily)").run()
     assert not at.exception, f"flush mode switch raised: {at.exception}"
     next(b for b in at.button if b.key == "flush_add_btn").click().run()
     assert not at.exception, f"flush add raised: {at.exception}"

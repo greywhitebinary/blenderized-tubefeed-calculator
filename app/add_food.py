@@ -153,6 +153,12 @@ def render_add_food_ui(
     fg_df: pd.DataFrame,
     key_prefix: str,
     add_button_label: str = "Add",
+    # The custom-food button used to be built as f"{add_button_label} custom
+    # food", which only reads as English while the label is a bare verb.
+    # The oral adder's label became "Add to record below" on 2026-08-21 and
+    # produced "Add to record below custom food"; a label that composes has
+    # to be given, not assembled (2026-08-21).
+    add_custom_button_label: str | None = None,
     show_counts_as_fluid_toggle: bool = False,
     existing_food_codes: dict[int, float] | None = None,
 ) -> dict | None:
@@ -690,7 +696,8 @@ def render_add_food_ui(
             else:
                 _custom_final_fluid = _custom_default_fluid
 
-            if st.button(f"➕ {add_button_label} custom food", key=f"{key_prefix}_add_custom_btn"):
+            _custom_label = add_custom_button_label or f"{add_button_label} custom food"
+            if st.button(f"➕ {_custom_label}", key=f"{key_prefix}_add_custom_btn"):
                 if not cname:
                     st.warning("Please enter a food name.")
                 elif cserving <= 0:
