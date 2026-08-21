@@ -93,7 +93,11 @@ def main() -> None:
     # (c) flush helper: med-flush mode adds one labeled flush row.
     rows_before = len(at.session_state["intake_log"])
     flush_radio = next(r for r in at.radio if r.key == "flush_mode")
-    flush_radio.set_value("Med flushes (daily)").run()
+    # Matched on a prefix, not the full label: this option's wording has
+    # been edited twice, and each time an exact match turned a copy tweak
+    # into set_value() raising, which reads as a broken app rather than a
+    # stale string (2026-08-21 review).
+    flush_radio.set_value(next(o for o in flush_radio.options if o.startswith("Med flushes"))).run()
     assert not at.exception, f"flush mode switch raised: {at.exception}"
     next(b for b in at.button if b.key == "flush_add_btn").click().run()
     assert not at.exception, f"flush add raised: {at.exception}"
@@ -102,11 +106,21 @@ def main() -> None:
     assert log[-1]["source_type"] == "flush"
     assert log[-1]["food_description"] == "Med flushes"
     assert log[-1]["counts_as_fluid"] is True
-    print(f"med-flush helper OK: added {log[-1]['amount']:.0f} mL row")
+    # The toast is the ONLY signal that an add worked: the row lands below
+    # the fold and the page reruns immediately, so without this an RD
+    # clicks again and again. Its two halves live apart -- the adder
+    # queues into session_state, the tab pops and shows it on the next run
+    # -- so either could break with every test still green. Assert the
+    # text, and that the queue drained so it cannot repeat (2026-08-21).
+    toasts = [t.value for t in at.toast]
+    assert any("Added to the record below" in t for t in toasts), toasts
+    assert any("Med flushes" in t for t in toasts), toasts
+    assert "_intake_toast" not in at.session_state, "the toast queue did not drain"
+    print(f"med-flush helper OK: added {log[-1]['amount']:.0f} mL row, toast shown")
 
     # (d) with-feeds mode computes from the number of tube-feed rows.
     flush_radio = next(r for r in at.radio if r.key == "flush_mode")
-    flush_radio.set_value("With feeds (calculated)").run()
+    flush_radio.set_value(next(o for o in flush_radio.options if o.startswith("With feeds"))).run()
     n_feeds = sum(
         1 for r in at.session_state["intake_log"] if r["source_type"] in ("blend", "formula")
     )

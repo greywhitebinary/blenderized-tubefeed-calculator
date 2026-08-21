@@ -1713,6 +1713,10 @@ with recipes_tab:
         fg,
         key_prefix=f"blend_{selected_blend_id}",
         add_button_label="Add to blend",
+        # Without this the custom-food button composes to "Add to blend
+        # custom food", which it has read as since before the parameter
+        # existed. Given, not assembled (2026-08-21 review).
+        add_custom_button_label="Add custom food to blend",
         existing_food_codes=_existing_grams,
     )
     if new_ingredient is not None:
