@@ -3216,7 +3216,7 @@ with record_tab:
         if hidden_main_names:
             st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
 
-        with st.expander("BTF micro screen — vitamins & minerals not on labels"):
+        with st.expander("Vitamins and minerals not on the Nutrition Facts table"):
             st.caption(
                 'A one-time supplementation screen (ASPEN-style: "does this '
                 "day's intake need a multivitamin?\"), not a daily-tracked panel "
@@ -3367,7 +3367,7 @@ with record_tab:
             nutrient_coverage=intake_totals.nutrient_coverage,
             patient_weight_kg=patient_weight_kg if patient_weight_kg > 0 else None,
         )[0]
-        _report_sheets["Micro Screen"] = generate_clinical_screen(
+        _report_sheets["Vitamins and Minerals"] = generate_clinical_screen(
             intake_totals.nutrient_totals,
             targets,
             nutrient_coverage=intake_totals.nutrient_coverage,
@@ -3415,9 +3415,9 @@ with record_tab:
         "later with “Open a saved record” at the top of the page, or file it "
         "as it is. The first worksheets hold what you entered (Record, "
         "Targets, Blends, Ingredients, Intake, Custom foods) and the rest hold "
-        "the calculated reports: Adequacy, Micro Screen, Per-Source Breakdown, "
-        "Water Sources and Chart Note. This record is not stored anywhere "
-        "else; the file you download is the only copy."
+        "the calculated reports: Adequacy, Vitamins and Minerals, Per-Source "
+        "Breakdown, Water Sources and Chart Note. This record is not stored "
+        "anywhere else; the file you download is the only copy."
     )
 
 

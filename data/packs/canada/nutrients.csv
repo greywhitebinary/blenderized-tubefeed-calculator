@@ -18,3 +18,19 @@ phosphorus_mg,305,Phosphorus,mg,clinical,no,yes,no,,0,"Author's EN spreadsheet t
 zinc_mg,309,Zinc,mg,clinical,no,yes,no,,1,ASPEN BTF supplementation screen; not on Canadian labels; no target offered
 vitamin_d_ug,328,Vitamin D,µg,clinical,no,yes,no,,1,ASPEN BTF supplementation screen; on US labels but not Canadian; no target offered
 vitamin_b12_ug,418,Vitamin B12,µg,clinical,no,yes,no,,1,ASPEN BTF supplementation screen; not on Canadian labels; no target offered
+vitamin_c_mg,401,Vitamin C,mg,clinical,no,yes,no,,1,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+niacin_ne,409,Niacin (NE),NE,clinical,no,yes,no,,1,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+riboflavin_mg,405,Riboflavin,mg,clinical,no,yes,no,,2,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+copper_mg,312,Copper,mg,clinical,no,yes,no,,2,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+thiamine_mg,404,Thiamine,mg,clinical,no,yes,no,,2,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+vitamin_a_rae_ug,320,Vitamin A (RAE),µg,clinical,no,yes,no,,0,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+vitamin_b6_mg,415,Vitamin B6,mg,clinical,no,yes,no,,2,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+folate_dfe_ug,435,Folate (DFE),µg,clinical,no,yes,no,,0,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+manganese_mg,315,Manganese,mg,clinical,no,yes,no,,2,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+selenium_ug,317,Selenium,µg,clinical,no,yes,no,,1,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+beta_carotene_ug,321,Beta carotene,µg,clinical,no,yes,no,,0,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+pantothenic_acid_mg,410,Pantothenic acid,mg,clinical,no,yes,no,,2,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+vitamin_e_mg,323,Vitamin E (alpha-tocopherol),mg,clinical,no,yes,no,,2,"CNF vitamins and minerals not on the Canadian Nutrition Facts table; no target offered (targets need age/sex DRIs -- author, 2026-08-20)"
+retinol_ug,319,Retinol,µg,clinical,no,yes,no,,0,"Preformed form; DRI upper limits are set on this, not on the equivalents (Vitamin A RAE) -- author, 2026-08-20"
+niacin_preformed_mg,406,Niacin (preformed),mg,clinical,no,yes,no,,2,"Preformed form; DRI upper limits are set on this, not on the equivalents (niacin NE) -- author, 2026-08-20"
+folate_food_ug,432,Folate (food),µg,clinical,no,yes,no,,0,"Preformed form; DRI upper limits are set on this, not on the equivalents (folate DFE) -- author, 2026-08-20"

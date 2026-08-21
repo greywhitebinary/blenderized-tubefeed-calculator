@@ -250,12 +250,20 @@ def main() -> int:
         f"    Registry: {len(registry)} nutrients loaded from "
         f"data/packs/{DEFAULT_PACK}/nutrients.csv"
     )
-    assert len(registry) == 19, f"expected 19 registry rows, got {len(registry)}"
+    # 35 since 2026-08-20, when the clinical tier grew from the 5 ASPEN
+    # screen nutrients to every vitamin and mineral CNF covers well (author:
+    # "if so much food have them, just add it in"). The counts stay pinned
+    # rather than computed: the registry decides what every report and every
+    # saved file contains, so it changing SIZE should be a deliberate edit
+    # here, not something a stray CSV row does quietly.
+    assert len(registry) == 35, f"expected 35 registry rows, got {len(registry)}"
     label_defs = defs_for_tier("label", pack=DEFAULT_PACK)
     clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
     engine_defs = defs_for_tier("engine", pack=DEFAULT_PACK)
     assert len(label_defs) == 13, f"expected 13 label-tier nutrients, got {len(label_defs)}"
-    assert len(clinical_defs) == 5, f"expected 5 clinical-tier nutrients, got {len(clinical_defs)}"
+    assert (
+        len(clinical_defs) == 21
+    ), f"expected 21 clinical-tier nutrients, got {len(clinical_defs)}"
     assert (
         len(engine_defs) == 1
     ), f"expected 1 engine-tier nutrient (water_g), got {len(engine_defs)}"
@@ -330,14 +338,18 @@ def main() -> int:
     assert (
         hidden_clinical == []
     ), f"expected nothing hidden for a full-coverage recipe, got {hidden_clinical}"
-    assert len(clinical) == 5, f"expected 5 clinical-screen rows, got {len(clinical)}"
-    assert set(clinical["Nutrient"].values) == {
+    assert len(clinical) == 21, f"expected 21 clinical-screen rows, got {len(clinical)}"
+    # The five ASPEN screen nutrients must still be present. Since
+    # 2026-08-20 they are joined by every vitamin and mineral CNF covers
+    # well, so this asserts a SUBSET: adding a nutrient to the pack should
+    # not fail here, but losing one of the original five should.
+    assert {
         "Magnesium",
         "Phosphorus",
         "Zinc",
         "Vitamin D",
         "Vitamin B12",
-    }
+    } <= set(clinical["Nutrient"].values)
     assert (
         clinical["Source"] == "CNF only — labels don't carry this"
     ).all(), "every clinical-tier nutrient should be marked as not on a Canadian label"
@@ -484,13 +496,17 @@ def main() -> int:
         custom_only_daily, targets, nutrient_coverage=custom_only_profile.nutrient_coverage
     )
     print(f"    Hidden from clinical screen: {hidden_clinical_names}")
-    assert set(hidden_clinical_names) == {
-        "Magnesium",
-        "Phosphorus",
-        "Zinc",
-        "Vitamin D",
-        "Vitamin B12",
-    }, f"expected all 5 clinical nutrients hidden (custom food supplies none), got {hidden_clinical_names}"
+    # EVERY clinical-tier nutrient, computed from the pack rather than
+    # listed here: a food entered from a Nutrition Facts label can supply
+    # none of them (a Canadian label carries none), so all must be hidden
+    # rather than shown as zero. Comparing against the pack keeps this
+    # assertion true as the tier grows -- it grew from 5 to 21 on
+    # 2026-08-20 -- while still failing if any of them leaks through.
+    _all_clinical = {d.label for d in defs_for_tier("clinical", pack=DEFAULT_PACK)}
+    assert set(hidden_clinical_names) == _all_clinical, (
+        "expected every clinical nutrient hidden (a label-entered food supplies none), "
+        f"got {hidden_clinical_names}"
+    )
     assert len(hidden_clinical_df) == 0, "clinical screen should be fully empty for this fixture"
     print("    Zero-coverage rows hidden from both tables, with names reported — OK")
 

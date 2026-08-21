@@ -644,7 +644,7 @@ def render_add_food_ui(
                     st.caption(
                         "Vitamin D, B12, zinc, magnesium, and phosphorus are "
                         "CFIA-optional. Enter them if this label carries them "
-                        "so the values reach the BTF micro screen."
+                        "so the values reach the vitamins and minerals table."
                     )
                     clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
                     for d in clinical_defs:
