@@ -127,7 +127,6 @@ from src.intake import (
     InvalidBlendError,
     TUBE_FEED_LABEL,
     FOOD_DRINK_LABEL,
-    TOTAL_LABEL,
     WATER_FLUSH_LABEL,
 )
 
@@ -1333,7 +1332,6 @@ def _render_add_oral_ui(fn_df, na_df, lookup_df, fg_df):
     subsequent AppTest run is untestable in exactly the way this project
     requires, this uses the sanctioned inline-expander fallback instead.
     """
-    st.caption("Log a single food or drink the client had by mouth.")
     oral_time = _narrow(1, 4).time_input("Time (optional)", value=None, key="oral_time_input")
     new_food = render_add_food_ui(
         fn_df,
@@ -2444,11 +2442,6 @@ with recipes_tab:
                         "it again. Next: record its flow test."
                     )
                     st.rerun()
-            else:
-                st.caption(
-                    "Move the slider to see what thinning would do to the "
-                    "density. Nothing changes until you choose to save it."
-                )
 
     # --- Recipe record: save this blend to a file, or load one back ---
     # The calculator computes; this remembers. Everything else in a blend
@@ -3078,10 +3071,6 @@ with record_tab:
     else:
         # --- Per-source subtotal breakdown (design doc section 3.5) ---
         st.subheader("Per-Source Breakdown")
-        st.caption(
-            f'"{TUBE_FEED_LABEL}" vs "{FOOD_DRINK_LABEL}" vs "{TOTAL_LABEL}" — combined '
-            "numbers, with the split still visible."
-        )
         with st.container(key="fullbleed_source_breakdown"):
             st.dataframe(generate_source_breakdown(intake_totals), width="stretch", hide_index=True)
 
