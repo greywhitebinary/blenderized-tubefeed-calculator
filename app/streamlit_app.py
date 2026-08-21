@@ -2744,10 +2744,7 @@ with recipes_tab:
 
 with record_tab:
     st.subheader("Intake Record")
-    st.caption(
-        "What was actually given — tube feed (blends, formulas, flushes) "
-        "and food/drink by mouth, together in one chronological list."
-    )
+    st.caption("Record tube feeds, water flushes, and food or drink by mouth, all in one place.")
 
     # Delivery method: a single free-choice field for chart-note wording
     # only (FEED_LOG_REWORK.md section 3.4) — it no longer drives any math.
@@ -3137,18 +3134,14 @@ with record_tab:
         if not _water_ledger.empty:
             st.subheader("Where the Water Came From")
             st.caption(
-                "Free water is water that arrived as part of something fed — "
-                "including tap water blended into a recipe, since in the recipe "
-                "it *is* the recipe. Water flushes are water given as water, so "
-                "they sit on their own and add on top."
+                "Free water is water contained within a feed, including water "
+                "added to a blend recipe. Water flushes are entered separately "
+                "and added to total fluids."
             )
             st.dataframe(_water_ledger, width="content", hide_index=True)
 
         st.subheader("Daily Totals & Adequacy")
-        st.caption(
-            "A direct sum over the Intake Record (above) — never "
-            "extrapolated from a batch volume against a schedule."
-        )
+        st.caption("The total fluid from everything entered in the Daily Intake Record above.")
 
         adequacy_df, hidden_main_names = generate_adequacy_report(
             intake_totals.nutrient_totals,
@@ -3208,10 +3201,10 @@ with record_tab:
                 },
             )
         st.caption(
-            "Free water counts moisture from CNF foods plus formula-declared "
-            "free water. Water flushes are counted under Fluids provided, not "
-            "here. Foods entered from a label contribute none, because no "
-            "label carries moisture."
+            "Free water includes moisture from CNF foods and manufacturer-declared "
+            "free water in formulas. Water flushes are included under Fluids "
+            "provided instead. Foods entered from a nutrition label contribute no "
+            "free water as nutrition labels do not report moisture."
         )
         with st.expander("Where these numbers came from"):
             st.dataframe(
@@ -3233,11 +3226,6 @@ with record_tab:
             st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
 
         with st.expander("Vitamins and minerals not on the Nutrition Facts table"):
-            st.caption(
-                'A one-time supplementation screen (ASPEN-style: "does this '
-                "day's intake need a multivitamin?\"), not a daily-tracked panel "
-                "like the table above."
-            )
             clinical_df, hidden_clinical_names = generate_clinical_screen(
                 intake_totals.nutrient_totals,
                 targets,
@@ -3282,8 +3270,8 @@ with record_tab:
         # that is already filled in is worse than saying less. The warning
         # further up names the actual cause (2026-08-20 second review).
         st.caption(
-            "The totals this note quotes can't be worked out yet — see the "
-            "warning above the Intake Record results for what's missing."
+            "The totals needed for this note cannot be calculated yet. See the "
+            "warning above the Daily Intake Record for what is missing."
         )
     elif not st.session_state.intake_log:
         st.caption("Add Intake Record rows above to generate a chart note.")
