@@ -1246,6 +1246,21 @@ def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
     return options, lookup_map
 
 
+def _feeds_in_record() -> list[str]:
+    """The commercial feeds named in the current Intake Record.
+
+    Handed to the report builders so the Source column can name the
+    manufacturer whose guide a number could have come from, instead of
+    listing both companies on every day. A blend-only record returns
+    nothing and the column names neither (2026-08-21).
+    """
+    return [
+        row["source_id"]
+        for row in st.session_state.intake_log
+        if row.get("source_type") == "formula" and row.get("source_id")
+    ]
+
+
 def _intake_source_name(row: dict) -> str:
     """Resolve the display name for an Intake Record row's source (blend
     name, formula name, flush label, or food description).
@@ -3141,6 +3156,7 @@ with record_tab:
             fluid_provided_mL=intake_totals.fluid_provided_mL,
             nutrient_coverage=intake_totals.nutrient_coverage,
             patient_weight_kg=patient_weight_kg if patient_weight_kg > 0 else None,
+            feed_names=_feeds_in_record(),
         )
         adequacy_display = adequacy_df.copy()
         adequacy_display["Target"] = adequacy_display["Target"].astype(str)
@@ -3226,6 +3242,7 @@ with record_tab:
                 intake_totals.nutrient_totals,
                 targets,
                 nutrient_coverage=intake_totals.nutrient_coverage,
+                feed_names=_feeds_in_record(),
             )
             if len(clinical_df) > 0:
                 clinical_display = clinical_df.copy()
@@ -3366,11 +3383,13 @@ with record_tab:
             fluid_provided_mL=intake_totals.fluid_provided_mL,
             nutrient_coverage=intake_totals.nutrient_coverage,
             patient_weight_kg=patient_weight_kg if patient_weight_kg > 0 else None,
+            feed_names=_feeds_in_record(),
         )[0]
         _report_sheets["Vitamins and Minerals"] = generate_clinical_screen(
             intake_totals.nutrient_totals,
             targets,
             nutrient_coverage=intake_totals.nutrient_coverage,
+            feed_names=_feeds_in_record(),
         )[0]
         _report_sheets["Per-Source Breakdown"] = generate_source_breakdown(intake_totals)
 

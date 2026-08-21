@@ -350,9 +350,15 @@ def main() -> int:
         "Vitamin D",
         "Vitamin B12",
     } <= set(clinical["Nutrient"].values)
-    assert (
-        clinical["Source"] == "CNF only — labels don't carry this"
-    ).all(), "every clinical-tier nutrient should be marked as not on a Canadian label"
+    # No "NFt" in a clinical row's Source: these nutrients are not on a
+    # Canadian Nutrition Facts table, so a food typed from one can never
+    # supply them. The column also names any manufacturer whose feed is in
+    # the record and discloses the nutrient -- none here, since this
+    # recipe is food only (2026-08-21).
+    assert (clinical["Source"] == "CNF").all(), (
+        "a food-only recipe's clinical rows should cite CNF alone, got "
+        f"{sorted(set(clinical['Source']))}"
+    )
 
     # target_type="UL" semantics (sodium): must say "Above UL"/"Below UL",
     # never the old "Above target"/"Meeting target" wording.

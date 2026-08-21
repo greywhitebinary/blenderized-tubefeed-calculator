@@ -65,6 +65,8 @@ The report is returned as a pandas DataFrame for easy display in the
 Streamlit UI (st.dataframe, st.table) and export to Excel.
 """
 
+from collections.abc import Iterable
+
 import pandas as pd
 
 try:
@@ -72,6 +74,7 @@ try:
     from src.models import NutrientProfile
     from src.nutrients import NutrientDef, defs_for_tier, registry_by_name, DEFAULT_PACK
     from src.intake import (
+        _FORMULA_COLUMN_TO_NUTRIENT,
         TUBE_FEED_LABEL as _TUBE_FEED_LABEL,
         FOOD_DRINK_LABEL as _FOOD_DRINK_LABEL,
         TOTAL_LABEL as _TOTAL_LABEL,
@@ -81,6 +84,7 @@ except ImportError:
     from models import NutrientProfile
     from nutrients import NutrientDef, defs_for_tier, registry_by_name, DEFAULT_PACK
     from intake import (
+        _FORMULA_COLUMN_TO_NUTRIENT,
         TUBE_FEED_LABEL as _TUBE_FEED_LABEL,
         FOOD_DRINK_LABEL as _FOOD_DRINK_LABEL,
         TOTAL_LABEL as _TOTAL_LABEL,
@@ -91,10 +95,54 @@ except ImportError:
 BELOW_THRESHOLD = 0.90  # < 90% → Below
 ABOVE_THRESHOLD = 1.10  # > 110% → Above
 
-# Source column text (P1-4 / P1-6): tells the RD whether a custom food
-# entered from a nutrition facts label could ever supply this nutrient.
-_SOURCE_ON_LABEL = "Label + CNF"
-_SOURCE_CNF_ONLY = "CNF only — labels don't carry this"
+# Source column: where a number in this row could have come from, named
+# in the RD's own vocabulary -- CNF, NFt (Health Canada's term for the
+# Nutrition Facts table), and the manufacturer of any commercial feed in
+# THIS record that discloses the nutrient.
+#
+# It used to read "CNF only -- labels don't carry this" for every
+# clinical-tier row. Both halves stopped being true on 2026-08-20, when
+# the feeds gained their own vitamin and mineral columns: 19 of the 21
+# rows now have a second source, and "labels don't carry this" was
+# explaining the app's plumbing rather than telling an RD anything.
+#
+# Naming only the feeds actually in the record, rather than listing both
+# manufacturers always, keeps the column true for the day in front of
+# the RD: a blend-only day names neither.
+_SOURCE_CNF = "CNF"
+_SOURCE_NFT = "NFt"
+
+# The feed columns that are not in _FORMULA_COLUMN_TO_NUTRIENT because
+# every feed carries them by definition rather than optionally.
+_ALWAYS_ON_A_FEED = {
+    "energy_kcal": "kcal_per_mL",
+    "protein_g": "protein_per_mL",
+    "water_g": "free_water_per_mL",
+}
+
+
+def _brands_by_nutrient(feed_names) -> dict[str, set[str]]:
+    """nutrient name -> the manufacturers among `feed_names` disclosing it.
+
+    A feed discloses a nutrient when its column holds a value; a blank
+    means the manufacturer never published one, so naming them as a
+    source would credit them with data they did not give.
+    """
+    column_for = dict(_ALWAYS_ON_A_FEED)
+    column_for.update({nutrient: col for col, nutrient in _FORMULA_COLUMN_TO_NUTRIENT.items()})
+    out: dict[str, set[str]] = {}
+    for name in feed_names or ():
+        feed = COMMERCIAL_FORMULAS.get(name)
+        if not feed:
+            continue
+        # "Nestlé Health Science" -> "Nestlé"; "Abbott Nutrition" -> "Abbott".
+        brand = (feed.get("brand") or "").split()[0] if feed.get("brand") else ""
+        if not brand:
+            continue
+        for nutrient, column in column_for.items():
+            if feed.get(column) is not None:
+                out.setdefault(nutrient, set()).add(brand)
+    return out
 
 
 def _adequacy_status(daily_total: float, target: float, target_type: str = "estimate") -> str:
@@ -141,9 +189,13 @@ def _fmt(value: float, decimals: int) -> str:
     return f"{value:.{max(decimals, 0)}f}"
 
 
-def _source_text(nutrient_def: NutrientDef) -> str:
-    """'Can a custom food entered from a label supply this nutrient?'"""
-    return _SOURCE_ON_LABEL if nutrient_def.on_label else _SOURCE_CNF_ONLY
+def _source_text(nutrient_def: NutrientDef, brands: dict[str, set[str]] | None = None) -> str:
+    """Where a value for this nutrient could have come from."""
+    parts = [_SOURCE_CNF]
+    if nutrient_def.on_label:
+        parts.append(_SOURCE_NFT)
+    parts.extend(sorted((brands or {}).get(nutrient_def.name, ())))
+    return ", ".join(parts)
 
 
 def _coverage_text(name: str, coverage: dict[str, tuple[int, int]]) -> str:
@@ -229,6 +281,7 @@ def _tier_rows(
     targets: dict[str, float],
     coverage: dict[str, tuple[int, int]],
     patient_weight_kg: float | None = None,
+    brands: dict[str, set[str]] | None = None,
 ) -> list[dict]:
     """Build report rows for a list of NutrientDef (one tier's worth).
 
@@ -260,7 +313,7 @@ def _tier_rows(
                 "Target": _fmt(target_val, d.decimals) if target_val > 0 else "—",
                 "% Target": _fmt(pct, 0) if target_val > 0 else "—",
                 "Status": status,
-                "Source": _source_text(d),
+                "Source": _source_text(d, brands),
                 "Coverage": _coverage_text(d.name, coverage),
                 "_zero_coverage": _zero_coverage(d.name, coverage),
             }
@@ -291,6 +344,7 @@ def generate_adequacy_report(
     fluid_provided_mL: float | None = None,
     nutrient_coverage: dict[str, tuple[int, int]] | None = None,
     patient_weight_kg: float | None = None,
+    feed_names: "Iterable[str] | None" = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Generate the MAIN adequacy report as a DataFrame.
 
@@ -347,7 +401,14 @@ def generate_adequacy_report(
     coverage = nutrient_coverage or {}
 
     label_defs = _ordered_label_defs(pack)
-    rows = _tier_rows(label_defs, daily_totals, targets, coverage, patient_weight_kg)
+    rows = _tier_rows(
+        label_defs,
+        daily_totals,
+        targets,
+        coverage,
+        patient_weight_kg,
+        brands=_brands_by_nutrient(feed_names),
+    )
 
     # Free water: a first-class computed output, not a single CNF nutrient
     # lookup -- see daily_totals' docstring note above for what it blends.
@@ -550,6 +611,7 @@ def generate_clinical_screen(
     targets: dict[str, float] | None = None,
     pack: str = DEFAULT_PACK,
     nutrient_coverage: dict[str, tuple[int, int]] | None = None,
+    feed_names: "Iterable[str] | None" = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     """Generate the BTF micro screen — tier="clinical" nutrients only.
 
@@ -587,7 +649,13 @@ def generate_clinical_screen(
     coverage = nutrient_coverage or {}
 
     clinical_defs = [d for d in defs_for_tier("clinical", pack=pack) if d.show_in_report]
-    rows = _tier_rows(clinical_defs, daily_totals, targets, coverage)
+    rows = _tier_rows(
+        clinical_defs,
+        daily_totals,
+        targets,
+        coverage,
+        brands=_brands_by_nutrient(feed_names),
+    )
     return _finalize(rows)
 
 
