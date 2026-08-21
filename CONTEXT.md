@@ -901,8 +901,8 @@ author can compare their fixes or unblock themselves if stuck for too long.
     so the format teaches itself. See `FEED_LOG_REWORK.md` §3.5.
   - **Layout revised 2026-08-09 at the author's direction** (the "as new
     features land" case, not a break in the pin): onboarding row (demo
-    video, Load example day) above the "Patient / record label" field, "Open a saved
-    day" left top right; top padding 2.5rem → 3.75rem to clear
+    video, Load example record) above the "Patient / record label" field,
+    "Open a saved record" left top right; top padding 2.5rem → 3.75rem to clear
     Streamlit's header; footer reworded to four bullets with a contact
     line (GitHub issues + LinkedIn, no email).
 - ~~**`scripts/check_tab_restructure.py` is FAILING on `main`**~~ —
@@ -1675,7 +1675,7 @@ this session) — display-only throughout; `intake_log`,
   dilution what-if, comparator, flow test), **Daily Intake Record**
   (the record editor with daily totals/adequacy/per-source breakdown/
   chart note/export directly beneath the record they summarize). Top
-  bar keeps only the "Patient / record label" field and "Load example day"; the
+  bar keeps only the "Patient / record label" field and "Load example record"; the
   sidebar is gone.
 - **Round 2 (3c42a3c):** patient weight gained a kg/lbs toggle; a
   dedicated "Add water flushes" expander with three precisions (single
@@ -1773,7 +1773,7 @@ this session) — display-only throughout; `intake_log`,
   and `trace_calculation.py` all pass after each change; a throwaway
   AppTest confirms "Per-Source Breakdown" precedes "Daily Totals &
   Adequacy" in render order after loading the example day.
-- **"Load example day" rewritten for a specific synthetic case (2026-07-23):**
+- **"Load example record" rewritten for a specific synthetic case (2026-07-23):**
   the button now loads a realistic H&N radiotherapy syringe-bolus day
   ("James W (H&N RT wk 5)") instead of the old generic chicken/rice/oil/
   water blend, AND now presets the Nutrition Targets tab (patient/day
@@ -1902,6 +1902,197 @@ is now stated in `MAINTAINING.md` under "Where new code goes".
    `HANDOFF.md` retired. **`FEED_LOG_REWORK.md` was NOT retired** as the
    plan first proposed — ~30 comments in `src/` cite it, so it is a live
    specification, not a finished plan.
+
+2026-08-20/21 — **the day the reference data caught up with the app.**
+Fifteen commits. The through-line: the app had been showing an RD a
+fraction of what its own sources already knew, and in three places it was
+losing their work outright.
+
+### Files stopped losing what an RD typed
+
+A food entered from a Nutrition Facts label lives only in session state,
+under a negative code CNF has never heard of. The recipe file wrote that
+code and nothing else, so reloading found a code CNF could not resolve,
+fell through to description matching, found nothing there either, and the
+ingredient dropped out of the rebuilt blend — with the measured volume
+intact, so every number the blend produced afterwards looked normal and
+was wrong. Recipe format **v2 → v3** adds a "Custom foods" sheet, the same
+long layout `day_io.py` has always used. v1/v2 files still load; this
+stops new files losing the data rather than repairing old ones.
+
+Imported custom codes are **renumbered once per file** at confirm time. A
+file's negative codes are file-scoped, so a saved "-1" and the session's
+"-1" can be two different foods; attaching one food's label numbers to
+another food's name is the silent-wrong-number failure this project
+refuses.
+
+Three more ways a hand-built recipe file could misfile an ingredient were
+found by review and closed the same day: two recipes sharing a NAME
+merged into one blend (500 mL + 900 mL loaded as a single 900 mL blend
+holding both ingredient lists), two sharing an **id** did the same, and a
+blank link cell silently joined the first recipe. All three now refuse or
+warn. The guard had existed for the missing-link-column case since July;
+these were its near misses.
+
+### The recipe import was still using the search this project replaced
+
+`resolve_ingredients()` matched a description with `str.contains()` —
+the literal implementation `src/food_search.py` was written to replace,
+quoted in that module's docstring as the thing that was wrong. So
+"wild rice" and "greek yogurt", the two examples in food_search's own
+docstring, came back UNMATCHED from a hand-typed recipe file and were
+dropped. The file layer was committed the same day the search landed
+(30 July) and was never wired to it.
+
+Description rows now go through `search_foods()`: ranked candidates,
+capped at 50, best preselected. **Preselection is not guessing** — it sits
+beside the text the RD typed and commits nothing until they press Add.
+The module docstring's "never silently guesses" section was rewritten to
+describe this honestly rather than left claiming the old behaviour.
+
+### Search ranking: two tiers, both from real failures
+
+**Tier 5, unrequested qualifiers.** The alphabetical tie-break surfaced
+whatever qualifier started with an early letter: "chicken" answered with
+batter-dipped fried back, "milk" with condensed sweetened canned, "oats"
+with instant apple-and-cinnamon. A food carrying a flavour or processing
+qualifier the query did not ask for now ranks below one that does not.
+Vocabulary lives in `data/packs/canada/food_qualifiers.csv` so it can be
+edited without touching code. Cooking methods are deliberately excluded —
+demoting boiled/roasted would rank raw meat first, which is backwards for
+a blenderized-feed tool.
+
+**Tier 4, matched as typed.** Prefix matching reaches from a singular
+query to a plural entry but never back, and CNF files most whole foods in
+the singular. Measured: "carrots" found 7 rows led by a babyfood jar while
+23 real carrot entries stayed invisible; "strawberries" found exactly one
+food, also a babyfood jar, against 32 for "strawberry". Query tokens now
+expand to their singular forms. That fix alone regressed "greens" badly —
+singularising reaches "green", an adjective scattered across CNF, and the
+first real leafy green fell to #74 of 114, past the page — so a row that
+matched the words AS TYPED now outranks one that matched only after
+singularising. It sits BELOW the headword tier deliberately: above it,
+"carrots" would put the babyfood jars back on top.
+
+Neither tier can fix "chicken" ranking back above breast, "oatmeal"
+answering with bread, or "sweet potato" leading with the leaves. Those
+need the curated preferred-foods list this section has called for since
+August; it is **paused by the author (2026-08-21)**, not forgotten.
+
+### A code review of the whole codebase, in three passes
+
+The first review this project has had (~10,000 lines across `src/` and
+`app/`). Nineteen real defects, all fixed the same day.
+
+**The clinical maths came back clean** — no wrong number could reach a
+chart note. Its three findings were traps for a future second data pack:
+a Total row that indexed where its own rows used `.get()`, a `pack`
+argument on the formulas loader wired to nothing (a second pack would
+have been scored against Canadian per-mL values, silently), and an
+unguarded `source_id` in the oral intake branch.
+
+The reachable ones were elsewhere. **"Load example record" corrupted
+label-entered foods**: it wiped the custom-food table while KEEPING every
+blend that had ingredients and reset the code counter to -1, so a
+surviving blend pointed at a food whose numbers were gone and the next
+label typed inherited its code. A hand-edited flow-test cell ("passed"
+for "Passed") crashed the Feed Recipes tab outright. An intake row naming
+an unknown formula contributed 0 kcal and 0 mL while still showing in the
+record.
+
+**A review of the fixes then found two of them incomplete**, including
+one that broke a file type that had always worked. The lesson worth
+keeping: a fix deserves the same scrutiny as the code it fixes.
+
+### Every vitamin and mineral CNF covers well
+
+The clinical tier held five nutrients, chosen for an ASPEN-style "does
+this need a multivitamin?" screen. CNF carries 39 vitamins and minerals,
+26 of them present for 70%+ of foods. **Sixteen added** (73–96% coverage),
+including the preformed forms of vitamin A, niacin and folate, because
+the DRI upper limits are set on the preformed form and an RD checking for
+too MUCH needs them separately. Registry 19 → 35 nutrients; clinical tier
+5 → 21.
+
+Left out: biotin (1.9% of foods), both vitamin K forms (1.2% and 2.5%),
+the minor tocopherols (~14%). A total built from 2% of a blend's foods
+reads as a deficiency when it is an empty database column.
+
+**No targets** (author): a target for these needs age, sex and the DRI
+tables, which is its own piece of work.
+
+### The 33 commercial feeds gained 17 micronutrient columns
+
+544 values, transcribed from the manufacturer guides already in
+`data/packs/canada/formula_sources/` with a page cited per row. Before
+this, a patient on formula showed whatever the FOOD side of their day
+provided for every vitamin and nothing else.
+
+Every conversion rule is in **`formula_sources/UNIT_CONVERSIONS.md`**,
+which is the file to correct FIRST: a bad factor there is wrong the same
+way in all 33 feeds, and the fix is to change it and re-derive, never to
+hand-edit the CSV. Two author decisions are marked and dated there —
+beta-carotene at the supplemental factor, and the panel's niacin figure
+recorded as preformed with NE left blank because no manufacturer
+discloses the tryptophan contribution.
+
+Three things worth knowing about the method:
+
+1. **The basis is derived, not assumed.** The two guides use SEVEN volumes
+   between them (100, 235, 237, 250, 300, 1000, 1500 mL) and vary within
+   one guide. Dividing a panel's printed calories by the feed's already
+   verified kcal/mL gives its volume, so a misparse lands on a nonsense
+   number and fails loudly instead of scaling a whole column quietly.
+2. **Everything was extracted twice**, by pypdf and by `pdftotext`, and
+   all 532 comparable readings agreed. Two vitamin E forms had been
+   misclassified by reading the rendered page by eye — Suplena and Nepro
+   are both D-alpha (natural, 0.67, not 0.45). Reading a PDF image is not
+   good enough for clinical reference data.
+3. **Compleat Organic Blends 1.25 is the one feed at the FOOD carotene
+   factor.** Its vitamins premix names no beta-carotene, so the 5200 of
+   its 5600 IU that are carotene came from sweet potato and pear purée.
+   Being a real-food blend is NOT the test: Compleat 1.06 and 1.5 are
+   food blends too and DO add carotene, so their merged figure is accepted
+   as printed. The ingredient list decides, not the marketing.
+
+Blank means **not disclosed** and is never filled with 0: a blank counts
+the feed as not supplying and says so in Coverage, where a 0 would read as
+a measured absence and drag a total down.
+
+### Two columns that were lying
+
+**Source** read "CNF only — labels don't carry this" on every clinical
+row. Both halves stopped being true the moment the feeds gained their
+columns. It is now built per report from the feeds actually named in that
+record: "CNF", "CNF, NFt" where a Nutrition Facts table lists the
+nutrient, plus the manufacturer of each feed in that day disclosing it. A
+blend-only day names neither company.
+
+**Coverage** rendered "—" for full coverage, on the "nothing to flag"
+convention Target/% Target use. A dash reads as "nothing", which is the
+opposite. It misled the author on the example day: a vitamin C row of
+297.6 mg beside a dash raised the question of why a blend full of carrots,
+avocado and banana contributed no vitamin C. (It contributes 18.6 mg;
+Resource 2.0 contributes 270 mg, because 711 mL of fortified formula
+outweighs 150 g of produce.) Coverage now always states its fraction —
+40/40 against 36/40 needs no key.
+
+**Target / % Target / Status are gone from the Vitamins and Minerals
+table.** Not one of its 21 nutrients offers a target field, so those
+columns could only ever repeat "—", "—", "No target" — and "No target" was
+untrue as English: DRIs exist, they depend on age and sex, this tool does
+not take them.
+
+### Naming
+
+"Micro screen" is retired: it suggested microbiology and named nothing an
+RD says. The section reads "Vitamins and minerals not on the Nutrition
+Facts table"; the worksheet is "Vitamins and Minerals", short because
+Excel caps a sheet name at 31 characters. NFt is Health Canada's term and
+is the one used in copy.
+
+Tests 266 → 284 across the day.
+
 
 ---
 ## 10. Quick-start guide (how to run the app)
