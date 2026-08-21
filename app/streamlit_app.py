@@ -3100,6 +3100,7 @@ with record_tab:
     #
     # `intake_totals` comes from the banner block above: computed once per
     # rerun, and None when a blend in the record has no measured volume
+    # or the record names a formula this app doesn't know (2026-08-20)
     # (the warning there names it). Everything below needs real totals, so
     # it is all skipped in that case rather than shown half-filled.
     if intake_totals is None:
@@ -3258,9 +3259,14 @@ with record_tab:
     st.caption("Copy-paste into your own chart. No patient-identifying fields.")
 
     if intake_totals is None:
+        # Says "something above", not "a blend has no measured volume":
+        # totals are now also withheld when the record names a formula
+        # this app doesn't know, and sending an RD to check a volume field
+        # that is already filled in is worse than saying less. The warning
+        # further up names the actual cause (2026-08-20 second review).
         st.caption(
-            "A blend in the Intake Record has no measured volume, so the "
-            "totals this note quotes can't be worked out yet."
+            "The totals this note quotes can't be worked out yet — see the "
+            "warning above the Intake Record results for what's missing."
         )
     elif not st.session_state.intake_log:
         st.caption("Add Intake Record rows above to generate a chart note.")

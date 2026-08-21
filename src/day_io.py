@@ -532,6 +532,15 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
         if source_type == "flush":
             source_id = None
         elif source_type == "formula":
+            # Guarded like the branches either side of it: a formula row
+            # names its feed in this cell, so a blank one identifies
+            # nothing. Ungurded, it reached the Daily Intake Record's
+            # "unrecognised formula" warning as an empty name -- a message
+            # blocking the day's totals while naming nothing the RD could
+            # go and fix (2026-08-20 second review).
+            if not raw_source:
+                parsed.warnings.append(f"Intake row {line} (formula) names no formula — skipped.")
+                continue
             source_id = raw_source
         else:
             # blend id or CNF/custom food code -- both integers.

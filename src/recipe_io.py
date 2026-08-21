@@ -565,6 +565,30 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
     # case just above. Two recipes MAY legitimately share a name when the
     # file is linked by id instead, so this only fires when name is doing
     # the linking (2026-08-20 review).
+    # Same reasoning for ids, and this is the app's OWN format: the first
+    # pass of this guard covered names only, so two recipe rows sharing an
+    # id still merged in silence -- verified, two id-1 recipes loaded as
+    # one 900 mL blend holding both ingredient lists (2026-08-20 second
+    # review).
+    if len(recipe_rows) > 1 and link_by_id:
+        seen_ids: set[str] = set()
+        for row in recipe_rows:
+            raw_id = _coerce_float(row.get(RECIPE_ID_COLUMN))
+            if raw_id is None:
+                continue  # handled by the blank-id guard below
+            recipe_id = str(int(raw_id))
+            if recipe_id in seen_ids:
+                name = _coerce_str(row.get(RECIPE_NAME_COLUMN))
+                label = f' ("{name}")' if name else ""
+                raise RecipeFileError(
+                    f"This file gives more than one recipe the id {recipe_id}{label}. "
+                    "Ids are what tie each ingredient to its recipe, so a repeated one "
+                    "would pool two recipes into a single blend. Give each recipe its "
+                    "own id and upload it again — guessing would risk mixing two "
+                    "recipes together."
+                )
+            seen_ids.add(recipe_id)
+
     if len(recipe_rows) > 1 and link_by_name and not link_by_id:
         seen_names: set[str] = set()
         for row in recipe_rows:
@@ -651,7 +675,13 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
         # ambiguous about, so untagged rows (every v1 file) belong to it.
         key = _recipe_key(row, link_by_id) if has_link else ""
         if not key:
-            if has_link and single_key is None:
+            # len(order) > 1, not "single_key is None": order is EMPTY for
+            # an ingredients-only workbook (no Recipe sheet at all), which
+            # made this branch skip every row of a file that used to load
+            # fine as one implicit recipe. An unlinked row is only
+            # ambiguous when there is more than one recipe to belong to
+            # (2026-08-20 second review).
+            if has_link and len(order) > 1:
                 # A blank link cell in a file that genuinely holds more
                 # than one recipe used to fall back to key "1" -- silently
                 # landing the row in whichever recipe happened to be

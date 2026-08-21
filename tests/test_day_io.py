@@ -348,3 +348,37 @@ def test_a_file_from_before_the_sheet_rename_is_refused_not_silently_blanked():
     with pytest.raises(DayFileError) as exc:
         workbook_bytes_to_day(buf.getvalue())
     assert LEGACY_RECORD_SHEET in str(exc.value) and RECORD_SHEET in str(exc.value)
+
+
+def test_a_formula_row_naming_no_formula_is_skipped_on_load():
+    """The formula branch of the intake reader took its "Source id" cell
+    on trust, unlike the blend and oral branches beside it which both
+    skip a row with no usable id. A blank one then reached the Daily
+    Intake Record's unrecognised-formula warning as an empty name -- a
+    message that blocks the whole day's totals while naming nothing the
+    RD could go and fix (2026-08-20 second review)."""
+    day = day_to_workbook_bytes(
+        label="x",
+        patient_weight=70.0,
+        weight_unit="kg",
+        targets={},
+        blends={},
+        intake_log=[
+            {
+                "id": 1,
+                "time": None,
+                "source_type": "formula",
+                "source_id": "",
+                "food_description": "",
+                "amount": 250.0,
+                "unit": "mL",
+                "counts_as_fluid": True,
+            }
+        ],
+        custom_foods={},
+        delivery_method="",
+    )
+    parsed = workbook_bytes_to_day(day)
+
+    assert parsed.intake_log == []
+    assert any("names no formula" in w for w in parsed.warnings)

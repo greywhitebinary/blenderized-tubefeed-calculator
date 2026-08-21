@@ -762,6 +762,63 @@ class TestMultipleRecipes:
         all_warnings = recipes[0].row_warnings + recipes[1].row_warnings
         assert any("Peanut oil" in w and "isn't attached to any recipe" in w for w in all_warnings)
 
+    def test_two_recipes_sharing_one_id_is_REFUSED(self):
+        """The id case, which the first pass of this guard missed.
+
+        The duplicate check covered names only, so two recipe rows sharing
+        a "Recipe id" still merged in silence -- and ids are the format
+        this app writes itself, not an exotic hand-built one. Verified
+        before the fix: two id-1 recipes loaded as ONE 900 mL blend named
+        "Evening", holding both ingredient lists (2026-08-20 second
+        review).
+        """
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            pd.DataFrame(
+                [
+                    {"Recipe id": 1, "Recipe name": "Morning", "Measured final volume (mL)": 500.0},
+                    {"Recipe id": 1, "Recipe name": "Evening", "Measured final volume (mL)": 900.0},
+                ]
+            ).to_excel(writer, sheet_name="Recipe", index=False)
+            pd.DataFrame(
+                [
+                    {
+                        "Recipe id": 1,
+                        "Recipe name": "Morning",
+                        "Food description": "Banana, raw",
+                        "Amount": 100.0,
+                    }
+                ]
+            ).to_excel(writer, sheet_name="Ingredients", index=False)
+
+        with pytest.raises(RecipeFileError, match="more than one recipe the id 1"):
+            workbook_bytes_to_recipes(buffer.getvalue())
+
+    def test_an_ingredients_only_workbook_still_loads_as_one_recipe(self):
+        """Guards the blank-link-cell fix against its own first attempt.
+
+        That fix skipped any unlinked ingredient row when `single_key` was
+        None -- but `single_key` is None for a workbook with NO Recipe
+        sheet at all, where there is exactly one implicit recipe and
+        nothing to be ambiguous about. Result: a file that had always
+        loaded came back with every row skipped. An unlinked row is only
+        ambiguous when there is more than one recipe for it to belong to
+        (2026-08-20 second review).
+        """
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            pd.DataFrame(
+                [
+                    {"Recipe name": None, "Food description": "Banana, raw", "Amount": 100.0},
+                    {"Recipe name": None, "Food description": "Water, municipal", "Amount": 200.0},
+                ]
+            ).to_excel(writer, sheet_name="Ingredients", index=False)
+
+        [parsed] = workbook_bytes_to_recipes(buffer.getvalue())
+
+        assert len(parsed.ingredients) == 2
+        assert parsed.row_warnings == []
+
     def test_a_blank_recipe_id_in_a_multi_recipe_file_is_REFUSED(self):
         """THE important one for the blank-id case.
 
