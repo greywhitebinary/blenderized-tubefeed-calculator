@@ -286,15 +286,23 @@ def test_zero_coverage_helper_flags_only_the_zero_of_n_case():
     assert _zero_coverage("not_in_dict", {}) is False
 
 
-def test_coverage_text_helper_shows_n_of_m_only_when_incomplete():
-    """_coverage_text() should render "n/m sources" only when
-    coverage is INCOMPLETE (fewer ingredients supplied a value than the
-    recipe has); full coverage renders "—" -- the same "nothing to flag"
-    convention used elsewhere in this table (Target/% Target also show
-    "—" when there's nothing to report).
+def test_coverage_text_helper_always_shows_n_of_m():
+    """_coverage_text() renders "n/m sources" for every row that has any
+    sources at all, complete or not.
+
+    Full coverage used to render "—", on the "nothing to flag" convention
+    the Target/% Target columns use. It misled the author, who read a dash
+    beside a 297.6 mg vitamin C row as meaning the blend's carrots,
+    avocado and banana had contributed nothing (2026-08-21). This column
+    exists to justify a number, so its quiet case has to speak: 40/40
+    against 36/40 needs no explaining.
+
+    A row with NO sources (0, 0) still renders "—": there is no fraction
+    to show, and that is a genuinely empty case rather than a complete
+    one.
     """
     assert _coverage_text("x", {"x": (1, 2)}) == "1/2 sources"
-    assert _coverage_text("x", {"x": (2, 2)}) == "—"
+    assert _coverage_text("x", {"x": (2, 2)}) == "2/2 sources"
     assert _coverage_text("x", {"x": (0, 0)}) == "—"
     assert _coverage_text("missing", {}) == "—"
 
@@ -342,7 +350,9 @@ def test_partial_coverage_shows_n_of_m_sources_note_in_the_real_table(label_defs
     full_row = df[df["Nutrient"] == full_def.label].iloc[0]
 
     assert partial_row["Coverage"] == "1/2 sources"
-    assert full_row["Coverage"] == "—"
+    # Complete coverage speaks too, rather than rendering a dash an RD
+    # reads as "nothing" (2026-08-21 -- see the helper test above).
+    assert full_row["Coverage"] == "1/1 sources"
     assert partial_def.label not in hidden  # incomplete, not zero -- still shown
 
 

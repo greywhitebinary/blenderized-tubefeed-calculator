@@ -203,12 +203,17 @@ def _coverage_text(name: str, coverage: dict[str, tuple[int, int]]) -> str:
     nutrient?' (P2 — per-recipe coverage provenance, on top of the
     registry's static on_label flag from P1).
 
-    Only flags incomplete coverage (n_supplying < n_total) — full
-    coverage is the expected case and renders "—", same convention as
-    the Target/% Target columns for "nothing to flag here".
+    ALWAYS shows the fraction, including 40/40. It used to render "—"
+    for complete coverage, on the reasoning that full coverage is the
+    expected case and needs no flag. In practice a dash reads as
+    "nothing" -- the author looked at a vitamin C row of 297.6 mg beside
+    a dash and asked why a blend full of carrots, avocado and banana was
+    contributing no vitamin C (2026-08-21). The column exists to build
+    confidence in a number, so the quiet case has to say something. A
+    reader comparing 40/40 against 36/40 needs no key.
     """
     n_supplying, n_total = coverage.get(name, (0, 0))
-    if n_total > 0 and n_supplying < n_total:
+    if n_total > 0:
         # "sources", not "ingredients" (author's ruling 2026-07-30). On a
         # whole day this counts three different kinds of thing, and only
         # one of them is an ingredient: a blend contributes one per

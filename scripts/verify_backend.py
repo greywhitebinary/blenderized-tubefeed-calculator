@@ -422,10 +422,13 @@ def main() -> int:
     coverage_adequacy, coverage_hidden_main = generate_adequacy_report(
         coverage_daily, targets, nutrient_coverage=coverage_profile.nutrient_coverage
     )
+    # Complete coverage states its fraction rather than rendering "—":
+    # a dash read as "no data" and undermined the very number the column
+    # exists to justify (2026-08-21).
     energy_row = coverage_adequacy[coverage_adequacy["Nutrient"] == "Energy"].iloc[0]
-    assert (
-        energy_row["Coverage"] == "—"
-    ), f"fully-covered nutrients should show '—', not be flagged: {energy_row['Coverage']!r}"
+    assert energy_row["Coverage"] == "2/2 sources", (
+        "a fully-covered nutrient should show its full fraction, got " f"{energy_row['Coverage']!r}"
+    )
 
     coverage_clinical, coverage_hidden_clinical = generate_clinical_screen(
         coverage_daily, targets, nutrient_coverage=coverage_profile.nutrient_coverage
