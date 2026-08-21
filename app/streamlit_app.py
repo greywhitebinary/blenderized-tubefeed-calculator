@@ -3233,14 +3233,11 @@ with record_tab:
                 feed_names=_feeds_in_record(),
             )
             if len(clinical_df) > 0:
-                clinical_display = clinical_df.copy()
-                clinical_display["Target"] = clinical_display["Target"].astype(str)
-                clinical_display["% Target"] = clinical_display["% Target"].astype(str)
-                st.dataframe(
-                    clinical_display.style.map(color_status, subset=["Status"]),
-                    width="stretch",
-                    hide_index=True,
-                )
+                # No Target / % Target / Status here, and so no status
+                # colouring: none of these nutrients takes a target, so
+                # generate_clinical_screen() drops those columns rather
+                # than repeat an empty one 21 times (2026-08-21).
+                st.dataframe(clinical_df, width="stretch", hide_index=True)
             if hidden_clinical_names:
                 st.caption(
                     "Not shown — no data from any ingredient: " + ", ".join(hidden_clinical_names)

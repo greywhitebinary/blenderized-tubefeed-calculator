@@ -656,7 +656,16 @@ def generate_clinical_screen(
         coverage,
         brands=_brands_by_nutrient(feed_names),
     )
-    return _finalize(rows)
+    frame, hidden = _finalize(rows)
+    # Target / % Target / Status are dropped from THIS table only. Not one
+    # of the 21 clinical-tier nutrients offers a target field (checked
+    # against the registry, and tests/test_targets.py pins it), so those
+    # three columns could never say anything but "—", "—" and "No target"
+    # on every row. "No target" was untrue as English besides: DRIs for
+    # these exist, they depend on age and sex, and this tool simply does
+    # not take them. One honest absence beats three columns of noise
+    # saying something false (author, 2026-08-21).
+    return frame.drop(columns=["Target", "% Target", "Status"], errors="ignore"), hidden
 
 
 def generate_formula_comparison(
