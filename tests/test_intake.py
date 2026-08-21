@@ -631,6 +631,114 @@ class TestFormulaCoverage:
         assert mixed.nutrient_coverage["sodium_mg"] == (2, 3)
 
 
+# ---------------------------------------------------------------------------
+# The 2026-08-20 vitamin/mineral columns (formula_sources/UNIT_CONVERSIONS.md)
+# reaching the daily totals and coverage, against the REAL Canadian catalog
+# rather than the small hand-written `formulas` fixture -- the fixture
+# proves the mechanism works for whatever formulas.csv discloses, but only
+# reading the real CSV (via src.calculator.commercial_formulas, exactly as
+# the app does) catches a real wiring gap: a column present in the CSV that
+# _FORMULA_COLUMN_TO_NUTRIENT or _OPTIONAL_NUTRIENT_COLUMNS forgot to list.
+# ---------------------------------------------------------------------------
+
+
+class TestRealCatalogVitaminMineralColumns:
+    def test_disclosed_vitamins_reach_totals_and_full_coverage(self, blends, nutrient_amount_df):
+        """Glucerna 1.2 Cal (data/packs/canada/formulas.csv) discloses
+        vitamin C, vitamin D and vitamin A (RAE) but not retinol (its
+        beta-carotene is disclosed unsplit from the Vitamin A IU total --
+        UNIT_CONVERSIONS.md section 2). A day of nothing but 500 mL of it
+        should show all three in nutrient_totals, scaled by the label's
+        own per-mL values, and (1, 1) coverage -- not "not disclosed"."""
+        from src.calculator import commercial_formulas
+
+        real_formulas = commercial_formulas("canada")
+        glucerna = real_formulas["Glucerna 1.2 Cal"]
+        intake_log = [
+            {
+                "id": 1,
+                "time": dtime(12, 0),
+                "source_type": "formula",
+                "source_id": "Glucerna 1.2 Cal",
+                "amount": 500.0,
+                "unit": "mL",
+            }
+        ]
+        totals = aggregate_intake(intake_log, blends, nutrient_amount_df, formulas=real_formulas)
+
+        assert totals.nutrient_totals["vitamin_c_mg"] == pytest.approx(
+            glucerna["vitamin_c_mg_per_mL"] * 500.0
+        )
+        assert totals.nutrient_totals["vitamin_d_ug"] == pytest.approx(
+            glucerna["vitamin_d_ug_per_mL"] * 500.0
+        )
+        assert totals.nutrient_totals["vitamin_a_rae_ug"] == pytest.approx(
+            glucerna["vitamin_a_rae_ug_per_mL"] * 500.0
+        )
+        assert totals.nutrient_coverage["vitamin_c_mg"] == (1, 1)
+        assert totals.nutrient_coverage["vitamin_d_ug"] == (1, 1)
+        assert totals.nutrient_coverage["vitamin_a_rae_ug"] == (1, 1)
+
+        # Glucerna's beta-carotene is disclosed unsplit from the Vitamin A
+        # total (no separate Retinol line on the panel), so per
+        # UNIT_CONVERSIONS.md section 2 retinol_ug stays blank -- this
+        # must read as "not disclosed" (0, 1), never a fabricated 0 folded
+        # into the total.
+        assert glucerna["retinol_ug_per_mL"] is None
+        assert "retinol_ug" not in totals.nutrient_totals
+        assert totals.nutrient_coverage["retinol_ug"] == (0, 1)
+
+    def test_every_catalog_formula_column_reaches_nutrient_totals(self, blends, nutrient_amount_df):
+        """Every one of the 33 real formulas, fed alone for a day: every
+        vitamin/mineral column that row discloses must show up in
+        nutrient_totals at the right scaled value, and every one it
+        leaves blank must show (0, 1) coverage rather than vanishing.
+        Guards against a column landing in formulas.csv without a
+        matching entry in _FORMULA_COLUMN_TO_NUTRIENT (the total would
+        silently be missing) or in _OPTIONAL_NUTRIENT_COLUMNS (the value
+        would silently never be read off the CSV at all)."""
+        from src.calculator import commercial_formulas
+        from src.intake import _FORMULA_COLUMN_TO_NUTRIENT
+
+        real_formulas = commercial_formulas("canada")
+        assert len(real_formulas) == 33, "expected the full Canadian catalog"
+
+        amount = 300.0
+        for name, formula in real_formulas.items():
+            intake_log = [
+                {
+                    "id": 1,
+                    "time": dtime(12, 0),
+                    "source_type": "formula",
+                    "source_id": name,
+                    "amount": amount,
+                    "unit": "mL",
+                }
+            ]
+            totals = aggregate_intake(
+                intake_log, blends, nutrient_amount_df, formulas=real_formulas
+            )
+            for col, nutrient_key in _FORMULA_COLUMN_TO_NUTRIENT.items():
+                per_mL = formula.get(col)
+                if per_mL is None:
+                    assert nutrient_key not in totals.nutrient_totals, (
+                        f"{name}: {nutrient_key} should be absent (blank {col}), "
+                        f"not fabricated as 0"
+                    )
+                    assert totals.nutrient_coverage[nutrient_key] == (
+                        0,
+                        1,
+                    ), f"{name}: {nutrient_key} should read 'not disclosed'"
+                else:
+                    assert totals.nutrient_totals[nutrient_key] == pytest.approx(
+                        per_mL * amount
+                    ), f"{name}: {nutrient_key} did not scale from {col}"
+                    assert totals.nutrient_coverage[nutrient_key] == (
+                        1,
+                        1,
+                    ), f"{name}: {nutrient_key} should read fully disclosed"
+
+
 class TestWaterSources:
     """Every water source kept on its own line (author, 2026-07-30).
 

@@ -594,11 +594,14 @@ _FORMULAS_FALLBACK: dict[str, dict[str, float]] = {
 # Per-mL nutrient columns beyond kcal/protein — same "Nutrition Facts
 # panel" lens already used for BTF recipes (data/packs/<pack>/nutrients.csv's
 # label tier), plus magnesium/phosphorus per the EN spreadsheet's own
-# tracked set. fat/carbohydrate/fibre are g/mL; sodium/potassium/calcium/
-# iron/magnesium/phosphorus are mg/mL (see formula_sources/README.md).
-# All OPTIONAL, same contract as free_water_per_mL below: a formula
-# whose label doesn't disclose one of these gets None, never a
-# fabricated 0.
+# tracked set, plus the clinical-tier vitamins/minerals added 2026-08-20
+# from the manufacturers' product guides (formula_sources/UNIT_CONVERSIONS.md).
+# fat/carbohydrate/fibre are g/mL; sodium/potassium/calcium/iron/
+# magnesium/phosphorus are mg/mL (see formula_sources/README.md); the
+# vitamin/mineral columns carry their unit in the column name since it
+# varies (mg vs µg) nutrient by nutrient. All OPTIONAL, same contract as
+# free_water_per_mL below: a formula whose label doesn't disclose one of
+# these gets None, never a fabricated 0.
 _OPTIONAL_NUTRIENT_COLUMNS = (
     "fat_per_mL",
     "carbohydrate_per_mL",
@@ -609,6 +612,23 @@ _OPTIONAL_NUTRIENT_COLUMNS = (
     "iron_per_mL",
     "magnesium_per_mL",
     "phosphorus_per_mL",
+    "vitamin_a_rae_ug_per_mL",
+    "retinol_ug_per_mL",
+    "beta_carotene_ug_per_mL",
+    "vitamin_d_ug_per_mL",
+    "vitamin_e_mg_per_mL",
+    "vitamin_c_mg_per_mL",
+    "thiamine_mg_per_mL",
+    "riboflavin_mg_per_mL",
+    "vitamin_b6_mg_per_mL",
+    "pantothenic_acid_mg_per_mL",
+    "niacin_preformed_mg_per_mL",
+    "zinc_mg_per_mL",
+    "copper_mg_per_mL",
+    "manganese_mg_per_mL",
+    "folate_dfe_ug_per_mL",
+    "vitamin_b12_ug_per_mL",
+    "selenium_ug_per_mL",
 )
 
 

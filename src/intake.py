@@ -89,17 +89,22 @@ TOTAL_LABEL = "Total"
 # src.calculator._OPTIONAL_NUTRIENT_COLUMNS) mapped onto their registry
 # nutrient key (data/packs/<pack>/nutrients.csv's `name` column). Units
 # already match: fat/carbohydrate/fibre are g/mL -> *_g; sodium/potassium/
-# calcium/iron/magnesium/phosphorus are mg/mL -> *_mg. Any column a
-# formula's label doesn't disclose loads as None (see
-# _load_commercial_formulas' docstring) and is skipped in the formula
-# branch below, never fabricated as 0. Also drives that branch's
-# row_coverage (a formula is one product, not an ingredient list -- see
-# the "formula:" bullet in aggregate_intake()'s docstring): this same
-# mapping tells us which NUTRIENT_CODES entries a formula's CSV row is
-# even capable of disclosing, so we know which "not disclosed" cases are
-# "this product's label doesn't say" (counts toward n_total) vs. which
-# tracked nutrients (e.g. the clinical-tier zinc/vitamin D/B12 fields)
-# formulas.csv has no column for at all -- both count toward n_total
+# calcium/iron/magnesium/phosphorus are mg/mL -> *_mg; the vitamin/mineral
+# columns added 2026-08-20 carry their unit in the column name itself
+# (e.g. vitamin_c_mg_per_mL -> vitamin_c_mg) since unlike the macro set
+# above, mg vs µg varies nutrient by nutrient. Any column a formula's
+# label doesn't disclose loads as None (see _load_commercial_formulas'
+# docstring) and is skipped in the formula branch below, never fabricated
+# as 0. Also drives that branch's row_coverage (a formula is one product,
+# not an ingredient list -- see the "formula:" bullet in
+# aggregate_intake()'s docstring): this same mapping tells us which
+# NUTRIENT_CODES entries a formula's CSV row is even capable of
+# disclosing, so we know which "not disclosed" cases are "this product's
+# label doesn't say" (counts toward n_total) vs. which tracked nutrients
+# formulas.csv has no column for at all -- niacin_ne and folate_food_ug,
+# deliberately never carried (formula_sources/UNIT_CONVERSIONS.md
+# sections 5 and 6: manufacturers disclose only the preformed/added
+# amount, not the DRI-equivalent form) -- both count toward n_total
 # without incrementing n_supplying, the same "we don't know" contract
 # already used for a custom food's unfilled label fields
 # (src/calculator.py::_coverage_from_merged()). Never fabricate a 0.
@@ -113,6 +118,23 @@ _FORMULA_COLUMN_TO_NUTRIENT: dict[str, str] = {
     "iron_per_mL": "iron_mg",
     "magnesium_per_mL": "magnesium_mg",
     "phosphorus_per_mL": "phosphorus_mg",
+    "vitamin_a_rae_ug_per_mL": "vitamin_a_rae_ug",
+    "retinol_ug_per_mL": "retinol_ug",
+    "beta_carotene_ug_per_mL": "beta_carotene_ug",
+    "vitamin_d_ug_per_mL": "vitamin_d_ug",
+    "vitamin_e_mg_per_mL": "vitamin_e_mg",
+    "vitamin_c_mg_per_mL": "vitamin_c_mg",
+    "thiamine_mg_per_mL": "thiamine_mg",
+    "riboflavin_mg_per_mL": "riboflavin_mg",
+    "vitamin_b6_mg_per_mL": "vitamin_b6_mg",
+    "pantothenic_acid_mg_per_mL": "pantothenic_acid_mg",
+    "niacin_preformed_mg_per_mL": "niacin_preformed_mg",
+    "zinc_mg_per_mL": "zinc_mg",
+    "copper_mg_per_mL": "copper_mg",
+    "manganese_mg_per_mL": "manganese_mg",
+    "folate_dfe_ug_per_mL": "folate_dfe_ug",
+    "vitamin_b12_ug_per_mL": "vitamin_b12_ug",
+    "selenium_ug_per_mL": "selenium_ug",
 }
 
 
