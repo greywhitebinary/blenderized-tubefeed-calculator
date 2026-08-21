@@ -1992,71 +1992,27 @@ with recipes_tab:
                 Ingredient(ing["food_code"], ing["food_description"], ing["grams"])
                 for ing in selected_blend["ingredients"]
             ]
-            _units_by_food_code = {
-                int(ing["food_code"]): ing.get("unit", "g")
-                for ing in selected_blend["ingredients"]
-                if ing.get("food_code") is not None
-            }
-            _breakdown = compute_ingredient_breakdown(_ingr_objs, na, st.session_state.custom_foods)
-            _nutrition_display = format_ingredient_breakdown(
-                _breakdown, units_by_food_code=_units_by_food_code
-            )
-
-            # Fix (2026-08-20 review): _units_by_food_code above is last-
-            # write-wins per food_code -- whichever ingredient INSTANCE of a
-            # food happens to appear last in this blend decides the unit
-            # format_ingredient_breakdown() (src/report.py) prints for
-            # EVERY instance of that food, because compute_ingredient_
-            # breakdown() (src/calculator.py) already consolidated those
-            # instances into one row. A food entered once in g and once in
-            # mL -- water added once as itself and again inside a thinned-
-            # blend copy is the real case -- then printed a single unit it
-            # doesn't fully have, on its own row AND on the Total row's
-            # "g + mL" split, silently moving the whole combined amount
-            # onto one side.
-            #
-            # KNOWN DUPLICATION, deliberate for now: the durable home for
-            # this is format_ingredient_breakdown() in src/report.py, which
-            # would need each instance's unit passed through rather than
-            # the merged row's. That is a signature change across the
-            # breakdown path, and it landed the same day as five other
-            # review fixes -- so the split is recomputed here instead, and
-            # this comment is the marker for moving it. Duplicated display
-            # logic drifts (scripts/try_food_search.py rotted exactly this
-            # way), so it should not live here indefinitely.
-            #
-            # This recomputes the true g/mL split straight from the blend's own
-            # ingredient instances (which still carry each instance's own
-            # unit, unlike the already-merged breakdown row) and overwrites
-            # just the two places that split leaks into the display: a
-            # mixed food's own Amount cell, and the Total row's. Least
-            # surprising available presentation: show the split the row
-            # actually has ("300 g + 216 mL") rather than pick one unit to
-            # be wrong about.
-            _grams_by_code: dict[int, float] = {}
-            _mL_by_code: dict[int, float] = {}
+            # Per food_code, per-unit totals across every ingredient
+            # INSTANCE of that food in this blend -- water added once as
+            # itself (mL) and again inside a thinned-blend copy (g) is the
+            # real case. compute_ingredient_breakdown() below consolidates
+            # those instances into one row per food, so this is built from
+            # the blend's own ingredient list (which still carries each
+            # instance's own unit) rather than from the breakdown. See
+            # format_ingredient_breakdown()'s docstring (src/report.py) for
+            # why the merged row can't carry this itself.
+            _amounts_by_food_code: dict[int, dict[str, float]] = {}
             for _ing in selected_blend["ingredients"]:
                 if _ing.get("food_code") is None:
                     continue
                 _code = int(_ing["food_code"])
-                _target = _mL_by_code if _ing.get("unit") == "mL" else _grams_by_code
-                _target[_code] = _target.get(_code, 0.0) + _ing["grams"]
-            _mixed_codes = set(_grams_by_code) & set(_mL_by_code)
-            if _mixed_codes and len(_nutrition_display) > 0:
-                _amount_col = _nutrition_display["Amount"].tolist()
-                for _i, (_, _brow) in enumerate(_breakdown.iterrows()):
-                    _bcode = int(_brow["food_code"])
-                    if _bcode in _mixed_codes:
-                        _amount_col[_i] = (
-                            f"{_grams_by_code[_bcode]:.0f} g + {_mL_by_code[_bcode]:.0f} mL"
-                        )
-                _total_g = sum(_grams_by_code.values())
-                _total_mL = sum(_mL_by_code.values())
-                _amount_col[-1] = f"{_total_g:.0f} g" + (
-                    f" + {_total_mL:.0f} mL" if _total_mL > 0 else ""
-                )
-                _nutrition_display = _nutrition_display.copy()
-                _nutrition_display["Amount"] = _amount_col
+                _unit = _ing.get("unit", "g")
+                _bucket = _amounts_by_food_code.setdefault(_code, {})
+                _bucket[_unit] = _bucket.get(_unit, 0.0) + _ing["grams"]
+            _breakdown = compute_ingredient_breakdown(_ingr_objs, na, st.session_state.custom_foods)
+            _nutrition_display = format_ingredient_breakdown(
+                _breakdown, amounts_by_food_code=_amounts_by_food_code
+            )
             # Breaks out of the page cap so the nutrient columns can
             # spill sideways (the author's "spill over the way long
             # tables do") instead of truncating.

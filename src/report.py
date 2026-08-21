@@ -500,10 +500,29 @@ def generate_adequacy_report(
     return _finalize(rows)
 
 
+# Amount cell unit order -- "255 g + 100 mL", never "100 mL + 255 g". Fixed
+# rather than dict-insertion order so a food's row and the Total row always
+# read grams before millilitres, regardless of which unit its ingredient
+# instances happened to be entered in first.
+_AMOUNT_UNIT_ORDER = ("g", "mL")
+
+
+def _format_amount(amounts: dict[str, float]) -> str:
+    """Render one food's amount(s): "N g", "N mL", or "N g + M mL" for
+    whichever units it actually has -- see format_ingredient_breakdown()'s
+    docstring for why a food can carry both. A unit absent or zero is
+    omitted rather than printed as "+ 0 mL"; a food with nothing at all
+    (shouldn't happen, but cheaper to handle than to assume away) renders
+    "0 g" rather than an empty string.
+    """
+    parts = [f"{amounts[unit]:.0f} {unit}" for unit in _AMOUNT_UNIT_ORDER if amounts.get(unit)]
+    return " + ".join(parts) if parts else "0 g"
+
+
 def format_ingredient_breakdown(
     breakdown_df: pd.DataFrame,
     pack: str = DEFAULT_PACK,
-    units_by_food_code: dict[int, str] | None = None,
+    amounts_by_food_code: dict[int, dict[str, float]] | None = None,
 ) -> pd.DataFrame:
     """Format src.calculator.compute_ingredient_breakdown()'s per-
     ingredient DataFrame for display — the Nutrition view's table
@@ -530,30 +549,50 @@ def format_ingredient_breakdown(
     tests/test_calculator.py::TestComputeIngredientBreakdown for the
     reconciliation this depends on holding upstream.
 
+    A food can be entered under more than one unit within the same blend
+    -- water added once as itself (mL) and again inside a thinned-blend
+    copy of another ingredient (g), for instance -- and compute_
+    ingredient_breakdown() (src/calculator.py) consolidates every
+    instance of a food into ONE row before this function ever sees it, by
+    design (it's the same merge-and-scale core compute_nutrient_totals()
+    uses, and a food's nutrients only need to be summed once regardless
+    of how many units it was entered under). That means the Amount
+    column can't get a food's unit from the merged row itself -- there
+    may be two -- so amounts_by_food_code below carries each unit's own
+    total in, keyed by food_code, and this function renders whichever of
+    "g"/"mL" a food actually has rather than assuming one.
+
     Args:
-        breakdown_df:       compute_ingredient_breakdown()'s return value
-                             (food_code, food_description, grams, plus one
-                             column per tracked nutrient).
-        pack:                Which data pack's nutrient registry to
-                             format against.
-        units_by_food_code: food_code -> "g"/"mL", for the Amount column.
-                             compute_ingredient_breakdown() works in grams
-                             only (src/models.py's Ingredient carries no
-                             unit) — the app's session-state ingredient
-                             dicts are what know a row was entered in mL,
-                             so the caller passes that mapping in rather
-                             than this module reaching into app state.
-                             A food_code missing from this dict (or no
-                             dict at all) defaults to "g", matching how
-                             an ingredient with no recorded unit is
-                             treated everywhere else in the app.
+        breakdown_df:          compute_ingredient_breakdown()'s return
+                                value (food_code, food_description,
+                                grams, plus one column per tracked
+                                nutrient).
+        pack:                   Which data pack's nutrient registry to
+                                format against.
+        amounts_by_food_code: food_code -> {"g": total_grams, "mL":
+                                total_mL}, for the Amount column.
+                                compute_ingredient_breakdown() works in
+                                grams only (src/models.py's Ingredient
+                                carries no unit) — the app's session-state
+                                ingredient dicts are what know each
+                                instance's unit, so the caller sums those
+                                per food_code and passes the result in
+                                rather than this module reaching into app
+                                state. A unit with nothing (zero or
+                                absent) should be omitted from a food's
+                                dict rather than included as 0. A
+                                food_code missing from this mapping (or no
+                                mapping at all) defaults to all-grams,
+                                using the row's own `grams` — matching how
+                                an ingredient with no recorded unit is
+                                treated everywhere else in the app.
 
     Returns:
         DataFrame, one row per ingredient in breakdown_df's order, plus a
         trailing Total row. Empty DataFrame (no rows) for an empty
         breakdown_df.
     """
-    units_by_food_code = units_by_food_code or {}
+    amounts_by_food_code = amounts_by_food_code or {}
     defs = _ordered_label_defs(pack)
     nutrient_cols = [f"{d.label} ({d.unit})" for d in defs]
 
@@ -561,38 +600,28 @@ def format_ingredient_breakdown(
         return pd.DataFrame(columns=["Ingredient", "Amount", *nutrient_cols])
 
     rows = []
+    # Summed independently per unit across every food, never as one
+    # combined number -- a gram and a millilitre are not the same
+    # quantity for a blend carrying oil and solids. This total stays even
+    # though the Ingredients section's standalone "Total ingredient
+    # weight" caption was removed (author, 2026-08-15): different thing,
+    # here it is one column sum in a table where every other column is
+    # also a sum, so it reads as arithmetic rather than an unexplained
+    # figure sitting next to the measured volume.
+    total_amounts: dict[str, float] = {}
     for _, r in breakdown_df.iterrows():
-        unit = units_by_food_code.get(int(r["food_code"]), "g")
+        amounts = amounts_by_food_code.get(int(r["food_code"])) or {"g": r["grams"]}
         row: dict = {
             "Ingredient": r["food_description"],
-            "Amount": f"{r['grams']:.0f} {unit}",
+            "Amount": _format_amount(amounts),
         }
+        for unit, amount in amounts.items():
+            total_amounts[unit] = total_amounts.get(unit, 0.0) + amount
         for d in defs:
             row[f"{d.label} ({d.unit})"] = _fmt(float(r.get(d.name, 0.0)), d.decimals)
         rows.append(row)
 
-    # Total row's Amount: grams and mL summed separately, never added
-    # together as one number -- a gram and a millilitre are not the same
-    # quantity for a blend carrying oil and solids.
-    #
-    # This total stays even though the Ingredients section's standalone
-    # "Total ingredient weight" caption was removed (author, 2026-08-15).
-    # Different thing: here it is one column sum in a table where every
-    # other column is also a sum, so it reads as arithmetic rather than as
-    # an unexplained figure sitting next to the measured volume.
-    _total_g = sum(
-        r["grams"]
-        for _, r in breakdown_df.iterrows()
-        if units_by_food_code.get(int(r["food_code"]), "g") == "g"
-    )
-    _total_mL = sum(
-        r["grams"]
-        for _, r in breakdown_df.iterrows()
-        if units_by_food_code.get(int(r["food_code"]), "g") == "mL"
-    )
-    amount_total = f"{_total_g:.0f} g" + (f" + {_total_mL:.0f} mL" if _total_mL > 0 else "")
-
-    total_row: dict = {"Ingredient": "Total", "Amount": amount_total}
+    total_row: dict = {"Ingredient": "Total", "Amount": _format_amount(total_amounts)}
     for d in defs:
         # .get(), matching the per-ingredient rows above rather than
         # indexing the frame directly. compute_ingredient_breakdown() has

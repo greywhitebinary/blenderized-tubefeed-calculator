@@ -456,16 +456,43 @@ def test_custom_food_row_is_not_silently_zero_in_the_display_table(
     assert shake_row["Protein (g)"] == "5.0"  # 10 g/100g x 50 g
 
 
-def test_amount_column_respects_units_by_food_code(nutrient_amount_df):
+def test_amount_column_respects_amounts_by_food_code(nutrient_amount_df):
     """A food entered in mL (a custom liquid, or a CNF beverage) prints
     its Amount with "mL", not the default "g" -- from the caller-supplied
-    units_by_food_code mapping, since compute_ingredient_breakdown()
+    amounts_by_food_code mapping, since compute_ingredient_breakdown()
     itself works in grams only (Ingredient carries no unit field)."""
     ingredients = [Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 100.0)]
     breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
-    display = format_ingredient_breakdown(breakdown, units_by_food_code={FOOD_CHICKEN: "mL"})
+    display = format_ingredient_breakdown(
+        breakdown, amounts_by_food_code={FOOD_CHICKEN: {"mL": 100.0}}
+    )
 
     assert display.iloc[0]["Amount"] == "100 mL"
+
+
+def test_amount_column_splits_a_food_entered_under_both_units(nutrient_amount_df):
+    """The motivating case: one food entered twice in the SAME blend,
+    once in grams and once in mL (water added as itself, and again
+    inside a thinned-blend copy of another ingredient). compute_
+    ingredient_breakdown() consolidates both instances into a single
+    row before format_ingredient_breakdown() ever sees it, so the unit
+    split has to arrive via amounts_by_food_code rather than from the
+    merged row -- a single units_by_food_code: dict[int, str] (the old
+    signature) cannot express "this food has both units" at all, since
+    it can only hold one unit per food_code; whichever ingredient
+    instance built the mapping last would win, and the OTHER unit's
+    amount would get printed under the wrong label instead of appearing
+    as its own split-out amount. Both the food's own row and the Total
+    row must show the actual split, not one unit standing in for the
+    combined total."""
+    ingredients = [Ingredient(FOOD_CHICKEN, "Chicken breast, cooked", 155.0)]
+    breakdown = compute_ingredient_breakdown(ingredients, nutrient_amount_df)
+    display = format_ingredient_breakdown(
+        breakdown, amounts_by_food_code={FOOD_CHICKEN: {"g": 55.0, "mL": 100.0}}
+    )
+
+    assert display.iloc[0]["Amount"] == "55 g + 100 mL"
+    assert display.iloc[-1]["Amount"] == "55 g + 100 mL"
 
 
 def test_empty_breakdown_returns_empty_display_with_correct_columns(nutrient_amount_df):
