@@ -491,6 +491,21 @@ def test_words_cnf_lacks_return_nothing_rather_than_nonsense(index, query):
     assert search_foods(query, index).match_type == MATCH_NONE
 
 
+def test_the_note_never_reports_a_word_that_wasnt_actually_corrected(index):
+    """A real repro, not a hypothetical: "brocolli raw" corrects
+    "brocolli" -> "broccoli", but the note used to ALSO list "raw" ->
+    "raw" -- get_close_matches() against an already-correct word returns
+    that same word, and the loop recorded it as a "fix" the moment the
+    OTHER word's real correction made the whole query match. The RD read
+    'showing results for "brocolli" -> "broccoli", "raw" -> "raw"', which
+    claims a correctly-spelled word was corrected to itself
+    (2026-08-20 review).
+    """
+    result = search_foods("brocolli raw", index)
+    assert result.match_type == MATCH_FUZZY
+    assert result.note == 'No exact match — showing results for "brocolli" → "broccoli".'
+
+
 def test_two_character_words_are_never_spell_corrected(index):
     # A two-character typo is indistinguishable from a two-character word.
     assert search_foods("zz", index).is_empty

@@ -483,8 +483,20 @@ def aggregate_intake(
             row_fluid = amount
 
         elif source_type == "oral":
+            # Guarded like the "blend" and "formula" branches above: a row
+            # whose source_id never made it into the file is skipped, not
+            # fed to Ingredient. Unguarded, a None food_code reached
+            # `ing.food_code < 0` in the custom-foods path and raised
+            # TypeError -- and only once the day held a custom food, so it
+            # would have surfaced as a crash on someone else's record.
+            # day_io.py already warn-and-skips this same shape of row on
+            # load, which is the tell that it belongs here too
+            # (2026-08-20 review).
+            food_code = row.get("source_id")
+            if food_code is None:
+                continue
             ing = Ingredient(
-                food_code=row.get("source_id"),
+                food_code=food_code,
                 food_description=row.get("food_description", ""),
                 grams=amount,
             )

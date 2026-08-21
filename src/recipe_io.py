@@ -111,6 +111,7 @@ still nothing commits without a human confirming it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from io import BytesIO
@@ -220,9 +221,6 @@ class ResolvedIngredient:
                           when it differs from source_text (a synonym or a
                           typo correction fired). "" when the search used
                           source_text as typed (Change, 2026-08-20).
-        search_note:      search_foods()'s own UI-ready sentence about how
-                          it interpreted the query, or "" when there's
-                          nothing worth saying (Change, 2026-08-20).
         custom_nutrients: For MATCH_CUSTOM rows, the per-100 g values from
                           the file's Custom foods sheet -- carried here so
                           the caller doesn't have to reach back into the
@@ -240,7 +238,6 @@ class ResolvedIngredient:
     candidates: list[tuple[int, str]] = field(default_factory=list)
     source_text: str = ""
     interpreted_as: str = ""
-    search_note: str = ""
     custom_nutrients: dict[str, float] | None = None
 
     @property
@@ -402,10 +399,15 @@ def suggested_filename(blend_name: str, count: int = 1) -> str:
     several blends is recognisable as such in a downloads folder without
     opening it.
     """
+    # Same two traps day_io.py's suggested_day_filename() already solves
+    # (2026-08-20 review): a name with runs of punctuation ("James-W--H-N")
+    # used to keep every dash, and a name that's punctuation-only ("---")
+    # used to collapse to a filename of literal dashes instead of "recipe".
     cleaned = "".join(
         ch if (ch.isalnum() or ch in " -_") else "-" for ch in (blend_name or "")
     ).strip()
-    cleaned = "-".join(cleaned.split()) or "recipe"
+    cleaned = "-".join(cleaned.split())
+    cleaned = re.sub(r"-{2,}", "-", cleaned).strip("-") or "recipe"
     stem = "btf-recipe" if count == 1 else "btf-recipes"
     return f"{stem}_{cleaned}.xlsx"
 
@@ -555,6 +557,30 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
             "guessing would risk mixing two recipes together."
         )
 
+    # A file keyed BY NAME (no usable "Recipe id" column) cannot tell two
+    # same-named recipes apart: the second header row would silently
+    # overwrite the first's volume/flow-test in _slot() below, and every
+    # ingredient tagged with that name would pool into one six-ingredient
+    # blend nobody wrote -- the same failure mode as the missing-link-column
+    # case just above. Two recipes MAY legitimately share a name when the
+    # file is linked by id instead, so this only fires when name is doing
+    # the linking (2026-08-20 review).
+    if len(recipe_rows) > 1 and link_by_name and not link_by_id:
+        seen_names: set[str] = set()
+        for row in recipe_rows:
+            name = _coerce_str(row.get(RECIPE_NAME_COLUMN))
+            if name in seen_names:
+                label = f'"{name}"' if name else "an unnamed recipe"
+                raise RecipeFileError(
+                    f"This file lists more than one recipe named {label}, and "
+                    f"there's no usable '{RECIPE_ID_COLUMN}' column to tell "
+                    "them apart. Give each recipe a distinct name, or add a "
+                    f"'{RECIPE_ID_COLUMN}' column with a different id for "
+                    "each one, and upload it again — guessing would risk "
+                    "mixing two recipes together."
+                )
+            seen_names.add(name)
+
     parsed_by_key: dict[str, ParsedRecipe] = {}
     order: list[str] = []
 
@@ -568,6 +594,25 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
     for position, row in enumerate(recipe_rows, start=1):
         key = _recipe_key(row, link_by_id) if has_link else ""
         if not key:
+            if len(recipe_rows) > 1 and link_by_id:
+                # A blank id in a multi-recipe id-linked file would fall
+                # back to a positional key ("1", "2", ...) that can collide
+                # with a real id -- a recipe with a genuine id of 1 sitting
+                # next to one with no id at all used to silently overwrite
+                # each other in _slot() below, and one of the two recipes
+                # just disappeared. Refuse instead (2026-08-20 review).
+                name = _coerce_str(row.get(RECIPE_NAME_COLUMN))
+                which = (
+                    f'the recipe named "{name}"'
+                    if name
+                    else f"recipe {position} in the '{RECIPE_SHEET}' sheet"
+                )
+                raise RecipeFileError(
+                    f"This file lists {len(recipe_rows)} recipes, but {which} "
+                    f"has no usable '{RECIPE_ID_COLUMN}'. A blank id can "
+                    "collide with a real one and make a recipe silently "
+                    "disappear -- give it its own id and upload it again."
+                )
             key = str(position)
         parsed = _slot(key)
         parsed.name = _coerce_str(row.get(RECIPE_NAME_COLUMN))
@@ -589,6 +634,10 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
     single_key = order[0] if len(order) == 1 else None
 
     # --- Ingredient rows
+    # Collected rather than attached to a recipe as they're found: a row
+    # with no usable link value, by definition, doesn't belong to any one
+    # parsed recipe yet -- see the "blank link cell" branch below.
+    unattached_warnings: list[str] = []
     for position, row in ingredients_df.iterrows():
         description = _coerce_str(row.get("Food description"))
         code = _coerce_float(row.get("CNF food code"))
@@ -602,6 +651,20 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
         # ambiguous about, so untagged rows (every v1 file) belong to it.
         key = _recipe_key(row, link_by_id) if has_link else ""
         if not key:
+            if has_link and single_key is None:
+                # A blank link cell in a file that genuinely holds more
+                # than one recipe used to fall back to key "1" -- silently
+                # landing the row in whichever recipe happened to be
+                # first. Verified: a blank cell moved an ingredient from
+                # the second blend into the first with no warning at all.
+                # This is a row-level problem (one bad cell), not a
+                # structural one, so it's warned and skipped rather than
+                # failing the whole upload (2026-08-20 review).
+                unattached_warnings.append(
+                    f"Row {line_number} ({description or 'no description'}) "
+                    "isn't attached to any recipe in this file — skipped."
+                )
+                continue
             key = single_key if single_key is not None else "1"
 
         parsed = _slot(key)
@@ -639,6 +702,14 @@ def workbook_bytes_to_recipes(data: bytes | BytesIO) -> list[ParsedRecipe]:
                 "measure_grams": _coerce_float(row.get("Measure grams")),
             }
         )
+
+    # Nowhere obvious to put a row that isn't attached to any recipe, so it
+    # rides along on whichever recipe happens to be first -- the app shows
+    # every recipe's row_warnings on screen regardless, and the wording
+    # above never claims the row belongs there (2026-08-20 review).
+    if unattached_warnings:
+        target_key = order[0] if order else "1"
+        _slot(target_key).row_warnings.extend(unattached_warnings)
 
     # --- Custom foods (v3+; absent from v1/v2 files, which simply produce
     # an empty dict here -- see FORMAT VERSIONS). File-scoped rather than
@@ -801,7 +872,6 @@ def resolve_ingredients(
                 food_description=best_description,
                 candidates=candidates,
                 interpreted_as=result.interpreted_as,
-                search_note=result.note,
                 **common,
             )
         )

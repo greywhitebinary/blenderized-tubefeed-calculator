@@ -1097,8 +1097,41 @@ if load_example_clicked:
         ]
         st.session_state.next_intake_id = len(_rows) + 1
         st.session_state.intake_log = [{"id": i + 1, **row} for i, row in enumerate(_rows)]
-        st.session_state.custom_foods = {}
-        st.session_state.next_custom_code = -1
+
+        # Fix (2026-08-20 review): this used to wipe every custom food
+        # unconditionally and rewind next_custom_code to -1. But the blend
+        # filter above (~line 783) only drops EMPTY blends -- a blend an RD
+        # had already built from a label-entered food (a negative code in
+        # custom_foods, see add_food.py) survives it, so wiping custom_foods
+        # here blanked that surviving blend's nutrients. Worse, resetting
+        # the counter to -1 handed that same now-vacant code straight back
+        # out to the next label typed, so the surviving blend would go on
+        # to silently pull a DIFFERENT food's numbers. Mirror the day-file
+        # loader's rule instead (_apply_saved_day, ~line 628): keep only
+        # the custom foods still referenced by what survives -- the kept
+        # blends' ingredients, plus any surviving intake row that names a
+        # custom food directly (the example's own rows never do; both are
+        # covered so this holds if that ever changes) -- and set the
+        # counter to one below the LOWEST surviving code, so a freshly
+        # typed label can never be handed a code still in use.
+        _referenced_custom_codes = {
+            _ing["food_code"]
+            for _b in st.session_state.blends.values()
+            for _ing in _b["ingredients"]
+            if _ing.get("food_code") in st.session_state.custom_foods
+        } | {
+            _row["source_id"]
+            for _row in st.session_state.intake_log
+            if _row.get("source_id") in st.session_state.custom_foods
+        }
+        st.session_state.custom_foods = {
+            _code: _food
+            for _code, _food in st.session_state.custom_foods.items()
+            if _code in _referenced_custom_codes
+        }
+        st.session_state.next_custom_code = (
+            min(st.session_state.custom_foods) - 1 if st.session_state.custom_foods else -1
+        )
         st.session_state["load_example"] = True
 
         # Presets set here, BEFORE the widgets they belong to are
@@ -1953,6 +1986,62 @@ with recipes_tab:
             _nutrition_display = format_ingredient_breakdown(
                 _breakdown, units_by_food_code=_units_by_food_code
             )
+
+            # Fix (2026-08-20 review): _units_by_food_code above is last-
+            # write-wins per food_code -- whichever ingredient INSTANCE of a
+            # food happens to appear last in this blend decides the unit
+            # format_ingredient_breakdown() (src/report.py) prints for
+            # EVERY instance of that food, because compute_ingredient_
+            # breakdown() (src/calculator.py) already consolidated those
+            # instances into one row. A food entered once in g and once in
+            # mL -- water added once as itself and again inside a thinned-
+            # blend copy is the real case -- then printed a single unit it
+            # doesn't fully have, on its own row AND on the Total row's
+            # "g + mL" split, silently moving the whole combined amount
+            # onto one side.
+            #
+            # KNOWN DUPLICATION, deliberate for now: the durable home for
+            # this is format_ingredient_breakdown() in src/report.py, which
+            # would need each instance's unit passed through rather than
+            # the merged row's. That is a signature change across the
+            # breakdown path, and it landed the same day as five other
+            # review fixes -- so the split is recomputed here instead, and
+            # this comment is the marker for moving it. Duplicated display
+            # logic drifts (scripts/try_food_search.py rotted exactly this
+            # way), so it should not live here indefinitely.
+            #
+            # This recomputes the true g/mL split straight from the blend's own
+            # ingredient instances (which still carry each instance's own
+            # unit, unlike the already-merged breakdown row) and overwrites
+            # just the two places that split leaks into the display: a
+            # mixed food's own Amount cell, and the Total row's. Least
+            # surprising available presentation: show the split the row
+            # actually has ("300 g + 216 mL") rather than pick one unit to
+            # be wrong about.
+            _grams_by_code: dict[int, float] = {}
+            _mL_by_code: dict[int, float] = {}
+            for _ing in selected_blend["ingredients"]:
+                if _ing.get("food_code") is None:
+                    continue
+                _code = int(_ing["food_code"])
+                _target = _mL_by_code if _ing.get("unit") == "mL" else _grams_by_code
+                _target[_code] = _target.get(_code, 0.0) + _ing["grams"]
+            _mixed_codes = set(_grams_by_code) & set(_mL_by_code)
+            if _mixed_codes and len(_nutrition_display) > 0:
+                _amount_col = _nutrition_display["Amount"].tolist()
+                for _i, (_, _brow) in enumerate(_breakdown.iterrows()):
+                    _bcode = int(_brow["food_code"])
+                    if _bcode in _mixed_codes:
+                        _amount_col[_i] = (
+                            f"{_grams_by_code[_bcode]:.0f} g + {_mL_by_code[_bcode]:.0f} mL"
+                        )
+                _total_g = sum(_grams_by_code.values())
+                _total_mL = sum(_mL_by_code.values())
+                _amount_col[-1] = f"{_total_g:.0f} g" + (
+                    f" + {_total_mL:.0f} mL" if _total_mL > 0 else ""
+                )
+                _nutrition_display = _nutrition_display.copy()
+                _nutrition_display["Amount"] = _amount_col
             # Breaks out of the page cap so the nutrient columns can
             # spill sideways (the author's "spill over the way long
             # tables do") instead of truncating.
@@ -2030,6 +2119,27 @@ with recipes_tab:
     _ft_result_key = f"flow_result_{selected_blend_id}"
     _ft_date_key = f"flow_date_{selected_blend_id}"
     _ft_current = st.session_state.get(_ft_result_key) or _ft_state.get("result") or "Not done"
+
+    # Fix (2026-08-20 review): _ft_current can come straight from a loaded
+    # recipe/day file (_ft_state["result"], read by _apply_saved_day() and
+    # the recipe importer) -- neither src/recipe_io.py nor src/day_io.py
+    # constrains that field, it's free text. list.index() below needs an
+    # EXACT match against _ft_results, so a hand-edited file saying
+    # "passed" (or with stray whitespace) raised ValueError and took the
+    # whole Feed Recipes tab down with it. Resolve case/whitespace-
+    # tolerantly instead, and fall back to the safe default -- telling the
+    # RD, never crashing -- for a value that still matches nothing.
+    _ft_normalized = {r.strip().casefold(): r for r in _ft_results}
+    _ft_match = _ft_normalized.get(str(_ft_current).strip().casefold())
+    if _ft_match is not None:
+        _ft_current = _ft_match
+    else:
+        _note(
+            f"This blend's saved flow-test result, \"{_ft_current}\", isn't "
+            'one this app recognises, so it was reset to "Not done".'
+        )
+        _ft_current = "Not done"
+
     _ft_shown_date = st.session_state.get(_ft_date_key, _ft_state.get("date"))
     _ft_date_bit = (
         f" ({_ft_shown_date.isoformat()})" if _ft_shown_date and _ft_current != "Not done" else ""
@@ -2550,7 +2660,7 @@ with recipes_tab:
                 _cprofile, _ = resolve_blend_profile(_cblend, na, st.session_state.custom_foods)
             except InvalidBlendError:
                 continue
-            _other_blends.append((_cblend["name"], _cprofile))
+            _other_blends.append((_cbid, _cblend["name"], _cprofile))
 
         # The picker offers only the OTHER blends: the one being edited is
         # what this whole section is about, so it always stays row 0
@@ -2563,17 +2673,33 @@ with recipes_tab:
         # all) instead of showing every one -- see the module-level comment
         # on COMPARATOR_BLEND_PICKER_THRESHOLD for why it is off below that.
         if len(_other_blends) + 1 >= COMPARATOR_BLEND_PICKER_THRESHOLD:
-            # Options are POSITIONS, not names, so the picker keeps working
-            # even if two blends somehow share a name; format_func puts the
-            # name back on screen.
-            _kept = st.multiselect(
+            # Fix (2026-08-20 review): this used to key the multiselect's
+            # persistent widget state by LIST POSITION, but _other_blends is
+            # rebuilt fresh every run as "every blend except whichever one
+            # is selected above" -- switching the selected blend, adding a
+            # blend, or deleting one all reshuffle those positions, so a
+            # remembered position-2 pick could silently point at a
+            # completely different recipe next run with no error or notice.
+            # A blend's id is stable for its whole session (see
+            # next_blend_id), so keying by id instead means a remembered
+            # pick either still names the same recipe, or -- if that blend
+            # is gone -- gets dropped from the restored selection the same
+            # way multiselect already silently drops a stale value from
+            # `options` (see the company-filter comment above this block).
+            _blend_names_by_id = {_bid: _name for _bid, _name, _ in _other_blends}
+            _kept_ids = st.multiselect(
                 "Also compare these blends",
-                list(range(len(_other_blends))),
-                default=list(range(len(_other_blends))),
-                format_func=lambda i: _other_blends[i][0],
+                list(_blend_names_by_id),
+                default=list(_blend_names_by_id),
+                format_func=lambda bid: _blend_names_by_id[bid],
                 key="comparator_blend_select",
             )
-            _other_blends = [_other_blends[i] for i in _kept]
+            _kept_id_set = set(_kept_ids)
+            _other_blends = [
+                (_name, _profile) for _bid, _name, _profile in _other_blends if _bid in _kept_id_set
+            ]
+        else:
+            _other_blends = [(_name, _profile) for _bid, _name, _profile in _other_blends]
 
         comparator_df = generate_comparator_table(
             [(selected_blend["name"], selected_profile)] + _other_blends,
@@ -2654,7 +2780,25 @@ with record_tab:
         except InvalidBlendError:
             _unusable_blends.append(_b["name"] or f"Blend {_bid}")
 
-    if _unusable_blends:
+    # Fix (2026-08-20 review): a formula row can name a commercial formula
+    # this app doesn't have in COMMERCIAL_FORMULAS -- a formulas.csv name
+    # that changed, or a hand-edited day file. aggregate_intake()
+    # (src/intake.py) resolves formula rows via `formulas.get(source_id)`
+    # and silently `continue`s past a miss, so the row stays visible in the
+    # Intake Record but contributes 0 kcal and 0 mL to every total below --
+    # the same silent-undercount failure the no-volume check above already
+    # guards against for blends, so it gets the same up-front, name-it,
+    # block-the-totals treatment rather than let the RD read a total that
+    # quietly dropped a feed they recorded.
+    _unknown_formulas = sorted(
+        {
+            r.get("source_id")
+            for r in st.session_state.intake_log
+            if r.get("source_type") == "formula" and r.get("source_id") not in COMMERCIAL_FORMULAS
+        }
+    )
+
+    if _unusable_blends or _unknown_formulas:
         intake_totals = None
         # Author's wording, 2026-08-17. It also happens to demonstrate the
         # house rule (MAINTAINING.md, "Writing copy for the app"): the two
@@ -2663,18 +2807,36 @@ with record_tab:
         #
         # Names are joined without a serial comma, matching the UK/Canadian
         # style the rest of the copy uses.
-        _quoted = [f'"{n}"' for n in sorted(_unusable_blends)]
-        if len(_quoted) == 1:
-            _names, _plural = _quoted[0], False
-        else:
-            _names, _plural = ", ".join(_quoted[:-1]) + " and " + _quoted[-1], True
-        st.warning(
-            f"The final volume{'s' if _plural else ''} for {_names} "
-            f"{'are' if _plural else 'is'} missing. Without a measured final "
-            "volume, the calculations required for the Intake Record below cannot "
-            f"be completed. Add the volume{'s' if _plural else ''} on the Feed "
-            "Recipes tab under Blend details."
-        )
+        if _unusable_blends:
+            _quoted = [f'"{n}"' for n in sorted(_unusable_blends)]
+            if len(_quoted) == 1:
+                _names, _plural = _quoted[0], False
+            else:
+                _names, _plural = ", ".join(_quoted[:-1]) + " and " + _quoted[-1], True
+            st.warning(
+                f"The final volume{'s' if _plural else ''} for {_names} "
+                f"{'are' if _plural else 'is'} missing. Without a measured final "
+                "volume, the calculations required for the Intake Record below cannot "
+                f"be completed. Add the volume{'s' if _plural else ''} on the Feed "
+                "Recipes tab under Blend details."
+            )
+        if _unknown_formulas:
+            # Same construction as the no-volume warning just above, for
+            # the same reason: named, impersonal, joined without a serial
+            # comma, closing on the one instruction that addresses the
+            # reader.
+            _fquoted = [f'"{n}"' for n in _unknown_formulas]
+            if len(_fquoted) == 1:
+                _fnames, _fplural = _fquoted[0], False
+            else:
+                _fnames, _fplural = ", ".join(_fquoted[:-1]) + " and " + _fquoted[-1], True
+            st.warning(
+                f"The formula{'s' if _fplural else ''} {_fnames} in the Intake Record "
+                f"{'are' if _fplural else 'is'} not recognised by this app, so "
+                f"{'their' if _fplural else 'its'} amount cannot be included in the "
+                "calculations required for the Intake Record below. Delete the row on "
+                "the Daily Intake Record tab and re-add it from the formula list there."
+            )
     else:
         # Always-visible summary line — aggregated NUTRIENT totals, never a
         # raw volume/mass roll-up (750 mL of blend + 45 g of banana isn't a

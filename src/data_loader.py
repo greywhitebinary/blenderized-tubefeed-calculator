@@ -53,18 +53,27 @@ def _load_table(
         if parquet_path.exists():
             try:
                 return pd.read_parquet(parquet_path)
-            except ImportError:
-                # Defensive only — pandas needs pyarrow to read Parquet, and
-                # in practice it is always installed, because Streamlit
-                # itself hard-requires it (`pyarrow>=7.0`). So any
+            except ImportError, ValueError, OSError:
+                # ImportError: defensive only — pandas needs pyarrow to read
+                # Parquet, and in practice it is always installed, because
+                # Streamlit itself hard-requires it (`pyarrow>=7.0`). So any
                 # environment that can run this app can already read the
                 # cache. requirements-dev.txt names pyarrow explicitly to
                 # PIN it (<25 segfaults in CI), not to add it.
                 #
-                # The branch stays anyway: the cache is a speed optimisation,
-                # never a source of truth, so falling through to the CSV
-                # costs a slower load and gives identical numbers. Cheaper
-                # than being wrong if Streamlit ever drops the dependency.
+                # ValueError/OSError: build_parquet.py writes the cache
+                # non-atomically, so a build interrupted mid-write (a killed
+                # deploy, a full disk) leaves a truncated or corrupt file on
+                # disk. pyarrow reports that as ArrowInvalid (a ValueError
+                # subclass) or ArrowIOError (an OSError subclass) — without
+                # this, a bad cache file killed app startup outright, which
+                # the comment below already promised it never would
+                # (2026-08-20 review).
+                #
+                # Every branch here stays for the same reason: the cache is
+                # a speed optimisation, never a source of truth, so falling
+                # through to the CSV costs a slower load and gives identical
+                # numbers. Cheaper than being wrong.
                 pass
 
     read_kwargs = {} if encoding is None else {"encoding": encoding}

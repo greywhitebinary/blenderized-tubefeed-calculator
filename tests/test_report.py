@@ -29,12 +29,15 @@ fact (the only UL nutrient today) and is exactly the case the brief asks
 to test directly.
 """
 
+from dataclasses import replace
+
+import pandas as pd
 import pytest
 
 from src.calculator import calculate_profile, compute_ingredient_breakdown
 from src.intake import InvalidBlendError, resolve_blend_profile
 from src.models import Ingredient, Recipe
-from src.nutrients import defs_for_tier, registry_by_name
+from src.nutrients import DEFAULT_PACK, defs_for_tier, registry_by_name
 from src.report import (
     EDITING_MARKER,
     _adequacy_status,
@@ -681,3 +684,38 @@ class TestColorStatus:
         for status in ("Below target", "Above target", "Meeting target", "Below UL", "Above UL"):
             css = color_status(status)
             assert "background-color:" in css and "color: #1a1a1a" in css, (status, css)
+
+
+class TestBreakdownTotalRowTolerance:
+    def test_a_registry_nutrient_missing_from_the_frame_totals_as_zero(self, monkeypatch):
+        """The per-ingredient rows read the frame with .get(name, 0.0);
+        the Total row indexed it directly. compute_ingredient_breakdown()
+        has no `pack` argument, so its columns always come from the
+        DEFAULT pack while this function's `defs` follow the `pack` it was
+        given -- a nutrient the registry defines and the frame lacks
+        rendered 0.0 on every ingredient row and then raised KeyError on
+        the total, i.e. a crash at the very bottom of a report the RD had
+        already read (2026-08-20 review)."""
+        import src.report as report_module
+
+        real_defs = report_module._ordered_label_defs(DEFAULT_PACK)
+        absent = replace(real_defs[-1], name="not_in_the_frame_ug", label="Absent", unit="ug")
+        monkeypatch.setattr(
+            report_module,
+            "_ordered_label_defs",
+            lambda pack=DEFAULT_PACK: list(real_defs) + [absent],
+        )
+
+        frame = pd.DataFrame(
+            [
+                {
+                    "food_code": 1704,
+                    "food_description": "Banana, raw",
+                    "grams": 100.0,
+                    **{d.name: 1.0 for d in real_defs},
+                }
+            ]
+        )
+        out = report_module.format_ingredient_breakdown(frame)
+
+        assert out.iloc[-1]["Absent (ug)"] == "0.0"

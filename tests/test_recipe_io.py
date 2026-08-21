@@ -497,7 +497,6 @@ class TestResolvingAgainstRealCNF:
 
         assert row.status == AMBIGUOUS
         assert row.interpreted_as == "zucchini"
-        assert row.search_note
         assert row.needs_confirmation is True
 
 
@@ -653,6 +652,162 @@ class TestMultipleRecipes:
     def test_filename_says_when_a_file_holds_several(self):
         assert suggested_filename("Morning blend") == "btf-recipe_Morning-blend.xlsx"
         assert suggested_filename("3 blends", count=3) == "btf-recipes_3-blends.xlsx"
+
+    def test_filename_collapses_runs_of_dashes(self):
+        """day_io.py's suggested_day_filename() already solves this; this
+        pins recipe_io's copy to the same behaviour (2026-08-20 review).
+
+        A realistic blend name full of punctuation used to keep every
+        dash it generated ("James-W--H-N"), and a punctuation-only name
+        used to produce a filename of literal dashes instead of falling
+        back to the "recipe" placeholder.
+        """
+        assert suggested_filename("James W, H&N RT wk 5") == "btf-recipe_James-W-H-N-RT-wk-5.xlsx"
+        assert suggested_filename("---") == "btf-recipe_recipe.xlsx"
+
+    def test_duplicate_recipe_name_in_a_name_linked_file_is_REFUSED(self):
+        """THE important one for name-based linking.
+
+        Two recipes named "Morning" (500 mL and 900 mL) in a file with no
+        usable 'Recipe id' column used to load as ONE recipe -- 900 mL,
+        both ingredient lists pooled, no warning at all. That is
+        indistinguishable from the pooling this module already refuses
+        for a missing link column entirely, so it must refuse here too.
+        """
+        buffer = BytesIO()
+        recipe_df = pd.DataFrame(
+            [
+                {
+                    "Recipe name": "Morning",
+                    "Measured final volume (mL)": 500.0,
+                    "Format version": 2,
+                },
+                {
+                    "Recipe name": "Morning",
+                    "Measured final volume (mL)": 900.0,
+                    "Format version": 2,
+                },
+            ]
+        )
+        ingredients_df = pd.DataFrame(
+            [
+                {
+                    "Recipe name": "Morning",
+                    "Food description": "Banana, raw",
+                    "CNF food code": 1704,
+                    "Amount": 100.0,
+                    "Unit": "g",
+                }
+            ]
+        )
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            recipe_df.to_excel(writer, sheet_name=RECIPE_SHEET, index=False)
+            ingredients_df.to_excel(writer, sheet_name=INGREDIENTS_SHEET, index=False)
+
+        with pytest.raises(RecipeFileError) as excinfo:
+            workbook_bytes_to_recipes(buffer.getvalue())
+        message = str(excinfo.value).lower()
+        assert "morning" in message
+        assert "recipe id" in message
+
+    def test_a_blank_link_cell_is_skipped_not_pooled_into_the_first_recipe(self):
+        """THE important one for the blank-cell case.
+
+        An ingredient row with a blank link cell used to fall back to key
+        "1" and silently join the FIRST recipe in the file. Verified
+        against the reported repro: peanut oil moved from blend B into
+        blend A with no warning. It must now be skipped, with a warning
+        naming the food, and leave both real recipes untouched.
+        """
+        entries = [
+            (
+                TestMultipleRecipes._blend("Blend A", 500.0, [(1704, "Banana, raw", 100.0)]),
+                None,
+            ),
+            (
+                TestMultipleRecipes._blend("Blend B", 500.0, [(2933, "Water, municipal", 100.0)]),
+                None,
+            ),
+        ]
+        sheets = pd.read_excel(
+            BytesIO(recipes_to_workbook_bytes(entries)), sheet_name=None, engine="openpyxl"
+        )
+        ingredients_df = sheets[INGREDIENTS_SHEET]
+        peanut_oil_row = pd.DataFrame(
+            [
+                {
+                    "Recipe id": None,
+                    "Recipe name": "",
+                    "CNF food code": 451,
+                    "Food description": "Peanut oil",
+                    "Amount": 14.0,
+                    "Unit": "g",
+                    "Counts as fluid": "No",
+                }
+            ]
+        )
+        sheets[INGREDIENTS_SHEET] = pd.concat([ingredients_df, peanut_oil_row], ignore_index=True)
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            for name, frame in sheets.items():
+                frame.to_excel(writer, sheet_name=name, index=False)
+
+        recipes = workbook_bytes_to_recipes(buffer.getvalue())
+
+        assert [len(r.ingredients) for r in recipes] == [1, 1]
+        assert [i["food_description"] for r in recipes for i in r.ingredients] == [
+            "Banana, raw",
+            "Water, municipal",
+        ]
+        all_warnings = recipes[0].row_warnings + recipes[1].row_warnings
+        assert any("Peanut oil" in w and "isn't attached to any recipe" in w for w in all_warnings)
+
+    def test_a_blank_recipe_id_in_a_multi_recipe_file_is_REFUSED(self):
+        """THE important one for the blank-id case.
+
+        A blank 'Recipe id' in a multi-recipe file used to fall back to a
+        positional key of "1", which collides with a real id of 1 --
+        _slot() then silently overwrote one recipe with the other's data,
+        and one of the two disappeared from the loaded file entirely.
+        """
+        buffer = BytesIO()
+        recipe_df = pd.DataFrame(
+            [
+                {
+                    "Recipe id": 1,
+                    "Recipe name": "Blend A",
+                    "Measured final volume (mL)": 500.0,
+                    "Format version": 2,
+                },
+                {
+                    "Recipe id": None,
+                    "Recipe name": "Blend B",
+                    "Measured final volume (mL)": 900.0,
+                    "Format version": 2,
+                },
+            ]
+        )
+        ingredients_df = pd.DataFrame(
+            [
+                {
+                    "Recipe id": 1,
+                    "Recipe name": "Blend A",
+                    "Food description": "Banana, raw",
+                    "CNF food code": 1704,
+                    "Amount": 100.0,
+                    "Unit": "g",
+                }
+            ]
+        )
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            recipe_df.to_excel(writer, sheet_name=RECIPE_SHEET, index=False)
+            ingredients_df.to_excel(writer, sheet_name=INGREDIENTS_SHEET, index=False)
+
+        with pytest.raises(RecipeFileError) as excinfo:
+            workbook_bytes_to_recipes(buffer.getvalue())
+        message = str(excinfo.value).lower()
+        assert "blend b" in message
+        assert "recipe id" in message
 
 
 # ---------------------------------------------------------------------------

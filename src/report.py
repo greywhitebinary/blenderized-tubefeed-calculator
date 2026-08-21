@@ -528,7 +528,18 @@ def format_ingredient_breakdown(
 
     total_row: dict = {"Ingredient": "Total", "Amount": amount_total}
     for d in defs:
-        total_row[f"{d.label} ({d.unit})"] = _fmt(float(breakdown_df[d.name].sum()), d.decimals)
+        # .get(), matching the per-ingredient rows above rather than
+        # indexing the frame directly. compute_ingredient_breakdown() has
+        # no `pack` argument, so its columns come from the DEFAULT pack
+        # while `defs` here follows this function's own `pack` -- a
+        # nutrient the registry defines and the frame lacks rendered 0.0
+        # on every row and then raised KeyError on the total, which is a
+        # crash at the very bottom of a report the RD has already read
+        # (2026-08-20 review).
+        column = breakdown_df[d.name] if d.name in breakdown_df.columns else None
+        total_row[f"{d.label} ({d.unit})"] = _fmt(
+            float(column.sum()) if column is not None else 0.0, d.decimals
+        )
     rows.append(total_row)
 
     return pd.DataFrame(rows)

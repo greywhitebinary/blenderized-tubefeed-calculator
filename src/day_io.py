@@ -133,7 +133,12 @@ class ParsedDay:
         if self.targets:
             bits.append(f"{len(self.targets)} target{'s' if len(self.targets) != 1 else ''}")
         if self.custom_foods:
-            bits.append(f"{len(self.custom_foods)} custom food")
+            # Was missing the plural every sibling count here has, so a
+            # two-custom-food day read "2 custom food" in the sentence an
+            # RD reads right before agreeing to replace their day
+            # (2026-08-20 review).
+            n = len(self.custom_foods)
+            bits.append(f"{n} custom food{'s' if n != 1 else ''}")
         return ", ".join(bits)
 
 

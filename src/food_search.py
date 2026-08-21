@@ -738,13 +738,26 @@ def search_foods(
     if changed:
         scored = _rows_matching(index, corrected)
         if scored:
+            # `changed` can hold a word alongside itself: get_close_matches()
+            # against a word already spelled correctly returns that same
+            # word (ratio 1.0), and the loop above records it as a "fix"
+            # the moment some OTHER word's real correction makes the whole
+            # trial match. Reported as typed, that read "No exact match —
+            # showing results for "brocolli" → "broccoli", "soup" → "soup"."
+            # -- telling the RD their correctly-spelled word was corrected
+            # to itself. Only report the words that actually changed
+            # (2026-08-20 review).
             spelled = " ".join(corrected)
-            was = ", ".join(f'"{before}" → "{after}"' for before, after in changed)
+            real_changes = [(before, after) for before, after in changed if before != after]
+            note = ""
+            if real_changes:
+                was = ", ".join(f'"{before}" → "{after}"' for before, after in real_changes)
+                note = f"No exact match — showing results for {was}."
             return SearchResult(
                 _take(index, scored, limit),
                 MATCH_FUZZY,
                 interpreted_as=spelled,
-                note=f"No exact match — showing results for {was}.",
+                note=note,
             )
 
     return SearchResult(empty, MATCH_NONE)

@@ -25,6 +25,7 @@ from src.day_io import (
     LEGACY_RECORD_SHEET,
     RECORD_SHEET,
     DayFileError,
+    ParsedDay,
     day_to_workbook_bytes,
     suggested_day_filename,
     workbook_bytes_to_day,
@@ -292,6 +293,24 @@ class TestBadFiles:
         ]
         day = workbook_bytes_to_day(_save(blends, zeroed, custom_foods))
         assert len(day.intake_log) == 4
+
+
+def test_summary_pluralises_custom_foods_like_its_siblings():
+    """ParsedDay.summary is the one line an RD reads right before agreeing
+    to REPLACE their day -- every count in it should read like normal
+    English. "2 custom food" (no "s") was the only one of the four counts
+    that didn't pluralise; the other three already did (2026-08-20 review).
+    """
+    two_custom = ParsedDay(
+        blends={1: {}},
+        intake_log=[{}],
+        targets={"protein_g": 60.0},
+        custom_foods={-1: {"energy_kcal": 100.0}, -2: {"energy_kcal": 200.0}},
+    )
+    assert two_custom.summary == "1 blend, 1 intake row, 1 target, 2 custom foods"
+
+    one_custom = ParsedDay(custom_foods={-1: {"energy_kcal": 100.0}})
+    assert one_custom.summary.endswith("1 custom food")
 
 
 def test_filename_is_safe_and_readable():

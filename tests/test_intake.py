@@ -271,6 +271,47 @@ class TestNoOverDrawFlag:
 # ---------------------------------------------------------------------------
 
 
+class TestOralRowWithNoFoodCode:
+    def test_an_oral_row_missing_its_source_id_is_skipped_not_fatal(
+        self, nutrient_amount_df, custom_foods
+    ):
+        """The "blend" and "formula" branches of aggregate_intake() both
+        skip a row whose source_id resolves to nothing; the "oral" branch
+        used to hand it straight to Ingredient(). A None food_code then
+        reached `ing.food_code < 0` in the custom-foods path and raised
+        TypeError -- and ONLY when the day already held a custom food, so
+        it would have arrived as a crash on one RD's record and not
+        another's. day_io.py warn-and-skips the same shape of row on load
+        (2026-08-20 review).
+
+        `custom_foods` is not incidental here: without it the comparison
+        that raised is never reached, so a test that omitted it would
+        pass against the unfixed code.
+        """
+        log = [
+            {
+                "id": 1,
+                "source_type": "oral",
+                "source_id": None,
+                "food_description": "typed nothing",
+                "amount": 100.0,
+                "unit": "g",
+            },
+            {
+                "id": 2,
+                "source_type": "oral",
+                "source_id": FOOD_BANANA,
+                "food_description": "Banana, raw",
+                "amount": 100.0,
+                "unit": "g",
+            },
+        ]
+        totals = aggregate_intake(log, {}, nutrient_amount_df, custom_foods=custom_foods)
+
+        # The good row still counts; the unusable one contributed nothing.
+        assert totals.nutrient_totals["energy_kcal"] > 0
+
+
 class TestInvalidBlendError:
     def test_zero_volume_blend_with_ingredients_raises(self, nutrient_amount_df):
         """A blend with ingredients but no measured volume can't produce

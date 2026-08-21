@@ -21,8 +21,10 @@ Densities (Appendix A3):
     free_water_frac = (recipe_total_water_g + added_water_mL) / measured_final_volume_mL
 """
 
-import pandas as pd
+from functools import lru_cache
 from pathlib import Path
+
+import pandas as pd
 
 try:
     from src.models import Ingredient, Recipe, NutrientProfile, Delivery
@@ -637,6 +639,19 @@ def _load_commercial_formulas(pack: str = DEFAULT_PACK) -> dict[str, dict[str, f
     """
     formulas_csv = Path(__file__).resolve().parent.parent / "data" / "packs" / pack / "formulas.csv"
     if not formulas_csv.exists():
+        # The hardcoded fallback is CANADIAN, so it can only stand in for
+        # the Canadian pack. Handing it to a caller who explicitly asked
+        # for another country would answer the wrong question in silence
+        # -- the very failure this function's `pack` argument was fixed to
+        # prevent (2026-08-20 review). A missing default-pack CSV still
+        # degrades, because that is a broken deployment of data we know,
+        # not a request for data we do not have.
+        if pack != DEFAULT_PACK:
+            raise FileNotFoundError(
+                f"No formulas.csv for data pack {pack!r}. Refusing to fall back to the "
+                f"{DEFAULT_PACK} formulas, which would score {pack!r} feeds against "
+                f"{DEFAULT_PACK} values."
+            )
         return dict(_FORMULAS_FALLBACK)
 
     df = pd.read_csv(formulas_csv)
@@ -657,7 +672,32 @@ def _load_commercial_formulas(pack: str = DEFAULT_PACK) -> dict[str, dict[str, f
     return formulas
 
 
-COMMERCIAL_FORMULAS: dict[str, dict[str, float]] = _load_commercial_formulas()
+@lru_cache(maxsize=None)
+def commercial_formulas(pack: str = DEFAULT_PACK) -> dict[str, dict[str, float]]:
+    """The formula table for `pack`, loaded once per pack.
+
+    Exists because `_load_commercial_formulas()`'s `pack` argument was, in
+    practice, a switch wired to nothing (2026-08-20 review). Every caller
+    read COMMERCIAL_FORMULAS below, which is built ONCE at import from
+    DEFAULT_PACK -- so a second data pack could be added, selected
+    everywhere else in the app, and its feeds would still be scored
+    against Canadian per-mL values. No error, no warning, just another
+    country's numbers in a Canadian patient's totals. That is the exact
+    failure `src/nutrients.py` refuses to allow for the nutrient
+    registry, and it had no business being possible here.
+
+    A pack-aware caller must call THIS, not read the constant. The
+    constant stays because the app is single-pack today and 24 call sites
+    would gain nothing from threading a pack through; it is now
+    explicitly the default pack's table rather than "the" table.
+    """
+    return _load_commercial_formulas(pack)
+
+
+#: The DEFAULT pack's formulas, frozen at import. Correct for every
+#: caller while `canada` is the only pack that exists -- see
+#: `commercial_formulas()` for what to call when that stops being true.
+COMMERCIAL_FORMULAS: dict[str, dict[str, float]] = commercial_formulas()
 
 
 def compare_with_formula(

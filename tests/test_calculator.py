@@ -488,3 +488,27 @@ class TestComputeIngredientBreakdown:
         assert len(breakdown) == 2  # chicken + the consolidated shake row
         for nutrient_name, total in totals.items():
             assert breakdown[nutrient_name].sum() == pytest.approx(total)
+
+
+class TestFormulaDataPack:
+    """`_load_commercial_formulas()` took a `pack` argument that decided
+    nothing: every caller read COMMERCIAL_FORMULAS, built once at import
+    from the default pack. A second data pack could therefore be selected
+    everywhere else in the app while its feeds were still scored against
+    Canadian per-mL values -- silently (2026-08-20 review)."""
+
+    def test_the_constant_is_the_default_packs_table(self):
+        from src.calculator import COMMERCIAL_FORMULAS, commercial_formulas
+
+        assert commercial_formulas() == COMMERCIAL_FORMULAS
+        assert COMMERCIAL_FORMULAS, "the default pack must actually load"
+
+    def test_an_unknown_pack_refuses_rather_than_serving_canadian_data(self):
+        """The hardcoded fallback is Canadian, so it can stand in for the
+        Canadian pack and nothing else. Answering a request for another
+        country's formulas with Canadian numbers is the failure this
+        argument exists to prevent, and a silent one."""
+        from src.calculator import commercial_formulas
+
+        with pytest.raises(FileNotFoundError, match="Refusing to fall back"):
+            commercial_formulas("no_such_pack")

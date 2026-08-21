@@ -40,6 +40,64 @@ assert not at.exception, at.exception
 assert at.session_state["blends"][first_id]["flow_test"]["result"] == "Passed"
 print("OK: widget writes land on the blend's own flow_test")
 
+# 2b. A hand-edited flow-test cell must never crash the Feed Recipes tab
+# (2026-08-20 review, fix 2). Neither src/recipe_io.py nor src/day_io.py
+# constrains flow_test["result"] -- it is free text off a loaded file --
+# and the widget used to do `_ft_results.index(_ft_current)` on it
+# directly, which raised ValueError for anything not an exact match.
+#
+# Case/whitespace-tolerant match: "passed" (lowercase, stray whitespace)
+# must resolve to "Passed" with no crash and no reset. Only the SELECTED
+# blend's flow-test expander renders, and its widget is only ever
+# instantiated once selected -- so the free-text value is written into
+# the blend's OWN flow_test dict (exactly where a loaded file's value
+# would land) BEFORE the blend is ever selected, reproducing how this
+# actually happens: a blend rendering for the first time this session
+# with an odd value already sitting in flow_test["result"].
+second_id = sorted(blends)[1]
+at.session_state["blends"][second_id]["flow_test"]["result"] = "  passed  "
+next(s for s in at.selectbox if s.key == "blend_selector").set_value(second_id).run()
+assert not at.exception, at.exception
+assert (
+    next(s for s in at.selectbox if s.key == f"flow_result_{second_id}").value == "Passed"
+), "a lowercase/whitespace 'passed' from a file should resolve to 'Passed'"
+print("OK: 'passed' (lowercase, whitespace) resolves to 'Passed' without crashing")
+
+# A value that matches nothing must fall back to the safe default and
+# tell the RD, rather than crash. A THIRD, never-before-selected blend --
+# second_id's flow_result widget now already exists this session, and
+# mutating an existing widget's backing value other than by driving the
+# widget itself is not a real scenario (that is the same §11 rule the app
+# code documents throughout streamlit_app.py).
+third_id = at.session_state["next_blend_id"]
+at.session_state["blends"][third_id] = {
+    "name": "Third blend",
+    "ingredients": [],
+    "measured_volume_mL": 0.0,
+    "flow_test": {"date": None, "result": "Excellent flow", "notes": ""},
+}
+at.session_state["next_blend_id"] = third_id + 1
+# A plain rerun first, so the selector's own .options picks up the new
+# blend before set_value() validates against it.
+at.run()
+assert not at.exception, at.exception
+next(s for s in at.selectbox if s.key == "blend_selector").set_value(third_id).run()
+assert not at.exception, at.exception
+assert (
+    next(s for s in at.selectbox if s.key == f"flow_result_{third_id}").value == "Not done"
+), "an unrecognised saved value must fall back to 'Not done', never crash"
+notes = " ".join(n.value for n in at.markdown if n.value)
+assert "Excellent flow" in notes and "Not done" in notes, (
+    "the RD is not told which unrecognised value was reset -- " f"notes seen: {notes[:400]}"
+)
+print(
+    "OK: an unrecognised saved value ('Excellent flow') resets to 'Not done' and is named on screen"
+)
+
+# Back to first_id -- the sections below assume it is selected.
+next(s for s in at.selectbox if s.key == "blend_selector").set_value(first_id).run()
+assert not at.exception, at.exception
+
 # 3. The flow test is NOT in the chart note (2026-08-10). The note is the
 # delivery-method line plus totals by category, nothing else. Attribution
 # to the right recipe is still guarded -- by the per-blend widgets above
@@ -233,5 +291,101 @@ print(
     f"OK: colliding custom code -1 remapped to {new_code} on import; "
     "the pre-existing session food at -1 was untouched"
 )
+
+# --- 8. "Load example record" must not corrupt a label-entered custom
+# food that survives it (2026-08-20 review, fix 1). The handler used to
+# wipe custom_foods unconditionally and rewind next_custom_code to -1,
+# even though the blend filter it runs right after (streamlit_app.py,
+# "Load example record" handler) only drops EMPTY blends -- a blend
+# already carrying a label-entered (negative-code) food survives that
+# filter. Wiping custom_foods then blanked the surviving blend's
+# nutrients, and rewinding the counter to -1 handed that same vacated
+# code straight back out to the next label typed, so the surviving blend
+# would go on to silently pull a DIFFERENT food's numbers.
+#
+# Fresh app instance so this isn't tangled up with the custom-food state
+# section 7 already built. Drives the REAL "add custom food" UI (same
+# flow as check_label_photo_fill.py) rather than writing to
+# session_state directly, so the code allocation is exercised exactly as
+# an RD triggers it.
+at3 = AppTest.from_file(str(ROOT / "app" / "streamlit_app.py"), default_timeout=180)
+at3.run()
+assert not at3.exception, at3.exception
+
+
+def _add_food_prefix(app) -> str:
+    # Re-derived every time rather than cached: the add-food component's
+    # key_prefix is f"blend_{selected_blend_id}", so it changes whenever
+    # the selected blend changes (as "Load example record" does).
+    prefixes = {
+        t.key.rsplit("_search", 1)[0] for t in app.text_input if t.key and t.key.endswith("_search")
+    }
+    assert prefixes, [t.key for t in app.text_input]
+    return sorted(prefixes)[0]
+
+
+def _type_label_food(app, prefix: str, name: str, energy: float, protein: float, amount: float):
+    mode = next(r for r in app.radio if r.key and r.key.endswith("_add_mode"))
+    label_option = next(o for o in mode.options if "abel" in o)
+    mode.set_value(label_option).run()
+    assert not app.exception, app.exception
+    next(x for x in app.text_input if x.key == f"{prefix}_cname").set_value(name).run()
+    next(n for n in app.number_input if n.key == f"{prefix}_cv_serving").set_value(amount).run()
+    next(n for n in app.number_input if n.key == f"{prefix}_cv_energy").set_value(energy).run()
+    next(n for n in app.number_input if n.key == f"{prefix}_cv_protein_g").set_value(protein).run()
+    next(n for n in app.number_input if n.key == f"{prefix}_cgrams").set_value(amount).run()
+    assert not app.exception, app.exception
+    blend_id = app.session_state["selected_blend_id"]
+    before = len(app.session_state["blends"][blend_id]["ingredients"])
+    next(b for b in app.button if b.key == f"{prefix}_add_custom_btn").click().run()
+    assert not app.exception, app.exception
+    after_ingredients = app.session_state["blends"][blend_id]["ingredients"]
+    assert len(after_ingredients) == before + 1, "the label-entered food was not added"
+    return after_ingredients[-1]["food_code"]
+
+
+seeded_blend_id = at3.session_state["selected_blend_id"]
+# amount == serving size (100.0), so the per-100g value stored in
+# custom_foods equals the entered label figure exactly -- easier to
+# assert on directly than working through label_to_per_100g's scaling.
+seeded_code = _type_label_food(
+    at3, _add_food_prefix(at3), "Homemade formula, from label", 300.0, 12.0, 100.0
+)
+assert seeded_code < 0, f"expected a custom (negative) food code, got {seeded_code}"
+assert at3.session_state["custom_foods"][seeded_code]["energy_kcal"] == 300.0
+print(f"OK: label-entered food seeded at custom code {seeded_code}")
+
+next(b for b in at3.button if "example" in b.label.lower()).click().run()
+assert not at3.exception, at3.exception
+
+assert seeded_blend_id in at3.session_state["blends"], "the surviving blend was dropped"
+surviving = at3.session_state["blends"][seeded_blend_id]["ingredients"]
+assert any(
+    i["food_code"] == seeded_code for i in surviving
+), "the surviving blend no longer references its label-entered food"
+assert at3.session_state["custom_foods"].get(seeded_code, {}).get("energy_kcal") == 300.0, (
+    "the surviving blend's custom food lost its nutrients -- custom_foods "
+    f"now holds {at3.session_state['custom_foods']}"
+)
+print(f"OK: surviving blend's custom food (code {seeded_code}) kept its nutrients")
+
+# The counter must not have been handed back to -1 while seeded_code is
+# still in use -- that is the silent-collision half of the bug.
+assert at3.session_state["next_custom_code"] < seeded_code, (
+    f"next_custom_code ({at3.session_state['next_custom_code']}) can still "
+    f"collide with the still-referenced code {seeded_code}"
+)
+print(f"OK: next_custom_code moved to {at3.session_state['next_custom_code']}, past {seeded_code}")
+
+# A SECOND label food, typed after "Load example record", must not be
+# handed seeded_code (or any other code still in custom_foods).
+new_code = _type_label_food(
+    at3, _add_food_prefix(at3), "Second label-entered food", 150.0, 5.0, 100.0
+)
+assert new_code != seeded_code, "the newly typed food was handed the still-in-use code"
+assert (
+    at3.session_state["custom_foods"][seeded_code]["energy_kcal"] == 300.0
+), "adding the second label food corrupted the first one's nutrients"
+print(f"OK: the newly typed food got code {new_code}, not the still-referenced {seeded_code}")
 
 print("\n=== RECIPE RECORD APPTEST PASSED ===")
