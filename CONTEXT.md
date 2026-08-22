@@ -2093,6 +2093,38 @@ is the one used in copy.
 
 Tests 266 → 284 across the day.
 
+### OPEN, waiting on Abbott (raised 2026-08-21)
+
+Verifying `formulas.csv` against the guides found that **the macros had
+never been checked** — only the vitamins added on 2026-08-20 had. The
+check itself came up clean, but it turned up something else.
+
+For four Abbott feeds — **Jevity 1.2 Cal, Jevity 1.5 Cal, Osmolite 1.2
+Cal, TwoCal HN** — the guide prints two columns that are not one product
+at two serving sizes. They are two SKUs, a can and a ready-to-hang
+container, each with its own analysis. Energy, protein, fat and
+carbohydrate agree; 20 to 24 vitamins and minerals do not.
+
+This mattered because the vitamins had been taken from the LARGEST
+column (more significant figures) while the macros, from 2026-07-19, came
+from the smaller one. Those four rows therefore described two products at
+once. They are now consistent on the can column, which is the one the
+macros already used, so no macro moved.
+
+Which SKU each row SHOULD represent is a question for Abbott, not a bug
+to fix here. Checked against the Nestlé equivalents, neither column is
+uniformly implausible: the can matches better for the B vitamins,
+vitamin A and vitamin E, the bag for vitamin D, vitamin C and zinc. An
+enquiry has been sent. The guide is the November 2024 edition and, as of
+today, still the current one on Abbott's Canadian site.
+
+Full detail, including what must move together if the ready-to-hang is
+chosen, is in `data/packs/canada/formula_sources/UNIT_CONVERSIONS.md`
+under "OPEN — waiting on Abbott".
+
+Also open, and unrelated: the author still intends to spot-check the 544
+transcribed vitamin values against the guides.
+
 
 ---
 ## 10. Quick-start guide (how to run the app)

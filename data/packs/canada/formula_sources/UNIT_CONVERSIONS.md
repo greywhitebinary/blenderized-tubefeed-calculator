@@ -41,6 +41,46 @@ compares like-for-like against a blend.
 Take the **largest** column available: it carries more significant
 figures, so the per-mL value loses less to rounding.
 
+**But only when both columns describe the same liquid — check first.**
+That rule assumed the two columns were one product at two serving sizes.
+For four Abbott feeds they are not: the columns are two SKUs, a can and
+a ready-to-hang container, and the guide prints a separate analysis for
+each. Applying "largest column" to the vitamins while the older macros
+had come from the smaller column left those four rows describing two
+products at once.
+
+The test is arithmetic and takes a second: divide each column by its own
+volume. If the per-mL figures agree, it is one product and either column
+will do. If they diverge for many nutrients at once, stop.
+
+### OPEN — waiting on Abbott (raised 2026-08-21)
+
+**Jevity 1.2 Cal (pp. 34-35), Jevity 1.5 Cal (pp. 36-37), Osmolite 1.2
+Cal (pp. 42-43) and TwoCal HN (pp. 50-51).** Energy, protein, fat and
+carbohydrate agree between the two columns; 20 to 24 vitamins and
+minerals do not. Checked against the Nestlé equivalents, neither column
+is uniformly implausible — the can matches better for the B vitamins,
+vitamin A and vitamin E, the bag for vitamin D, vitamin C and zinc —
+which is why this is a question for the manufacturer rather than a
+parsing bug to fix here.
+
+One figure does stand out: the can column prints the SAME biotin
+(0.11 mg per 235 mL), niacin, pantothenic acid, folic acid and B6 for
+all three of Jevity 1.2, Jevity 1.5 and Osmolite 1.2, and that biotin is
+1.5 to 10x above the highest comparable Nestlé feed. It does not affect
+this pack: biotin is not tracked (§9).
+
+**Interim state of the data:** those four rows are consistent on the
+CAN column throughout — the smaller-volume column their macros have used
+since 2026-07-19, so no macro moved. The vitamins added on 2026-08-20
+were re-derived from that same column on 2026-08-21.
+
+**When Abbott answers**, the decision is which SKU each row should
+represent. If the ready-to-hang is chosen, both the vitamins AND the
+minerals that differ (sodium, potassium, iron, magnesium, zinc and the
+rest) must move together, and the row's `source` cell should name the
+SKU so this cannot be rediscovered a third time.
+
 ## 2. Vitamin A → µg RAE
 
 Panels print International Units. CNF uses **retinol activity
