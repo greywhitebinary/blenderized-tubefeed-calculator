@@ -150,12 +150,12 @@ def _coverage_from_merged(
     ingredient list -- a recipe's ingredients, or a single oral food -- not
     only a full Recipe wrapped in a NutrientProfile.
 
-    A missing CNF row and a true zero are otherwise indistinguishable: both
-    simply don't appear in `merged` (the inner join drops them) and so
-    contribute nothing to the totals. This counts, per tracked nutrient,
-    how many of the given ingredients actually supplied a value for that
-    nutrient (a CNF row was present, or -- for a custom food -- the RD
-    entered that field), out of the ingredient count.
+    A missing CNF row contributes nothing because the inner join drops it.
+    A CNF row whose numeric amount is zero stays in `merged` and counts as
+    supplied coverage. This distinction lets the coverage result show, per
+    tracked nutrient, how many of the given ingredients actually supplied a
+    value (a CNF row was present, or -- for a custom food -- the RD entered
+    that field), out of the ingredient count.
     """
     n_total = len(ingredients)
     # merged is already one row per (ingredient instance, nutrient code)

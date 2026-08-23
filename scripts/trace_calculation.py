@@ -16,9 +16,9 @@ The pipeline it traces (src/calculator.py::calculate_profile):
           |                        |
           v                        v
     [1] ingredient table    [2] filter to the tracked nutrient codes (the
-                                 per-country registry — src/nutrients.py —
-                                 13 label-tier + 5 clinical-tier + 1
-                                 engine-tier = 19 for the Canada pack)
+                                 per-country registry — src/nutrients.py;
+                                 see the Registry Audit below for the
+                                 current Canada-pack rows and tiers)
           \\                       /
            \\                     /
             [3] merge on Food_Code  (inner join — see the missing-data
@@ -186,12 +186,12 @@ def main() -> int:
     print("=" * 72)
     print("""
 CNF does not have a row for every nutrient for every food. When a row is
-absent, the inner join in step [3] simply produces no row — and the sum
-in step [5] treats that as contributing ZERO. The report cannot tell
-"truly zero" apart from "CNF never measured it". Totals can only be
-UNDER-estimated, never over — but for sparse nutrients (vitamin D is the
-sparsest at ~88% coverage) a "Below target" flag may partly reflect
-missing data, not missing nutrition.
+absent, the inner join in step [3] produces no row, so the numeric sum in
+step [5] receives no contribution. A numeric CNF zero, by contrast, stays
+in the join and counts as supplied coverage. The report's Coverage column
+shows that distinction. Totals can only be UNDER-estimated when a row is
+absent; for sparse nutrients, a "Below target" flag may partly reflect
+missing data rather than missing nutrition.
 """)
     any_missing = False
     for i in recipe.ingredients:
