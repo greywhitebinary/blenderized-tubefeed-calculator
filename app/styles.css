@@ -140,7 +140,14 @@ button[data-baseweb="tab"][aria-selected="true"] p {
 [data-testid="stTextAreaRootElement"],
 [data-testid="stTextInput"] [data-baseweb="input"],
 [data-testid="stTextArea"] textarea {
-    background-color: #ffffff !important;
+    /* transparent, not #ffffff (author asked for dark-theme support,
+       2026-08-21). "White where you type" was never really about white:
+       it was about the page colour, to set typing fields apart from the
+       pale-pink pick-from-a-list controls. Transparent gets that in both
+       themes -- white on a light page, dark on a dark one -- and unlike
+       a prefers-color-scheme rule it still holds when a viewer overrides
+       the theme in Streamlit's own settings menu. */
+    background-color: transparent !important;
     border: 2px solid #A4243A !important;
 }
 [data-testid="stTextInput"] [data-baseweb="base-input"],
@@ -158,7 +165,8 @@ button[data-baseweb="tab"][aria-selected="true"] p {
    step buttons keep Streamlit's pale pink on purpose: white where you
    type, pink where you click is the same convention as the dropdowns. */
 [data-testid="stNumberInputContainer"] {
-    background-color: #ffffff !important;
+    /* transparent -- see the text-input rule above for why. */
+    background-color: transparent !important;
     border: 2px solid #A4243A !important;
 }
 /* Every nested wrapper, by attribute AND by structure. The pink sits on
@@ -228,6 +236,20 @@ button[data-baseweb="tab"][aria-selected="true"] p {
 [data-testid="stTabsScrollLeft"] {
     background-image: linear-gradient(to left, rgba(255, 255, 255, 0), #ffffff 25%) !important;
 }
+/* The one place a real page colour is unavoidable: a fade has to end in
+   the colour it is fading INTO, and transparent would defeat the point.
+   #0e1117 is Streamlit's own dark background. This is the rule to revisit
+   if a viewer ever reports a pale smear beside the tabs -- unlike the
+   others it follows the OS setting, so it can disagree with a theme
+   picked by hand in Streamlit's settings menu (2026-08-21). */
+@media (prefers-color-scheme: dark) {
+    [data-testid="stTabsScrollRight"] {
+        background-image: linear-gradient(to right, rgba(14, 17, 23, 0), #0e1117 25%) !important;
+    }
+    [data-testid="stTabsScrollLeft"] {
+        background-image: linear-gradient(to left, rgba(14, 17, 23, 0), #0e1117 25%) !important;
+    }
+}
 
 /* Table toolbar: search, download CSV, fullscreen, column visibility
    (author feedback 2026-08-14). Streamlit ships these at opacity:0 and
@@ -274,7 +296,25 @@ button[data-baseweb="tab"][aria-selected="true"] p {
 [class*="st-key-zebrarow"],
 [class*="st-key-plainrow"] {
     padding: 0.35rem 0.5rem;
-    border-radius: 0.35rem;
+    /* Close Streamlit's 1rem gap between sibling blocks so the bands
+       touch (author, 2026-08-21). The rows were always the same height,
+       but a white row has no visible edge, so it absorbed the gap above
+       and below it and read as taller than the grey one beside it. With
+       the gap closed the stripe is continuous and the two colours are
+       plainly the same size. */
+    margin-bottom: -1rem;
+    /* A hairline between rows, matching the tables (author, 2026-08-21).
+       Streamlit draws its dataframes on a canvas and rules its own grid
+       at #e4e5e8, which CSS cannot reach -- so the only way for the
+       hand-built lists and the real tables to agree is for the lists to
+       take the line, not for the tables to lose it. Same colour, so the
+       two read as one treatment.
+
+       Square corners go with it: a 0.35rem radius made sense while the
+       rows floated apart, but rows that touch AND carry a dividing line
+       read as stacked pills if they stay rounded. */
+    border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 0;
 }
 /* Pull the ingredient row's two lines together. Streamlit's default
    20px vertical gap between the name line and the amount/unit line
@@ -307,9 +347,17 @@ button[data-baseweb="tab"][aria-selected="true"] p {
        outside that vocabulary and can only read as furniture.
 
        Deliberately subtle (about 3% off white -- 2-5% is the usual
-       range for banding-as-furniture). If it disappears on the
-       deploy, #f4f4f6 is the same idea a shade stronger. */
-    background-color: #f8f9fb;
+       range for banding-as-furniture).
+
+       Translucent rather than the fixed #f8f9fb it used to be (author
+       asked 2026-08-21 whether it would look wrong in a dark theme --
+       it would, as near-white bands across a dark page). An overlay
+       darkens a light background and lightens a dark one by the same
+       small amount, and over white it lands within a shade of the old
+       value, so a light theme looks unchanged. src/report.py's
+       stripe_rows() paints the real tables with this same value, which
+       is what keeps the lists and the tables reading as one thing. */
+    background-color: rgba(128, 128, 128, 0.08);
 }
 
 /* The page note under the title: the "under development" disclaimer and
@@ -325,6 +373,16 @@ button[data-baseweb="tab"][aria-selected="true"] p {
     font-size: 0.75rem;
     line-height: 1.5;
 }
+/* The "Feed. Form. Flow." link in this note renders paler than the tab
+   labels beside it, and that was not worth more of the author's evening
+   (2026-08-21). It is not the link's colour: linkColor and primaryColor
+   are the same value in both themes. The note is an st.caption, and
+   Streamlit fades a caption's whole subtree -- a faded maroon reads
+   pink. Two fixes were tried and reverted: setting the link's hex
+   deeper (never the cause), and lifting the fade off the note (opacity
+   cannot be undone from inside a faded parent, and moving the muting to
+   a text colour did not shift it either). Whatever Streamlit is doing
+   to that element is not reachable from here. Left as it renders. */
 
 /* The footer: disclaimers, the Health Canada attribution, and the contact
    links (author, 2026-08-19). Set below the page note deliberately, so the

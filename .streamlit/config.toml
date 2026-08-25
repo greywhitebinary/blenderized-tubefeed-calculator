@@ -16,3 +16,25 @@ primaryColor = "#A4243A"
 # is no !important fight with Streamlit's own stylesheet.
 linkColor = "#A4243A"
 secondaryBackgroundColor = "#f9e8eb"
+
+# Dark-theme overrides (author asked for the app to work in both themes,
+# 2026-08-21). The colours above are read in BOTH themes, which is what
+# broke dark mode: secondaryBackgroundColor is a pale pink, Streamlit
+# writes text on it in white when the theme is dark, and the measure and
+# unit dropdowns became white-on-pale-pink.
+#
+# These keep the same vocabulary rather than inventing a second palette:
+# pink still means "pick from a list", maroon still means "type here".
+# Each is the light colour's counterpart, dark enough to carry white text.
+#
+# [theme.dark] needs Streamlit >= 1.59 and is one reason the pin moved off
+# 1.58. Like the rest of [theme] it is read at server startup, so it needs
+# a restart, not a rerun.
+[theme.dark]
+# The pale pink, taken down to a maroon-tinted charcoal: still recognisably
+# the same family, but white text sits on it cleanly.
+secondaryBackgroundColor = "#3a2429"
+# The maroon lifted for contrast against a dark page. #A4243A on near-black
+# is legible but muddy; this is the same hue with the lightness raised.
+primaryColor = "#E0708A"
+linkColor = "#E0708A"

@@ -111,6 +111,7 @@ from src.report import (
     generate_water_ledger,
     format_ingredient_breakdown,
     color_status,
+    stripe_rows,
 )
 from src.nutrients import (
     registry_by_name,
@@ -2039,7 +2040,7 @@ with recipes_tab:
             # tables do") instead of truncating.
             with st.container(key="fullbleed_ingr_nutrition"):
                 st.dataframe(
-                    _nutrition_display,
+                    stripe_rows(_nutrition_display),
                     # stretch + explicit pixel widths, same combination
                     # the Adequacy table uses (see fullbleed_adequacy
                     # above) -- width="content" was tried there and
@@ -2253,7 +2254,7 @@ with recipes_tab:
     # auto-fix a mixed-type numeric column on every render.
     for _col in ("kcal/mL", "protein g/mL", "Free-water fraction"):
         _density_df[_col] = _density_df[_col].astype(str)
-    st.dataframe(_density_df, width="stretch", hide_index=True)
+    st.dataframe(stripe_rows(_density_df), width="stretch", hide_index=True)
 
     # Resolve the SELECTED blend's profile once -- reused by the density
     # detail expander, comparator, and dilution what-if below.
@@ -2363,7 +2364,7 @@ with recipes_tab:
                     ]
                 )
                 dil_df["Change"] = dil_df["After dilution"] - dil_df["Original"]
-                st.dataframe(dil_df, width="content", hide_index=True)
+                st.dataframe(stripe_rows(dil_df), width="content", hide_index=True)
 
                 tk = targets.get("energy_kcal", 0.0)
                 tp = targets.get("protein_g", 0.0)
@@ -2723,7 +2724,7 @@ with recipes_tab:
         # This one is a name and six short numbers, so stretching it to
         # the viewport spread those numbers across the whole screen and
         # made a small table look like the biggest thing on the page.
-        st.dataframe(comparator_df, width="stretch", hide_index=True)
+        st.dataframe(stripe_rows(comparator_df), width="stretch", hide_index=True)
         # The marker is meaningless without this sentence, so the caption
         # is not decoration here -- it is the legend. "at the top of this
         # tab" rather than "above" because the comparator sits a long way
@@ -3128,7 +3129,11 @@ with record_tab:
         # --- Per-source subtotal breakdown (design doc section 3.5) ---
         st.subheader("Per-Source Breakdown")
         with st.container(key="fullbleed_source_breakdown"):
-            st.dataframe(generate_source_breakdown(intake_totals), width="stretch", hide_index=True)
+            st.dataframe(
+                stripe_rows(generate_source_breakdown(intake_totals)),
+                width="stretch",
+                hide_index=True,
+            )
 
         # --- Water ledger: every source on its own line (author, 2026-07-30) ---
         _water_ledger = generate_water_ledger(intake_totals.water_sources)
@@ -3139,7 +3144,7 @@ with record_tab:
                 "added to a blend recipe. Water flushes are entered separately "
                 "and added to total fluids."
             )
-            st.dataframe(_water_ledger, width="content", hide_index=True)
+            st.dataframe(stripe_rows(_water_ledger), width="content", hide_index=True)
 
         st.subheader("Daily Totals & Adequacy")
         st.caption("The total fluid from everything entered in the Daily Intake Record above.")
@@ -3172,7 +3177,7 @@ with record_tab:
         # hidden column costs more here than anywhere else.
         with st.container(key="fullbleed_adequacy"):
             st.dataframe(
-                adequacy_display[_main_cols].style
+                stripe_rows(adequacy_display[_main_cols])
                 # Daily Total / Target / % Target arrive from report.py
                 # already formatted as text at each nutrient's own registry
                 # precision (see _fmt there), which is what stops Energy's
@@ -3209,7 +3214,7 @@ with record_tab:
         )
         with st.expander("Where these numbers came from"):
             st.dataframe(
-                adequacy_display[["Nutrient", *_PROVENANCE_COLS]],
+                stripe_rows(adequacy_display[["Nutrient", *_PROVENANCE_COLS]]),
                 # Widths measured off a rendered screenshot, not guessed:
                 # Source's longest value ("Full volume of counts-as-fluid
                 # ingredients (I&O convention) + flushes", 69 chars) draws
@@ -3238,7 +3243,7 @@ with record_tab:
                 # colouring: none of these nutrients takes a target, so
                 # generate_clinical_screen() drops those columns rather
                 # than repeat an empty one 21 times (2026-08-21).
-                st.dataframe(clinical_df, width="stretch", hide_index=True)
+                st.dataframe(stripe_rows(clinical_df), width="stretch", hide_index=True)
             if hidden_clinical_names:
                 st.caption(
                     "Not shown — no data from any ingredient: " + ", ".join(hidden_clinical_names)

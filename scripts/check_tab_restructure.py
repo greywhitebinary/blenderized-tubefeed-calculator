@@ -8,16 +8,22 @@ carries the intake editor, daily totals/adequacy, chart note, and export.
 """
 
 import sys
+from pathlib import Path
 
-sys.path.insert(0, ".")
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
-from streamlit.testing.v1 import AppTest
+from streamlit.testing.v1 import AppTest  # noqa: E402
 
-from src.calculator import COMMERCIAL_FORMULAS
+from src.calculator import COMMERCIAL_FORMULAS  # noqa: E402
 
 
 def main() -> None:
-    at = AppTest.from_file("app/streamlit_app.py", default_timeout=60)
+    # Streamlit 1.62 resolves AppTest.from_file()'s relative paths against
+    # the calling file, not the CWD (1.58 used CWD) -- "app/streamlit_app.py"
+    # started missing once this script ran from outside the repo root.
+    # ROOT-anchored, like every other scripts/check_*.py, sidesteps both.
+    at = AppTest.from_file(str(ROOT / "app" / "streamlit_app.py"), default_timeout=60)
     at.run()
     assert not at.exception, f"fresh load raised: {at.exception}"
 

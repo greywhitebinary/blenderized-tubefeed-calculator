@@ -983,6 +983,32 @@ def generate_water_ledger(water_sources: dict[str, float]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def stripe_rows(frame: pd.DataFrame):
+    """Alternating row tints for a table, as a pandas Styler.
+
+    Streamlit's dataframe has no striping setting, so this paints it the
+    same way color_status() paints a Status cell. The hand-built lists
+    (Ingredients, the intake record) get theirs from CSS instead, over
+    the .st-key-zebrarow hook -- those are not tables, so they cannot
+    use this (author request 2026-08-21, matching the two).
+
+    The tint is a translucent grey rather than the stylesheet's #f8f9fb.
+    A fixed light grey is right on a white page and wrong on a dark one,
+    where it would paint near-white bands across a dark table; a
+    translucent overlay darkens a light theme and lightens a dark one by
+    the same small amount. Same reason color_status() sets its text
+    colour explicitly.
+
+    Chain it before any cell-level styling -- `stripe_rows(df).map(...)`
+    -- so the more specific colour wins on the cells that have one.
+    """
+    return frame.style.apply(
+        lambda row: ["background-color: rgba(128, 128, 128, 0.08)" if row.name % 2 else ""]
+        * len(row),
+        axis=1,
+    )
+
+
 def color_status(val: str) -> str:
     """Pandas-Styler CSS for an adequacy Status cell.
 

@@ -13,7 +13,7 @@
 # soon as those files exist - with no pyarrow installed that raises an
 # ImportError on startup. Installing the dev file avoids it entirely.
 pandas>=2.2
-streamlit==1.58.0
+streamlit==1.62.0
 openpyxl>=3.1
 
 # Label-photo reading (src/label_extract.py). Pinned to a major version:
@@ -26,9 +26,14 @@ anthropic>=0.120,<1.0
 # relying on a package it did not declare (pyarrow, CONTEXT.md §9).
 pillow>=10.0
 
-# streamlit==1.58.0 is PINNED ON PURPOSE - do not loosen to >=1.58.
-# Streamlit Community Cloud resolved 1.60.0 against a >=1.58 spec, and
-# 1.60's different tab DOM silently broke this app's tab-label CSS (deploy
-# gotcha logged in CONTEXT.md §11, 2026-07-23). Only a requirements.txt
-# change reliably triggers Cloud's dependency rebuild ("Reboot app" does
-# not), so this exact pin is how the fix stays applied.
+# streamlit==1.62.0 is PINNED ON PURPOSE - do not loosen to >=1.62.
+# Streamlit Community Cloud resolves a loose spec (e.g. >=1.58) against
+# whatever is newest at deploy time, not what was tested locally -- that
+# is how Cloud landed on 1.60.0 and silently broke this app's tab-label
+# CSS (deploy gotcha logged in CONTEXT.md §11, 2026-07-23), which is why
+# this pin exists at all. Only a requirements.txt change reliably
+# triggers Cloud's dependency rebuild ("Reboot app" does not), so an
+# exact pin is how a verified version stays applied instead of drifting.
+# Verified against this app's data-testid CSS hooks, its 284 tests, all
+# scripts/check_*.py, and AppTest on 2026-08-21; see app/styles.css and
+# scripts/check_tab_restructure.py for what that upgrade touched.
