@@ -1002,11 +1002,35 @@ def stripe_rows(frame: pd.DataFrame):
     Chain it before any cell-level styling -- `stripe_rows(df).map(...)`
     -- so the more specific colour wins on the cells that have one.
     """
-    return frame.style.apply(
+    styler = frame.style.apply(
         lambda row: ["background-color: rgba(128, 128, 128, 0.08)" if row.name % 2 else ""]
         * len(row),
         axis=1,
     )
+    # Restore each float column's own precision. Handing Streamlit a
+    # Styler instead of a DataFrame replaces its number formatting with
+    # pandas', which defaults to SIX decimals -- the comparator's
+    # "1.06 kcal/mL" rendered as "1.060000" the moment striping went in
+    # (author spotted it, 2026-08-21).
+    #
+    # Read off the data rather than hardcoded: every builder in this file
+    # already rounds each column to the precision that column deserves
+    # (energy 0, protein 1, kcal/mL 2), so the widest value in a column
+    # IS that precision. Capped at 3 in case an unrounded float arrives
+    # with a repr like 0.30000000000000004, and columns holding text --
+    # an em dash for "not disclosed" -- are left alone.
+    formats = {}
+    for column in frame.columns:
+        values = frame[column]
+        if not pd.api.types.is_float_dtype(values):
+            continue
+        decimals = 0
+        for v in values.dropna():
+            text = str(v)
+            if "." in text and "e" not in text.lower():
+                decimals = max(decimals, len(text.split(".")[1].rstrip("0")))
+        formats[column] = f"{{:.{min(decimals, 3)}f}}"
+    return styler.format(formats) if formats else styler
 
 
 def color_status(val: str) -> str:
