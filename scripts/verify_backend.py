@@ -219,6 +219,7 @@ def main() -> int:
     density = generate_density_summary(profile)
     print(density.to_string(index=False))
     assert len(density) == 6, "density summary should have 6 rows"
+    assert "Note" not in density.columns, "the Note column was retired 2026-08-21"
 
     # 9. Custom food folding (Appendix A9) — calculate_profile() takes an
     # optional custom_foods dict so this math lives in the backend, not the

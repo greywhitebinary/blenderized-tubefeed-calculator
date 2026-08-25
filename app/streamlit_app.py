@@ -2217,7 +2217,14 @@ with recipes_tab:
         _, _b_coverage = compute_nutrient_totals_and_coverage(
             _b_ingredients, na, st.session_state.custom_foods
         )
-        _n_full = sum(1 for n_sup, n_tot in _b_coverage.values() if n_tot == 0 or n_sup == n_tot)
+        # Counts the EXCEPTION, not the norm (author, 2026-08-21): the
+        # nutrients an RD would act on are the incomplete ones, and
+        # "24/35 nutrients fully covered" made a reader work out the
+        # useful number by subtraction. "Fully" was carrying the load in
+        # that phrasing too -- a nutrient is complete only when EVERY
+        # ingredient supplied a value, and "covered" alone sounds
+        # absolute already.
+        _n_missing = sum(1 for n_sup, n_tot in _b_coverage.values() if n_tot > 0 and n_sup < n_tot)
         _density_rows.append(
             {
                 "Blend": _blend["name"],
@@ -2225,7 +2232,16 @@ with recipes_tab:
                 "protein g/mL": round(_b_profile.protein_per_mL, 3),
                 "Free-water fraction": round(_b_profile.free_water_fraction, 3),
                 "Measured volume (mL)": round(_b_profile.measured_final_volume_mL),
-                "Coverage": f"{_n_full}/{len(_b_coverage)} nutrients fully covered",
+                "Coverage": (
+                    # "no nutrients missing data", not "all nutrients
+                    # complete": complete reads as nutritionally complete,
+                    # which is a claim about the blend rather than about
+                    # the database (author, 2026-08-21). Phrased to
+                    # parallel the other reading in this same cell.
+                    "no nutrients missing data"
+                    if _n_missing == 0
+                    else f"{_n_missing} of {len(_b_coverage)} nutrients missing data"
+                ),
                 "Note": "",
             }
         )
@@ -2254,14 +2270,22 @@ with recipes_tab:
         except InvalidBlendError:
             _selected_invalid = True
 
-    with st.expander(f'Full density summary — "{selected_blend["name"]}"'):
+    # Bold name, no quotes, and it says where to change it: this panel
+    # sits well below the "Select blend" control, so an RD reading it can
+    # be a long way from the thing that chose it (author, 2026-08-21).
+    with st.expander(
+        f"Full density summary for **{selected_blend['name']}** "
+        "(selected at the top of this tab)"
+    ):
         if _selected_invalid:
             st.warning("This blend has ingredients but no measured volume yet.")
         elif selected_profile is None:
             st.caption("Add ingredients and a measured volume to the blend above.")
         else:
             st.dataframe(
-                generate_density_summary(selected_profile), width="content", hide_index=True
+                stripe_rows(generate_density_summary(selected_profile)),
+                width="content",
+                hide_index=True,
             )
 
     st.divider()
@@ -2707,8 +2731,8 @@ with recipes_tab:
         # and the Recipe Record, so "above" points at most of the page
         # (author, 2026-08-16).
         st.caption(
-            f"{EDITING_MARKER} marks the blend being edited, chosen at the "
-            "top of this tab. Rows are compared at one daily volume; "
+            f"{EDITING_MARKER} marks the blend being edited, selected at "
+            "the top of this tab. Rows are compared at one daily volume; "
             "differences between rows are in the feeds themselves and not "
             "in the amounts given."
         )

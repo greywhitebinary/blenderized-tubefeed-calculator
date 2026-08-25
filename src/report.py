@@ -752,38 +752,49 @@ def generate_formula_comparison(
 
 
 def generate_density_summary(profile: NutrientProfile) -> pd.DataFrame:
-    """Generate the density panel as a DataFrame."""
+    """Generate the density panel as a DataFrame.
+
+    No Note column since 2026-08-21. Four of its six notes restated the
+    row they sat on ("Protein per mL of blend" beside a row called
+    Protein density, "In the full batch" beside one called per recipe)
+    or offered an opinion on how to read the number ("Primary lens --
+    patient tolerates limited mL/day"). The interface should not narrate
+    itself to a dietitian (author). The two that carried information --
+    the free-water formula, and that the volume is entered rather than
+    computed -- moved into the Metric cell they belong to.
+    """
     return pd.DataFrame(
         [
-            {
-                "Metric": "Energy density",
-                "Value": f"{profile.kcal_per_mL:.2f} kcal/mL",
-                "Note": "Primary lens — patient tolerates limited mL/day",
-            },
-            {
-                "Metric": "Protein density",
-                "Value": f"{profile.protein_per_mL:.3f} g/mL",
-                "Note": "Protein per mL of blend",
-            },
-            {
-                "Metric": "Free-water fraction",
-                "Value": f"{profile.free_water_fraction:.3f}",
-                "Note": "(food water + added water) / volume",
-            },
+            # Batch totals first, then the per-mL densities derived from
+            # them (author, 2026-08-21): the three numbers an RD entered
+            # or measured come before the three the app worked out.
             {
                 "Metric": "Total energy (per recipe)",
                 "Value": f"{profile.total_kcal:.0f} kcal",
-                "Note": "In the full batch",
             },
             {
                 "Metric": "Total protein (per recipe)",
                 "Value": f"{profile.total_protein_g:.1f} g",
-                "Note": "In the full batch",
             },
             {
-                "Metric": "Measured volume",
+                "Metric": "Measured volume, as entered",
                 "Value": f"{profile.measured_final_volume_mL:.0f} mL",
-                "Note": "User-measured, not computed",
+            },
+            {
+                "Metric": "Energy density",
+                "Value": f"{profile.kcal_per_mL:.2f} kcal/mL",
+            },
+            {
+                "Metric": "Protein density",
+                "Value": f"{profile.protein_per_mL:.3f} g/mL",
+            },
+            {
+                # A colon, not brackets around the whole expression: the
+                # metric name already needs its own, and "food water +
+                # added water / volume" without them says something else
+                # entirely under order of operations (author, 2026-08-21).
+                "Metric": "Free-water fraction: (food water + added water) / volume",
+                "Value": f"{profile.free_water_fraction:.3f}",
             },
         ]
     )
