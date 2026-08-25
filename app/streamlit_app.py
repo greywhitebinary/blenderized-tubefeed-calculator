@@ -1801,151 +1801,189 @@ with recipes_tab:
                     # e.g. "Chicken, feet, boiled") has room to sit on one
                     # line rather than wrapping and changing the row's
                     # height depending on which unit happens to be chosen.
-                    name_col, del_col = st.columns([11, 1])
-                    # Not bold: every row would be bold, so it emphasises
-                    # nothing and just makes the list heavier to scan
-                    # (author, 2026-08-15).
+                    # vertical_alignment centres the ❌ against the whole
+                    # row. It used to sit at the top right, reading as a
+                    # corner mark rather than as this row's control once
+                    # the button shrank -- and centring alone did not fix
+                    # it, because the button lived on the name line and
+                    # so could only centre within that line. Hence
+                    # body_col below (author, 2026-08-21).
                     #
-                    # The backslash escapes the "." so markdown does not
-                    # read "4. Chicken, ..." as an ORDERED LIST. It did
-                    # once the bold came off (the asterisks had been
-                    # hiding it), rendering <ol><li>, which brought a list
-                    # indent and narrowed the text -- so names wrapped
-                    # early and their second line hung under the text
-                    # instead of the number. Visible only when zoomed out,
-                    # where "Banana, raw" broke across two lines.
-                    name_col.write(f"{i + 1}\\. {ing['food_description']}")
+                    # body_col spans BOTH the name line and the amount/unit
+                    # line below (rather than just the name line), so the
+                    # ❌ button in del_col centres against the whole
+                    # two-line row instead of only the first line
+                    # (author, 2026-08-21).
+                    body_col, del_col = st.columns([11, 1], vertical_alignment="center")
+                    with body_col:
+                        # Not bold: every row would be bold, so it emphasises
+                        # nothing and just makes the list heavier to scan
+                        # (author, 2026-08-15).
+                        #
+                        # The backslash escapes the "." so markdown does not
+                        # read "4. Chicken, ..." as an ORDERED LIST. It did
+                        # once the bold came off (the asterisks had been
+                        # hiding it), rendering <ol><li>, which brought a list
+                        # indent and narrowed the text -- so names wrapped
+                        # early and their second line hung under the text
+                        # instead of the number. Visible only when zoomed out,
+                        # where "Banana, raw" broke across two lines.
+                        st.write(f"{i + 1}\\. {ing['food_description']}")
+
+                        # Line 2 -- amount, unit, computed value, fluid toggle.
+                        # Four columns, each with one job, instead of the unit
+                        # dropdown sharing a narrow column with the amount box
+                        # (the old layout gave the unit dropdown too little
+                        # room for CNF's longest labels).
+                        amt_col, unit_col, computed_col, fluid_col = st.columns([1, 4, 2, 3])
+
+                        # Which units this row offers comes from the FOOD, via
+                        # CNF -- NOT from what happened to be captured when the
+                        # row was created (author feedback 2026-08-15). Reading
+                        # it off the stored measure_label made the option
+                        # appear only on rows added by searching: an identical
+                        # banana from the example day, a reloaded file or an
+                        # imported recipe offered nothing, so the capability
+                        # looked random. CNF knows this banana's measures
+                        # either way, so ask CNF. A food with none (chicken
+                        # breast has zero) simply offers grams, exactly as
+                        # before.
+                        #
+                        # measure_label/measure_grams still get stored, but
+                        # their job changed: they are now the REMEMBERED CHOICE
+                        # that seeds this dropdown and prints in the export,
+                        # not the gate on whether the RD may switch units at
+                        # all.
+                        _measures = (
+                            get_measures_for_food(int(ing["food_code"]), lookup)
+                            if ing.get("food_code") is not None
+                            else None
+                        )
+                        _by_label: dict[str, float] = (
+                            {
+                                str(r["Measure_Description_and_Unit_EN"]): float(r["grams"])
+                                for _, r in _measures.iterrows()
+                            }
+                            if _measures is not None and len(_measures) > 0
+                            else {}
+                        )
+                        _unit_options = [unit, *_by_label]
+                        _remembered = ing.get("measure_label")
+                        _default_idx = (
+                            _unit_options.index(_remembered) if _remembered in _by_label else 0
+                        )
+
+                        chosen_unit = unit_col.selectbox(
+                            f"Unit for {ing['food_description']}",
+                            _unit_options,
+                            index=_default_idx,
+                            key=f"unit_{ing['id']}",
+                            label_visibility="collapsed",
+                        )
+                        measure_grams = _by_label.get(chosen_unit)
+
+                        if measure_grams:
+                            # Portion-to-portion switch (author, 2026-08-21):
+                            # a banana bread entered as 1 loaf, switched to
+                            # slice, must read 1 slice -- not 1036 g's worth
+                            # of slices (17.27). Grams is a weight and a
+                            # portion is a count, so only a PORTION-to-PORTION
+                            # switch carries the NUMBER across; g on either
+                            # side keeps the WEIGHT instead (that path is
+                            # untouched, below and in the else branch).
+                            # Detected by comparing this run's chosen_unit
+                            # against measure_label/measure_grams as they
+                            # stood BEFORE this run -- ing[...] has not been
+                            # overwritten yet at this point in the loop, so
+                            # it still holds last run's remembered measure.
+                            # A falsy old measure_grams (first render of this
+                            # row, or a remembered measure that no longer
+                            # exists in this food's CNF list) means the OLD
+                            # side wasn't a portion, so this skips and the
+                            # ordinary weight-preserving path below runs.
+                            _old_measure_grams = ing.get("measure_grams")
+                            if chosen_unit != _remembered and _old_measure_grams:
+                                _old_qty = round(ing["grams"] / _old_measure_grams, 2)
+                                selected_blend["ingredients"][i]["grams"] = _old_qty * measure_grams
+
+                            # The box holds the QUANTITY in the chosen measure,
+                            # not grams -- "2 of 1 cup", never a pluralised
+                            # "2 cups", which breaks on "1 small".
+                            #
+                            # The widget key carries the chosen unit. Switching
+                            # units must re-seed the box from `value=` rather
+                            # than have Streamlit hand back the previous unit's
+                            # leftover number under a shared key -- that would
+                            # silently reinterpret "1 x 250 ml mashed" as
+                            # "1 x 1 small" and change the amount. Streamlit
+                            # drops state for widgets that stop being
+                            # rendered, so the re-seed is reliable (verified).
+                            # Still prefixed "grams_", so
+                            # _STALE_WIDGET_KEY_PREFIXES already covers it.
+                            # Rounded for the BOX only -- an exact ratio reads
+                            # "2.3544554455445548", which is noise in a
+                            # quantity field. Grams below stay the
+                            # authoritative figure and the "=" column prints
+                            # them in full, so nothing is lost. The guard must
+                            # compare against this same rounded value, or the
+                            # rounding itself would look like an edit.
+                            derived_qty = round(ing["grams"] / measure_grams, 2)
+                            new_qty = amt_col.number_input(
+                                f"Amount for {ing['food_description']}",
+                                value=derived_qty,
+                                min_value=0.0,
+                                step=0.5,
+                                format="%g",
+                                key=f"grams_{ing['id']}_{chosen_unit}",
+                                label_visibility="collapsed",
+                            )
+                            # THE DRIFT GUARD (2026-08-15). This box shows a
+                            # ROUNDED quantity -- 300 g / 158 g-per-cup
+                            # displays as 1.9 -- so writing it back to grams on
+                            # EVERY rerun, including the rerun where the RD
+                            # touched nothing, would walk the stored grams down
+                            # a little each time (1.9 * 158 = 300.2, which
+                            # re-derives to 1.9 again, forever) with nothing on
+                            # screen ever showing it. Only write grams back
+                            # when the widget's value actually differs from
+                            # the derived quantity (float tolerance, not ==);
+                            # unchanged means leave the stored grams
+                            # byte-for-byte alone.
+                            if abs(new_qty - derived_qty) > 1e-6:
+                                selected_blend["ingredients"][i]["grams"] = new_qty * measure_grams
+                            selected_blend["ingredients"][i]["measure_label"] = chosen_unit
+                            selected_blend["ingredients"][i]["measure_grams"] = measure_grams
+                            computed_col.markdown(
+                                f"= **{selected_blend['ingredients'][i]['grams']:.1f} {unit}**"
+                            )
+                        else:
+                            new_amount = amt_col.number_input(
+                                f"Amount for {ing['food_description']}",
+                                value=float(ing["grams"]),
+                                min_value=0.0,
+                                step=1.0,
+                                format="%g",
+                                key=f"grams_{ing['id']}",
+                                label_visibility="collapsed",
+                            )
+                            selected_blend["ingredients"][i]["grams"] = new_amount
+                            # Showing grams is a display choice, so forget the
+                            # remembered measure -- the export should print
+                            # what the row currently reads, not a unit the RD
+                            # moved away from.
+                            selected_blend["ingredients"][i]["measure_label"] = None
+                            selected_blend["ingredients"][i]["measure_grams"] = None
+
+                        new_fluid_flag = fluid_col.checkbox(
+                            "Counts as fluid",
+                            value=bool(ing.get("counts_as_fluid", False)),
+                            key=f"fluid_{ing['id']}",
+                        )
+                        selected_blend["ingredients"][i]["counts_as_fluid"] = new_fluid_flag
+
                     if del_col.button("❌", key=f"del_{ing['id']}"):
                         selected_blend["ingredients"].pop(i)
                         st.rerun()
-
-                    # Line 2 -- amount, unit, computed value, fluid toggle.
-                    # Four columns, each with one job, instead of the unit
-                    # dropdown sharing a narrow column with the amount box
-                    # (the old layout gave the unit dropdown too little
-                    # room for CNF's longest labels).
-                    amt_col, unit_col, computed_col, fluid_col = st.columns([1, 4, 2, 3])
-
-                    # Which units this row offers comes from the FOOD, via
-                    # CNF -- NOT from what happened to be captured when the
-                    # row was created (author feedback 2026-08-15). Reading
-                    # it off the stored measure_label made the option
-                    # appear only on rows added by searching: an identical
-                    # banana from the example day, a reloaded file or an
-                    # imported recipe offered nothing, so the capability
-                    # looked random. CNF knows this banana's measures
-                    # either way, so ask CNF. A food with none (chicken
-                    # breast has zero) simply offers grams, exactly as
-                    # before.
-                    #
-                    # measure_label/measure_grams still get stored, but
-                    # their job changed: they are now the REMEMBERED CHOICE
-                    # that seeds this dropdown and prints in the export,
-                    # not the gate on whether the RD may switch units at
-                    # all.
-                    _measures = (
-                        get_measures_for_food(int(ing["food_code"]), lookup)
-                        if ing.get("food_code") is not None
-                        else None
-                    )
-                    _by_label: dict[str, float] = (
-                        {
-                            str(r["Measure_Description_and_Unit_EN"]): float(r["grams"])
-                            for _, r in _measures.iterrows()
-                        }
-                        if _measures is not None and len(_measures) > 0
-                        else {}
-                    )
-                    _unit_options = [unit, *_by_label]
-                    _remembered = ing.get("measure_label")
-                    _default_idx = (
-                        _unit_options.index(_remembered) if _remembered in _by_label else 0
-                    )
-
-                    chosen_unit = unit_col.selectbox(
-                        f"Unit for {ing['food_description']}",
-                        _unit_options,
-                        index=_default_idx,
-                        key=f"unit_{ing['id']}",
-                        label_visibility="collapsed",
-                    )
-                    measure_grams = _by_label.get(chosen_unit)
-
-                    if measure_grams:
-                        # The box holds the QUANTITY in the chosen measure,
-                        # not grams -- "2 of 1 cup", never a pluralised
-                        # "2 cups", which breaks on "1 small".
-                        #
-                        # The widget key carries the chosen unit. Switching
-                        # units must re-seed the box from `value=` rather
-                        # than have Streamlit hand back the previous unit's
-                        # leftover number under a shared key -- that would
-                        # silently reinterpret "1 x 250 ml mashed" as
-                        # "1 x 1 small" and change the amount. Streamlit
-                        # drops state for widgets that stop being
-                        # rendered, so the re-seed is reliable (verified).
-                        # Still prefixed "grams_", so
-                        # _STALE_WIDGET_KEY_PREFIXES already covers it.
-                        # Rounded for the BOX only -- an exact ratio reads
-                        # "2.3544554455445548", which is noise in a
-                        # quantity field. Grams below stay the
-                        # authoritative figure and the "=" column prints
-                        # them in full, so nothing is lost. The guard must
-                        # compare against this same rounded value, or the
-                        # rounding itself would look like an edit.
-                        derived_qty = round(ing["grams"] / measure_grams, 2)
-                        new_qty = amt_col.number_input(
-                            f"Amount for {ing['food_description']}",
-                            value=derived_qty,
-                            min_value=0.0,
-                            step=0.5,
-                            format="%g",
-                            key=f"grams_{ing['id']}_{chosen_unit}",
-                            label_visibility="collapsed",
-                        )
-                        # THE DRIFT GUARD (2026-08-15). This box shows a
-                        # ROUNDED quantity -- 300 g / 158 g-per-cup
-                        # displays as 1.9 -- so writing it back to grams on
-                        # EVERY rerun, including the rerun where the RD
-                        # touched nothing, would walk the stored grams down
-                        # a little each time (1.9 * 158 = 300.2, which
-                        # re-derives to 1.9 again, forever) with nothing on
-                        # screen ever showing it. Only write grams back
-                        # when the widget's value actually differs from
-                        # the derived quantity (float tolerance, not ==);
-                        # unchanged means leave the stored grams
-                        # byte-for-byte alone.
-                        if abs(new_qty - derived_qty) > 1e-6:
-                            selected_blend["ingredients"][i]["grams"] = new_qty * measure_grams
-                        selected_blend["ingredients"][i]["measure_label"] = chosen_unit
-                        selected_blend["ingredients"][i]["measure_grams"] = measure_grams
-                        computed_col.markdown(
-                            f"= **{selected_blend['ingredients'][i]['grams']:.1f} {unit}**"
-                        )
-                    else:
-                        new_amount = amt_col.number_input(
-                            f"Amount for {ing['food_description']}",
-                            value=float(ing["grams"]),
-                            min_value=0.0,
-                            step=1.0,
-                            format="%g",
-                            key=f"grams_{ing['id']}",
-                            label_visibility="collapsed",
-                        )
-                        selected_blend["ingredients"][i]["grams"] = new_amount
-                        # Showing grams is a display choice, so forget the
-                        # remembered measure -- the export should print
-                        # what the row currently reads, not a unit the RD
-                        # moved away from.
-                        selected_blend["ingredients"][i]["measure_label"] = None
-                        selected_blend["ingredients"][i]["measure_grams"] = None
-
-                    new_fluid_flag = fluid_col.checkbox(
-                        "Counts as fluid",
-                        value=bool(ing.get("counts_as_fluid", False)),
-                        key=f"fluid_{ing['id']}",
-                    )
-                    selected_blend["ingredients"][i]["counts_as_fluid"] = new_fluid_flag
 
             # --- Recipe card (Change 1.3): the "hand it to a caregiver"
             # artefact, kept out of the edit rows above so neither job
@@ -3020,7 +3058,7 @@ with record_tab:
             # "Everything given" framing above the expander.
             _band = "zebrarow" if index % 2 else "plainrow"
             with st.container(key=f"{_band}_intake_{row['id']}"):
-                rc1, rc2 = st.columns([6, 1])
+                rc1, rc2 = st.columns([6, 1], vertical_alignment="center")
                 rc1.write(_intake_row_label(row))
                 if rc2.button("❌", key=f"del_intake_{row['id']}"):
                     st.session_state.intake_log = [

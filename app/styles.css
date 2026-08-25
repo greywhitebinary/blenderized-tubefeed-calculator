@@ -295,7 +295,11 @@ button[data-baseweb="tab"][aria-selected="true"] p {
    stay aligned -- only zebrarow gets a fill colour. */
 [class*="st-key-zebrarow"],
 [class*="st-key-plainrow"] {
-    padding: 0.35rem 0.5rem;
+    /* 0.5rem, up from 0.35rem (author, 2026-08-21): with the 1rem gap
+       between rows closed, the old padding left the intake rows looking
+       squashed against each other. The bands need the height the gap
+       used to provide. */
+    padding: 0.5rem;
     /* Close Streamlit's 1rem gap between sibling blocks so the bands
        touch (author, 2026-08-21). The rows were always the same height,
        but a white row has no visible edge, so it absorbed the gap above
@@ -400,4 +404,61 @@ button[data-baseweb="tab"][aria-selected="true"] p {
 [class*="st-key-pagefooter"] li {
     font-size: 0.7rem;
     line-height: 1.55;
+}
+
+/* Row delete buttons: the ❌ on an Ingredients row and on an intake row
+   (author, 2026-08-21: "they look big"). Both take Streamlit's default
+   button padding, which is sized for a button with words in it -- around
+   a single emoji that reads as a large red target beside the text it
+   deletes, and a delete control should be findable, not prominent.
+
+   Roughly half the footprint: the glyph itself comes down and the
+   padding with it. Targeted by the key prefix both buttons already share
+   (del_{ingredient id} and del_intake_{row id}), which Streamlit exposes
+   as an st-key- class on any keyed widget. */
+[class*="st-key-del_"] button {
+    /* Chromeless: Streamlit's button fill and border drew a pill around
+       the glyph, and at this size the pill read as the control rather
+       than the ❌ inside it (author, 2026-08-21: "a red cross inside an
+       oval"). The glyph is the button now. */
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    /* An explicit SQUARE box, not padding around the glyph (author,
+       2026-08-21). Without a fixed width and height the button is as
+       wide as the ❌ plus padding and as tall as one line -- wider than
+       tall -- so any rounding drew an ellipse rather than the square or
+       circle asked for. 2rem is about double the hover footprint it had.
+       The flex centring keeps the glyph in the middle of that box. */
+    width: 2rem !important;
+    height: 2rem !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    line-height: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+[class*="st-key-del_"] button:hover {
+    /* A square with softened corners -- the author's preference over a
+       circle. It reads as a square because the box above is one; before
+       that it could only ever be an ellipse. */
+    background: rgba(128, 128, 128, 0.15) !important;
+    border-radius: 0.3rem !important;
+}
+[class*="st-key-del_"] button p {
+    font-size: 0.75rem !important;
+}
+
+/* Space above whatever follows a banded row (author, 2026-08-21: "some
+   space between Food & Drink" in the Everything given list). The group
+   headings sit directly after the last row of the group before them, and
+   the -1rem that closes the gap BETWEEN rows pulled them tighter still.
+
+   The selector is "the first thing after a row that is not itself a
+   row": rows are siblings of each other, so a bare adjacent-sibling rule
+   would put a gap between every row and undo the banding. */
+[class*="st-key-zebrarow"] + div:not([class*="st-key-"]),
+[class*="st-key-plainrow"] + div:not([class*="st-key-"]) {
+    margin-top: 1.5rem;
 }
