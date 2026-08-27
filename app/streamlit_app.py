@@ -102,7 +102,7 @@ from src.targets import empty_targets
 # The Streamlit layer's own modules. Imported after the sys.path insert
 # above, which is what makes `app` importable as a package.
 from app.add_food import render_add_food_ui, food_search_index
-from app.ui_common import _narrow, _note
+from app.ui_common import _left_aligned, _narrow, _note
 from src.report import (
     generate_adequacy_report,
     generate_clinical_screen,
@@ -2096,10 +2096,11 @@ with recipes_tab:
                     # leaves the table narrow and unable to scroll.
                     width="stretch",
                     hide_index=True,
-                    column_config={
-                        "Ingredient": st.column_config.TextColumn(width=220),
-                        "Amount": st.column_config.TextColumn(width=100),
-                    },
+                    column_config=_left_aligned(
+                        _nutrition_display,
+                        Ingredient=st.column_config.TextColumn(width=220, alignment="left"),
+                        Amount=st.column_config.TextColumn(width=100, alignment="left"),
+                    ),
                 )
 
         # "Total ingredient weight" used to print here. Removed 2026-08-15:
@@ -2303,7 +2304,12 @@ with recipes_tab:
     # auto-fix a mixed-type numeric column on every render.
     for _col in ("kcal/mL", "protein g/mL", "Free-water fraction"):
         _density_df[_col] = _density_df[_col].astype(str)
-    st.dataframe(stripe_rows(_density_df), width="stretch", hide_index=True)
+    st.dataframe(
+        stripe_rows(_density_df),
+        width="stretch",
+        hide_index=True,
+        column_config=_left_aligned(_density_df),
+    )
 
     # Resolve the SELECTED blend's profile once -- reused by the density
     # detail expander, comparator, and dilution what-if below.
@@ -2333,9 +2339,10 @@ with recipes_tab:
             st.caption("Add ingredients and a measured volume to the blend above.")
         else:
             st.dataframe(
-                stripe_rows(generate_density_summary(selected_profile)),
+                stripe_rows(_density_panel := generate_density_summary(selected_profile)),
                 width="content",
                 hide_index=True,
+                column_config=_left_aligned(_density_panel),
             )
 
     st.divider()
@@ -2413,7 +2420,12 @@ with recipes_tab:
                     ]
                 )
                 dil_df["Change"] = dil_df["After dilution"] - dil_df["Original"]
-                st.dataframe(stripe_rows(dil_df), width="content", hide_index=True)
+                st.dataframe(
+                    stripe_rows(dil_df),
+                    width="content",
+                    hide_index=True,
+                    column_config=_left_aligned(dil_df),
+                )
 
                 tk = targets.get("energy_kcal", 0.0)
                 tp = targets.get("protein_g", 0.0)
@@ -2773,7 +2785,12 @@ with recipes_tab:
         # This one is a name and six short numbers, so stretching it to
         # the viewport spread those numbers across the whole screen and
         # made a small table look like the biggest thing on the page.
-        st.dataframe(stripe_rows(comparator_df), width="stretch", hide_index=True)
+        st.dataframe(
+            stripe_rows(comparator_df),
+            width="stretch",
+            hide_index=True,
+            column_config=_left_aligned(comparator_df),
+        )
         # The marker is meaningless without this sentence, so the caption
         # is not decoration here -- it is the legend. "at the top of this
         # tab" rather than "above" because the comparator sits a long way
@@ -3186,9 +3203,10 @@ with record_tab:
         st.subheader("Per-Source Breakdown")
         with st.container(key="fullbleed_source_breakdown"):
             st.dataframe(
-                stripe_rows(generate_source_breakdown(intake_totals)),
+                stripe_rows(_source_breakdown := generate_source_breakdown(intake_totals)),
                 width="stretch",
                 hide_index=True,
+                column_config=_left_aligned(_source_breakdown),
             )
 
         # --- Water ledger: every source on its own line (author, 2026-07-30) ---
@@ -3200,7 +3218,12 @@ with record_tab:
                 "added to a blend recipe. Water flushes are entered separately "
                 "and added to total fluids."
             )
-            st.dataframe(stripe_rows(_water_ledger), width="content", hide_index=True)
+            st.dataframe(
+                stripe_rows(_water_ledger),
+                width="content",
+                hide_index=True,
+                column_config=_left_aligned(_water_ledger),
+            )
 
         st.subheader("Daily Totals & Adequacy")
         st.caption("The total fluid from everything entered in the Daily Intake Record above.")
@@ -3257,10 +3280,11 @@ with record_tab:
                 # changes, bump these to match.
                 width="stretch",
                 hide_index=True,
-                column_config={
-                    "Nutrient": st.column_config.TextColumn(width=320),
-                    "Status": st.column_config.TextColumn(width=360),
-                },
+                column_config=_left_aligned(
+                    adequacy_display[_main_cols],
+                    Nutrient=st.column_config.TextColumn(width=320, alignment="left"),
+                    Status=st.column_config.TextColumn(width=360, alignment="left"),
+                ),
             )
         st.caption(
             "Free water includes moisture from CNF foods and manufacturer-declared "
@@ -3279,10 +3303,11 @@ with record_tab:
                 # these are sized to leave Coverage its share.
                 width="stretch",
                 hide_index=True,
-                column_config={
-                    "Nutrient": st.column_config.TextColumn(width=270),
-                    "Source": st.column_config.TextColumn(width=520),
-                },
+                column_config=_left_aligned(
+                    adequacy_display[["Nutrient", *_PROVENANCE_COLS]],
+                    Nutrient=st.column_config.TextColumn(width=270, alignment="left"),
+                    Source=st.column_config.TextColumn(width=520, alignment="left"),
+                ),
             )
         if hidden_main_names:
             st.caption("Not shown — no data from any ingredient: " + ", ".join(hidden_main_names))
@@ -3299,7 +3324,12 @@ with record_tab:
                 # colouring: none of these nutrients takes a target, so
                 # generate_clinical_screen() drops those columns rather
                 # than repeat an empty one 21 times (2026-08-21).
-                st.dataframe(stripe_rows(clinical_df), width="stretch", hide_index=True)
+                st.dataframe(
+                    stripe_rows(clinical_df),
+                    width="stretch",
+                    hide_index=True,
+                    column_config=_left_aligned(clinical_df),
+                )
             if hidden_clinical_names:
                 st.caption(
                     "Not shown — no data from any ingredient: " + ", ".join(hidden_clinical_names)

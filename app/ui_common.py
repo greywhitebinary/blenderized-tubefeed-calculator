@@ -28,3 +28,24 @@ def _narrow(left: int = 1, right: int = 2):
     on a phone the field goes back to full width by itself."""
     col, _spacer = st.columns([left, right])
     return col
+
+
+def _left_aligned(frame, **overrides):
+    """Column config that left-aligns every column of `frame`.
+
+    Streamlit aligns a column by its DTYPE -- numbers right, text left --
+    so alignment across this app's ten tables followed how each one
+    happened to be built rather than anything a reader could see. Five
+    read as all-left only because src/report.py formats their numbers as
+    text; the three that kept real numbers had a right-aligned column or
+    six sitting among left-aligned ones (author, 2026-08-27: "I don't
+    care what it is as long as it's consistent").
+
+    `overrides` carries the per-column settings a caller already had --
+    widths, mostly. Those come through unchanged, so a caller that sets a
+    width keeps it; it just has to set its own alignment too, since a
+    column named in overrides replaces the default entry entirely.
+    """
+    config = {column: st.column_config.Column(alignment="left") for column in frame.columns}
+    config.update(overrides)
+    return config
