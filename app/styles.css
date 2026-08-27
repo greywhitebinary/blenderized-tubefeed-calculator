@@ -77,10 +77,17 @@ button[data-baseweb="tab"][aria-selected="true"] p {
     gap: 0.26rem;
 }
 
-.record-title img {
-    width: 2em;
-    height: 0.95em;
-    flex: 0 0 auto;
+/* The .stApp prefix and !important are REQUIRED, same reason the heading
+   sizes above need them (author, 2026-08-27): Streamlit's own bundle
+   carries a bare `img{width:100%}` for images inside markdown, which ties
+   on specificity with a plain `.record-title img` and wins on order. The
+   tubing then rendered at the full width of the page, pushing the rest of
+   the title onto its own lines. */
+.stApp .record-title img,
+[data-testid="stAppViewContainer"] .record-title img {
+    width: 2em !important;
+    height: 0.95em !important;
+    flex: 0 0 auto !important;
 }
 
 @media (max-width: 640px) {
@@ -89,9 +96,10 @@ button[data-baseweb="tab"][aria-selected="true"] p {
         gap: 0.16rem;
     }
 
-    .record-title img {
-        width: 1.8em;
-        height: 0.9em;
+    .stApp .record-title img,
+    [data-testid="stAppViewContainer"] .record-title img {
+        width: 1.8em !important;
+        height: 0.9em !important;
     }
 }
 .stApp h2,
@@ -498,9 +506,17 @@ button[data-baseweb="tab"][aria-selected="true"] p {
    viewBox keeps the drawing's proportions, and a small negative
    vertical-align to sit it on the text baseline rather than above it. */
 [data-testid="stExpander"] summary img,
+[data-testid="stExpander"] img,
 details summary img {
+    /* Beats the same `img{width:100%}` the title has to beat. Without a
+       width the image filled the label, which is what pushed "feed" onto
+       a second line while the emoji-labelled expanders below stayed on
+       one (author, 2026-08-27). flex-basis too, in case the label is a
+       flex row: width alone does not stop a flex item growing. */
     height: 1.1em !important;
     width: auto !important;
     max-width: 2.5em !important;
+    flex: 0 0 auto !important;
+    display: inline-block !important;
     vertical-align: -0.15em !important;
 }
