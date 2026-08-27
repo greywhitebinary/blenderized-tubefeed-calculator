@@ -53,33 +53,80 @@ The test is arithmetic and takes a second: divide each column by its own
 volume. If the per-mL figures agree, it is one product and either column
 will do. If they diverge for many nutrients at once, stop.
 
-### OPEN — waiting on Abbott (raised 2026-08-21)
+### RESOLVED — Abbott answered (2026-08-27)
+
+**A note on the vitamin A split.** Two of the four new sheets (Jevity 1.2
+and Osmolite 1.2) print a beta-carotene row, 0.13 mg per 100 mL, and it
+reconciles exactly with their vitamin A total: 130 µg of carotene is
+216.7 IU, the sheet prints 240 IU, so 23.3 IU is retinol — 7 µg — and
+7 + (130 ÷ 2) = 72 µg RAE per 100 mL, which is the RAE those rows
+already carried. So all three columns are known for those two, not just
+the sum, and §2's "leave retinol and beta-carotene blank" does NOT apply:
+that rule is for a total nobody has split, and here the manufacturer
+split it.
+
+Jevity 1.5 and TwoCal HN name vitamin A palmitate in their ingredients
+and no carotene at all, so their whole IU figure is preformed and their
+retinol equals their RAE, with beta-carotene left blank.
+
+
 
 **Jevity 1.2 Cal (pp. 34-35), Jevity 1.5 Cal (pp. 36-37), Osmolite 1.2
-Cal (pp. 42-43) and TwoCal HN (pp. 50-51).** Energy, protein, fat and
-carbohydrate agree between the two columns; 20 to 24 vitamins and
-minerals do not. Checked against the Nestlé equivalents, neither column
-is uniformly implausible — the can matches better for the B vitamins,
-vitamin A and vitamin E, the bag for vitamin D, vitamin C and zinc —
-which is why this is a question for the manufacturer rather than a
-parsing bug to fix here.
+Cal (pp. 42-43) and TwoCal HN (pp. 50-51) of the 2024 guide.** Energy,
+protein, fat and carbohydrate agreed between the two columns; 20 to 24
+vitamins and minerals did not. This was sent to Abbott as a question of
+which SKU (can vs. ready-to-hang) each row should represent.
 
-One figure does stand out: the can column prints the SAME biotin
-(0.11 mg per 235 mL), niacin, pantothenic acid, folic acid and B6 for
-all three of Jevity 1.2, Jevity 1.5 and Osmolite 1.2, and that biotin is
-1.5 to 10x above the highest comparable Nestlé feed. It does not affect
-this pack: biotin is not tracked (§9).
+**Abbott's answer: neither SKU was the problem — the 2024 guide's
+small-volume column is not to be trusted for these four products.**
+Abbott supplied a per-product Product Information Sheet for each of the
+four, dated October 2025 (Jevity 1.2, Jevity 1.5, Osmolite 1.2) and
+September 2025 (TwoCal HN), now in this folder alongside the 2024 guide.
+Each prints THREE columns — per 100 mL, per 237 mL, and per 1500 mL
+(1000 mL for TwoCal HN) — that agree with each other to within normal
+manufacturer rounding, and that agree with the 2024 guide's LARGE-volume
+column. The 2024 guide's small-volume column for these four rows was
+simply wrong, not a second SKU's genuine analysis; there is no
+"can vs. bag" choice to make.
 
-**Interim state of the data:** those four rows are consistent on the
-CAN column throughout — the smaller-volume column their macros have used
-since 2026-07-19, so no macro moved. The vitamins added on 2026-08-20
-were re-derived from that same column on 2026-08-21.
+Verified example, Jevity 1.2 per 1000 mL (new sheet vs. the 2024 guide's
+small column): biotin 0.024 mg (guide said 0.468), vitamin A 2400 IU
+(said 4000), sodium 1067 mg (said 1349), potassium 2390 mg (said 1851),
+zinc 10.7 mg (said 23.0). The 1.5 to 10x cross-product biotin anomaly
+noted below turned out to be exactly that — a wrong column, not a
+plausible-but-unusual dose.
 
-**When Abbott answers**, the decision is which SKU each row should
-represent. If the ready-to-hang is chosen, both the vitamins AND the
-minerals that differ (sodium, potassium, iron, magnesium, zinc and the
-rest) must move together, and the row's `source` cell should name the
-SKU so this cannot be rediscovered a third time.
+**DECISION (author, 2026-08-27): the new per-product sheets supersede the
+2024 guide entirely for these four rows.** Since the 2024 guide's macros
+and the small-volume vitamins had both been read from the same untrustworthy
+column, ALL of macros, minerals and the 17 vitamin/mineral columns for
+these four feeds were wrong, not only the 20-24 that visibly disagreed —
+so all of them were re-derived from the new sheets, using the **per
+100 mL** column (unambiguous, needs only a divide by 100, and cross-checked
+against the sheet's other two columns per the rule above). Each row's
+`source` now cites its own Product Information Sheet by filename and date
+instead of a page of the 2024 guide, so the audit trail leads to the
+document the numbers actually came from.
+
+One figure worth recording for posterity: the 2024 guide's can column had
+printed the SAME biotin (0.11 mg per 235 mL), niacin, pantothenic acid,
+folic acid and B6 for all three of Jevity 1.2, Jevity 1.5 and Osmolite
+1.2 — a duplication across three different products that, in hindsight,
+was itself a hint the can column was not to be trusted. It never affected
+this pack (biotin is not tracked, §9), but the new per-product sheets
+give each of the three its own distinct figures, as expected of three
+different formulas.
+
+**What this means going forward:** a guide printing more than one volume
+column is not by itself a sign of two SKUs — it can also be a single
+product whose smaller-volume column was transcribed wrong at the source.
+Either way, the fix is the same: divide each column by its own volume and
+require them to agree, per the rule at the top of this section. That
+check is now mechanised in `tests/test_formula_source_consistency.py`,
+which recomputes per-mL figures from every column a source PDF prints and
+fails loudly when they disagree by more than manufacturer-rounding noise
+— the check that would have caught this the first time, generalized to
+any future multi-column feed rather than limited to these four.
 
 ## 2. Vitamin A → µg RAE
 

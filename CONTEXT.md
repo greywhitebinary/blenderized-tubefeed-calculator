@@ -2093,37 +2093,49 @@ is the one used in copy.
 
 Tests 266 → 284 across the day.
 
-### OPEN, waiting on Abbott (raised 2026-08-21)
+### RESOLVED — Abbott answered (2026-08-27)
 
-Verifying `formulas.csv` against the guides found that **the macros had
-never been checked** — only the vitamins added on 2026-08-20 had. The
-check itself came up clean, but it turned up something else.
+Raised 2026-08-21: for four Abbott feeds — **Jevity 1.2 Cal, Jevity 1.5
+Cal, Osmolite 1.2 Cal, TwoCal HN** — the 2024 guide printed two columns
+that were not one product at two serving sizes. They were two SKUs, a can
+and a ready-to-hang container, each with its own analysis, and 20 to 24
+vitamins and minerals disagreed between them. Which SKU each row should
+represent was a question sent to Abbott.
 
-For four Abbott feeds — **Jevity 1.2 Cal, Jevity 1.5 Cal, Osmolite 1.2
-Cal, TwoCal HN** — the guide prints two columns that are not one product
-at two serving sizes. They are two SKUs, a can and a ready-to-hang
-container, each with its own analysis. Energy, protein, fat and
-carbohydrate agree; 20 to 24 vitamins and minerals do not.
+**Abbott's answer wasn't "pick a SKU" — it was that the guide's small
+column was simply wrong.** They supplied four per-product Product
+Information Sheets (dated October 2025 for Jevity 1.2/1.5 and Osmolite
+1.2, September 2025 for TwoCal HN), each printing three columns (100 mL,
+237 mL, and 1500 mL or 1000 mL) that agree with each other and match the
+2024 guide's LARGE-volume column. The can-sized column the guide had
+printed for these four products was not a second SKU's real analysis at
+all.
 
-This mattered because the vitamins had been taken from the LARGEST
-column (more significant figures) while the macros, from 2026-07-19, came
-from the smaller one. Those four rows therefore described two products at
-once. They are now consistent on the can column, which is the one the
-macros already used, so no macro moved.
+That means every value these four rows carried was wrong, not just the
+20-24 that disagreed between columns — the macros had been reading the
+same bad small-volume column since 2026-07-19, and the check that
+compared the two 2024-guide columns to each other had nothing to compare
+them against for correctness, only for mutual agreement. Verified
+example, Jevity 1.2 per 1000 mL: biotin 0.024 mg (the guide's small
+column had said 0.468), vitamin A 2400 IU (said 4000), sodium 1067 mg
+(said 1349), potassium 2390 mg (said 1851), zinc 10.7 mg (said 23.0). All
+four rows — macros, minerals and the 17 vitamin/mineral columns alike —
+were re-derived from the new sheets' **per 100 mL** column and now cite
+their own product sheet in `source` instead of a page of the 2024 guide.
 
-Which SKU each row SHOULD represent is a question for Abbott, not a bug
-to fix here. Checked against the Nestlé equivalents, neither column is
-uniformly implausible: the can matches better for the B vitamins,
-vitamin A and vitamin E, the bag for vitamin D, vitamin C and zinc. An
-enquiry has been sent. The guide is the November 2024 edition and, as of
-today, still the current one on Abbott's Canadian site.
+The check that should have caught this the first time is now mechanised:
+`tests/test_formula_source_consistency.py` recomputes each nutrient's
+per-mL figure from every column a source PDF prints and fails if they
+disagree by more than rounding noise — the exact test that would have
+flagged the 2024 guide's two-SKU mismatch, extended to guard against it
+recurring for any feed with a multi-column source.
 
-Full detail, including what must move together if the ready-to-hang is
-chosen, is in `data/packs/canada/formula_sources/UNIT_CONVERSIONS.md`
-under "OPEN — waiting on Abbott".
+Full detail is in `data/packs/canada/formula_sources/UNIT_CONVERSIONS.md`
+section 1, now closed out under that same heading.
 
-Also open, and unrelated: the author still intends to spot-check the 544
-transcribed vitamin values against the guides.
+Still open, and unrelated: the author still intends to spot-check the
+remaining transcribed vitamin values (the other 29 feeds) against the
+guides.
 
 
 ---
