@@ -48,6 +48,8 @@ Design commitments (from CONTEXT.md section 1):
 """
 
 import copy
+from base64 import b64encode
+from html import escape
 import sys
 from datetime import time as dtime
 from pathlib import Path
@@ -1167,7 +1169,16 @@ with top_l:
         st.session_state["recipe_name_input"] = "My BTF record"
     recipe_name = _narrow(1, 1).text_input("Patient / record label", key="recipe_name_input")
 
-st.title(f"🥕🥦🥤 {recipe_name or 'BTF record'} 💉💧🍌")
+_tubing_icon = b64encode(
+    (PROJECT_ROOT / "assets" / "enteral-enfit-tubing.svg").read_bytes()
+).decode("ascii")
+_record_title = escape(recipe_name or "BTF record")
+st.markdown(
+    f'<h1 class="record-title"><span>🥕🥦🥤</span><span>{_record_title}</span><img '
+    f'src="data:image/svg+xml;base64,{_tubing_icon}" alt="Enteral tubing with purple ENFit connectors">'
+    "<span>💧🍌</span></h1>",
+    unsafe_allow_html=True,
+)
 # Orientation only (author, 2026-08-19). The disclaimer that used to open
 # this line is gone from the top: the footer already carries it in full --
 # under development, informs judgment rather than replacing it, check the
@@ -2912,7 +2923,14 @@ with record_tab:
         )
 
     # --- Add tube feed ---
-    with st.expander("➕ 💉 Add tube feed"):
+    # The tubing drawing rather than 💉 (author, 2026-08-27), the same
+    # asset and the same base64 data URI the page title uses. A syringe
+    # is one way to give a tube feed; the ENFit tubing is the thing
+    # itself. Streamlit renders an image in a label at the font's own
+    # height, so it sits inline like the emoji it replaces.
+    with st.expander(
+        f"➕ ![Enteral tubing](data:image/svg+xml;base64,{_tubing_icon}) Add tube feed"
+    ):
         tf1, tf2, tf3 = st.columns([1, 2, 1])
         tf_time = tf1.time_input("Time (optional)", value=None, key="tf_time_input")
         _source_options, _source_map = _intake_source_options()

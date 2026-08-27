@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-5 0 101 54" role="img" aria-labelledby="title">
+  <title id="title">Enteral tubing with purple ENFit connectors</title>
+  <defs>
+    <linearGradient id="connector" x1="64" y1="29" x2="87" y2="44" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C39AE0"/>
+      <stop offset=".48" stop-color="#9162BC"/>
+      <stop offset="1" stop-color="#70438F"/>
+    </linearGradient>
+  </defs>
+  <path d="M33 15C39 5 49 6 53 16c6 13-13 20-28 13C16 25 14 34 22 40c11 8 31 8 41-3" fill="none" stroke="#A1ABB0" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <g id="enfit-end">
+    <path d="M63 34h8v6h-8a3 3 0 0 1 0-6Z" fill="url(#connector)" stroke="#754793" stroke-width="1.05"/>
+    <path d="M71 32h10l4 3v4l-4 3H71Z" fill="url(#connector)" stroke="#754793" stroke-width="1.05"/>
+    <path d="M85 34h6v6h-6Z" fill="url(#connector)" stroke="#754793" stroke-width="1.05"/>
+    <path d="M78 33.5v7" fill="none" stroke="#D8C0EA" stroke-width=".9" stroke-linecap="round" opacity=".8"/>
+  </g>
+  <use href="#enfit-end" transform="translate(96 52) scale(-1 -1)"/>
+</svg>

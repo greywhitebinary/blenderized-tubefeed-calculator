@@ -70,6 +70,30 @@ button[data-baseweb="tab"][aria-selected="true"] p {
 .stApp h1,
 [data-testid="stAppViewContainer"] h1,
 [data-testid="stHeadingWithActionElements"] h1 { font-size: 1.5rem !important; }
+
+.record-title {
+    display: flex;
+    align-items: center;
+    gap: 0.26rem;
+}
+
+.record-title img {
+    width: 2em;
+    height: 0.95em;
+    flex: 0 0 auto;
+}
+
+@media (max-width: 640px) {
+    .stApp h1.record-title {
+        font-size: 1.3rem !important;
+        gap: 0.16rem;
+    }
+
+    .record-title img {
+        width: 1.8em;
+        height: 0.9em;
+    }
+}
 .stApp h2,
 [data-testid="stAppViewContainer"] h2,
 [data-testid="stHeadingWithActionElements"] h2 { font-size: 1.15rem !important; }
@@ -461,4 +485,22 @@ button[data-baseweb="tab"][aria-selected="true"] p {
 [class*="st-key-zebrarow"] + div:not([class*="st-key-"]),
 [class*="st-key-plainrow"] + div:not([class*="st-key-"]) {
     margin-top: 1.5rem;
+}
+
+/* An image used as an icon inside an expander label (the ENFit tubing on
+   "Add tube feed"). The SVG declares a viewBox and no width or height,
+   so a browser gives it the default ~300px and Streamlit's own rule caps
+   only the height -- the label then wrapped "feed" onto a second line
+   while its emoji-labelled neighbours stayed on one (author spotted it,
+   2026-08-27).
+
+   height in em so it tracks the label's own type size, width auto so the
+   viewBox keeps the drawing's proportions, and a small negative
+   vertical-align to sit it on the text baseline rather than above it. */
+[data-testid="stExpander"] summary img,
+details summary img {
+    height: 1.1em !important;
+    width: auto !important;
+    max-width: 2.5em !important;
+    vertical-align: -0.15em !important;
 }
