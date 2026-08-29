@@ -2,7 +2,8 @@
 
 The Canadian-labelled product sheets for the Medtrition products available
 in Canada. **These are the authority for any Medtrition row in
-`../../formulas.csv`.** The US guides in `../usa/` are not, and must never
+`../../formulas.csv`.** The US guides in `../../../usa/formula_sources/`
+are not, and must never
 be cited in a `source` column.
 
 Medtrition, Inc. is represented in Canada by CMI Canada, whose Canadian

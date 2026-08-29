@@ -1,15 +1,25 @@
 # US product sheets — reference only, NOT a source for any row
 
-Everything in this folder is a **United States** product document. This is
-the Canadian pack. Nothing here may be cited in the `source` column of
-`../../formulas.csv`, and no number here may be copied into a row that
-describes a Canadian product.
+Everything in this folder is a **United States** product document.
+
+**`data/packs/usa/` is NOT a usable data pack.** It holds archived source
+documents and nothing else: no `nutrients.csv`, no `formulas.csv`, no
+`modulars.csv`. Asking the app to load `usa` as a pack raises rather than
+silently falling back to Canadian values, which is the behaviour
+`src/calculator.py::_load_commercial_formulas()` exists to guarantee. The
+directory is here so that country-specific material sits under the
+country, and so a future US pack would find its sources already in place.
+
+Nothing here may be cited in the `source` column of any pack's
+`formulas.csv` or `modulars.csv`, and no number here may be copied into a
+row that describes a Canadian product.
 
 ## Why the folder exists at all
 
 Medtrition is a US company represented in Canada by CMI Canada, and the
 Canadian range is both smaller and differently named. The Canadian sheets
-live in `../medtrition/` and are the authority for anything that ships.
+live in `../../canada/formula_sources/medtrition/` and are the authority
+for anything that ships.
 These US guides are kept for two narrower purposes.
 
 The first is corroboration. When a Canadian panel and its US counterpart

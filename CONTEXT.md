@@ -185,11 +185,15 @@ blenderized-tubefeed-calculator/
 ├── data/
 │   ├── processed/                   # generated parquet (gitignored)
 │   └── packs/
-│       └── canada/                  # the only pack implemented today
-│           ├── nutrients.csv        # the nutrient registry (what to track, why, and target_type)
-│           ├── formulas.csv         # commercial COMPLETE FEED profiles, per mL (CSV)
-│           ├── modulars.csv         # modulars & medical foods, per UNIT + a basis column (CSV)
-│           └── thinning_liquids.csv # thinning liquid presets (CSV)
+│       ├── canada/                  # the only pack the app can compute against
+│       │   ├── nutrients.csv        # the nutrient registry (what to track, why, and target_type)
+│       │   ├── formulas.csv         # commercial COMPLETE FEED profiles, per mL (CSV)
+│       │   ├── modulars.csv         # modulars & medical foods, per UNIT + a basis column (CSV)
+│       │   ├── thinning_liquids.csv # thinning liquid presets (CSV)
+│       │   └── formula_sources/     # the manufacturer guides the CSVs were read from
+│       └── usa/                     # NOT a usable pack: archived US source documents
+│           └── formula_sources/     # only, no CSVs. Loading `usa` raises rather than
+│                                    # falling back to Canadian numbers.
 ├── src/                              # NEVER imports streamlit — that is what
 │   │                                 # makes everything here unit-testable
 │   ├── __init__.py
@@ -2210,7 +2214,7 @@ US; CMI Canada represents it here, and the Canadian range is three
 products under different names (BanatrAll ≈ Banatrol Plus, HiFibre ≈
 HyFiber, ProSource NoCarb). Canadian sheets are in
 `formula_sources/medtrition/` and are authoritative. US guides are in
-`formula_sources/usa/` and **may not be cited**, because the two
+`data/packs/usa/formula_sources/` and **may not be cited**, because the two
 disagree: ProSource NoCarb reads **40 mg sodium per 30 mL** on the
 Canadian panel and **15 mg** on the US one. HiFibre reads 30 Cal against
 HyFiber's 20, which is more likely the two countries' different energy
