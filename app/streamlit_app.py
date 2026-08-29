@@ -1191,8 +1191,8 @@ st.markdown(
 # why it is set smaller than a normal caption (st-key-pagenote in
 # app/styles.css).
 #
-# It opens with a quiet byline, in the SAME paragraph rather than a line of
-# its own (author, 2026-08-19). The app is shared as
+# The calculator name and quiet byline remain in the SAME paragraph rather
+# than taking a line each (author, 2026-08-19). The app is shared as
 # btfcalc.feedformflow.com, but that domain FORWARDS to
 # btfcalc.streamlit.app, so the address bar loses the branding the reader
 # arrived through, and "Feed. Form. Flow." then reaches the footer as a name
@@ -1209,7 +1209,7 @@ st.markdown(
 # link. The words carry it; git carries the SVG if it is ever wanted back.
 with st.container(key="pagenote"):
     st.caption(
-        "A [Feed. Form. Flow.]"
+        "Blenderized Tube Feeding Calculator: a [Feed. Form. Flow.]"
         "(https://feedformflow.substack.com/p/feed-form-flow) project. "
         "First time here? Watch the 3-minute demo or load the example record. "
         "Work left to right: set optional targets, build or select a blend, "

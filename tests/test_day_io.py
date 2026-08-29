@@ -18,6 +18,7 @@ complete.
 from datetime import time as dtime
 from io import BytesIO
 
+import pandas as pd
 import pytest
 from openpyxl import load_workbook
 
@@ -147,7 +148,12 @@ class TestRoundTrip:
     def test_record_sheet_identifies_where_and_how_to_reopen_it(
         self, blends, intake_log, custom_foods
     ):
-        data = _save(blends, intake_log, custom_foods)
+        data = _save(
+            blends,
+            intake_log,
+            custom_foods,
+            extra_sheets={"Chart Note": pd.DataFrame({"Chart note": ["Example"]})},
+        )
         workbook = load_workbook(BytesIO(data), data_only=False)
         record = workbook[RECORD_SHEET]
         fields = {
@@ -160,6 +166,12 @@ class TestRoundTrip:
         assert fields["Open this record"] == BTF_REOPEN_INSTRUCTIONS
         assert record["B3"].hyperlink.target == BTF_CALCULATOR_URL
         assert record.freeze_panes == "A2"
+        for worksheet in workbook.worksheets:
+            for cell in worksheet[1]:
+                if cell.value is not None:
+                    assert cell.fill.fgColor.rgb == "00A4243A"
+                    assert cell.font.bold is True
+                    assert cell.font.color.rgb == "00FFFFFF"
         assert workbook_bytes_to_day(data).label == "James W"
 
     def test_every_source_type_survives(self, blends, intake_log, custom_foods):

@@ -364,15 +364,17 @@ def day_to_workbook_bytes(
                 continue
             frame.to_excel(writer, sheet_name=safe, index=False)
 
+        header_fill = PatternFill(fill_type="solid", fgColor="A4243A")
+        for worksheet in writer.book.worksheets:
+            for cell in worksheet[1]:
+                cell.fill = header_fill
+                cell.font = Font(bold=True, color="FFFFFF")
+
         record_sheet = writer.sheets[RECORD_SHEET]
         record_sheet.sheet_view.showGridLines = False
         record_sheet.freeze_panes = "A2"
         record_sheet.column_dimensions["A"].width = 24
         record_sheet.column_dimensions["B"].width = 82
-        header_fill = PatternFill(fill_type="solid", fgColor="A4243A")
-        for cell in record_sheet[1]:
-            cell.fill = header_fill
-            cell.font = Font(bold=True, color="FFFFFF")
         for row in range(2, record_sheet.max_row + 1):
             record_sheet.cell(row=row, column=1).font = Font(bold=True)
             record_sheet.cell(row=row, column=2).alignment = Alignment(
