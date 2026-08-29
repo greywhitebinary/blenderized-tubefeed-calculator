@@ -300,6 +300,41 @@ enters patient-specific targets in the app, or leaves them blank.
    app ignores them; they're for the next human.
 3. Save and rerun. The formula appears in the comparator.
 
+`formulas.csv` is for **complete feeds**. An additive goes in
+`modulars.csv` instead — see the next section. Sip feeds (Ensure, Boost)
+do belong here: they are complete nutrition, and people do put them down
+a tube.
+
+### To add a modular
+
+A modular is an additive rather than a feed: a protein or fibre powder, a
+liquid protein, a medical food. They live in their own table because
+their rows are per UNIT, and a unit is a millilitre for a liquid and a
+**gram** for a powder.
+
+1. Open `data/packs/canada/modulars.csv`.
+2. Add a line at the bottom. **`basis` is mandatory** and must be `mL` or
+   `g`. There is no default: the app refuses to load a row without one,
+   because millilitres and grams scale a dose differently and guessing
+   between them would silently produce a wrong number rather than an
+   error.
+3. Every nutrient column is per one of that unit. A 7 g scoop with 6 g of
+   protein is `protein_per_unit` = 6 ÷ 7 = 0.857.
+4. `free_water_per_unit` stays blank for a powder. A dry powder has no
+   water content, and the water it is stirred into is the dietitian's own
+   flush, not a property of the product.
+5. `directions` is the manufacturer's own wording, quoted where the sheet
+   gives one. It is shown to the user and never parsed. Do **not** invent
+   a dilution: the sheets disagree with each other (60 mL a scoop in
+   hospital practice for BeneProtein, 120 mL a packet on Banatrol's
+   sheet, 30 mL on ProSource's), which is exactly why the app carries no
+   default.
+6. Save and rerun. The modular appears in the Intake Record's "Add
+   modulars" section. It deliberately does **not** appear in the Results
+   comparator, which reads the formulary only — comparing a protein
+   modular against a blend produces a column that is arithmetically
+   correct and clinically meaningless.
+
 ### To add a thinning liquid
 
 1. Open `data/packs/canada/thinning_liquids.csv`.

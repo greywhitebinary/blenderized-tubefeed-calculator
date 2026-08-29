@@ -187,7 +187,8 @@ blenderized-tubefeed-calculator/
 │   └── packs/
 │       └── canada/                  # the only pack implemented today
 │           ├── nutrients.csv        # the nutrient registry (what to track, why, and target_type)
-│           ├── formulas.csv         # commercial formula profiles (CSV)
+│           ├── formulas.csv         # commercial COMPLETE FEED profiles, per mL (CSV)
+│           ├── modulars.csv         # modulars & medical foods, per UNIT + a basis column (CSV)
 │           └── thinning_liquids.csv # thinning liquid presets (CSV)
 ├── src/                              # NEVER imports streamlit — that is what
 │   │                                 # makes everything here unit-testable
@@ -1604,6 +1605,9 @@ this entry:**
   supplements (Boost, Ensure, Pedialyte, PediaSure) explicitly excluded
   per the author's scope call — ask before adding those. Every row
   cites its source PDF filename + page number and `verified: 2026-07-19`.
+  **The oral-supplement half of that exclusion was OVERTURNED
+  2026-08-28 — see "Sip feeds, modulars and medical foods" below. The
+  pediatric exclusion stands.**
 - **Commercial formula data — schema expansion:** added `brand`
   (drives a new company radio filter + brand-prefixed labels in the
   Results tab comparator's multiselect and the Intake tab's tube-feed
@@ -2137,6 +2141,89 @@ Still open, and unrelated: the author still intends to spot-check the
 remaining transcribed vitamin values (the other 29 feeds) against the
 guides.
 
+
+### Sip feeds, modulars and medical foods (2026-08-28/29)
+
+**The exclusion was wrong, and the reason it was wrong is the useful
+part.** The catalog excluded Ensure and Boost because their labels say
+"for oral feeding". The author, an RD, pointed out that people put orals
+down the tube routinely. A manufacturer's intended-use line describes
+what the product is sold as, not what community practice does with it,
+and the scope note had encoded the first as though it were the second.
+
+The distinction that actually matters is **duration**, and it is not a
+property of the product at all. A sip feed is a poor choice as the
+permanent sole source for someone on long-term tube feeding, and a good
+one for someone with a PEG placed to get through a course of radiation,
+where the horizon is weeks and Ensure is cheaper. That judgment belongs
+to the RD reading the results, which is why the catalog does not try to
+encode it and why the products carry no on-screen marker.
+
+**Formulary 33 → 51.** Nine adult Ensure and nine adult Boost products,
+each cross-checked column-against-column by
+`test_formula_source_consistency.py`, which gained `SOURCE_TABLES`
+entries for every new row.
+
+**Three Abbott panels do not reconcile with themselves**, all from the
+2024 guide, the same document already corrected in August: Ensure
+Protein Max 30 g (folic acid ~66% out, cholesterol, vitamin A), Ensure
+Plus Calories (vitamin A) and Ensure Clear (vitamin A, calcium). Those
+cells are **blank, not guessed**, pending Abbott's answer. An email is
+drafted. This is the second time the 2024 guide has produced this class
+of error, so the ask includes per-product Product Information Sheets for
+the Ensure line.
+
+**MCT Oil is 7.7 Cal/mL, not 8.0.** Its guide prints both: 7.7 in the
+technical data, and 80 Cal per 10 mL on the Nutrition Facts panel.
+Canadian labelling rounds calories to the nearest 10, so on a 10 mL
+serving the panel figure carries one significant figure, while 7.7
+reconciles with MCT at ~8.3 kcal/g and ~0.93 g/mL. §1's
+"more significant figures wins" applied to a tiny serving.
+
+**`data/packs/canada/modulars.csv` — a separate table, and why.** Eight
+modulars and medical foods. It is NOT a flag on `formulas.csv`, because
+its rows are per UNIT and a unit is a millilitre for a liquid and a
+**gram** for a powder. Naming those columns `_per_mL` would state a unit
+wrong for half the table — the same class of silent unit error that put
+four wrong Abbott feeds into `formulas.csv` in August. The loader
+**refuses** a row whose `basis` is missing or unrecognised; there is no
+safe default between millilitres and grams. MCT Oil moved here out of
+the formulary, which is now 51 complete feeds only.
+
+Modulars are deliberately absent from the Results comparator, which
+reads the formulary (author's call): comparing a protein modular against
+a blend produces a column that is arithmetically correct and clinically
+meaningless.
+
+**Intake gained a `modular` row type.** A liquid modular is fluid given;
+a powder is not, so the water it is stirred into stays the flush it
+actually was rather than being inferred. The manufacturers do not agree
+on a dilution — 60 mL a scoop in hospital practice, 120 mL a packet on
+Banatrol's sheet, 30 mL on ProSource's — which is precisely why the app
+shows the sheet's own wording and never applies a default. Rows also
+record **how they were given**, because one list holds both BeneProtein
+down a tube and Boost Pudding eaten; day files written before that
+column load as `tube`, which is what they already counted as.
+
+**Medtrition, and why the sources are split by country.** Medtrition is
+US; CMI Canada represents it here, and the Canadian range is three
+products under different names (BanatrAll ≈ Banatrol Plus, HiFibre ≈
+HyFiber, ProSource NoCarb). Canadian sheets are in
+`formula_sources/medtrition/` and are authoritative. US guides are in
+`formula_sources/usa/` and **may not be cited**, because the two
+disagree: ProSource NoCarb reads **40 mg sodium per 30 mL** on the
+Canadian panel and **15 mg** on the US one. HiFibre reads 30 Cal against
+HyFiber's 20, which is more likely the two countries' different energy
+accounting for fibre than a different liquid. Each folder has a README
+stating the rule.
+
+**Recording modulars in a blend is deliberately NOT built.** The author
+records a scoop of BeneProtein the same way she records a tetrapak of
+Resource 2.0, as daily intake rather than as a recipe ingredient. The
+day's totals are identical either way. The one thing this costs is that
+a modular physically added in the blender will not appear on the recipe
+card handed to the family; if that ever matters, the fix is to mention
+it on the card, not to rebuild the recipe.
 
 ---
 ## 10. Quick-start guide (how to run the app)

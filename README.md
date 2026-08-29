@@ -27,11 +27,19 @@ commercial formula, water flushes and one oral food.
   protein g/mL and free-water fraction. Volume is measured, never
   computed, because blending, air and rinse water make it impossible to
   calculate from ingredient weights.
-- **Records a whole day.** Blends, commercial formulas, water flushes and
-  food by mouth in one chronological list. Daily totals are a direct sum
-  of what was actually given.
-- **Compares against commercial formulas.** 33 adult Canadian tube-feeding
-  formulas, filterable by manufacturer, at a daily volume you choose.
+- **Records a whole day.** Blends, commercial formulas, modulars, water
+  flushes and food by mouth in one chronological list. Daily totals are a
+  direct sum of what was actually given.
+- **Counts modulars honestly.** Protein and fibre additives and medical
+  foods are measured in their own unit, grams for a powder and millilitres
+  for a liquid. A powder adds no fluid on its own, so the water it is
+  mixed into is recorded as the flush it actually was rather than
+  guessed at from a dilution the manufacturers do not agree on.
+- **Compares against commercial formulas.** 51 adult Canadian tube-feeding
+  formulas, filterable by manufacturer, at a daily volume you choose. Sip
+  feeds are included, because people do put them down a tube; whether one
+  suits a given patient depends on how long they will be tube fed, which
+  is your call and not the table's.
 - **Searches 5,993 CNF foods** by all your words in any order, with typo
   tolerance. It never chooses a food for you.
 - **Reads a nutrition label from a photo** into a form you check against
