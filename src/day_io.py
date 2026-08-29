@@ -60,6 +60,7 @@ from io import BytesIO
 from typing import Any
 
 import pandas as pd
+from openpyxl.styles import Alignment, Font, PatternFill
 
 # Excel cell reading is shared with recipe_io on purpose. Both files have
 # already been bitten by the same two traps -- a blank cell arriving as
@@ -77,6 +78,11 @@ from src.recipe_io import _coerce_bool, _coerce_date, _coerce_float, _coerce_str
 #     load: the reader takes sheets and columns by name and ignores anything
 #     it doesn't recognise.
 DAY_FORMAT_VERSION = 3
+BTF_CALCULATOR_NAME = "BTF Calculator"
+BTF_CALCULATOR_URL = "https://btfcalc.feedformflow.com"
+BTF_REOPEN_INSTRUCTIONS = (
+    "Go to the calculator, select ‘Open a saved record’, and choose this workbook."
+)
 
 RECORD_SHEET = "Record"
 # What RECORD_SHEET was called before format version 3 (2026-08-16). Kept
@@ -208,6 +214,9 @@ def day_to_workbook_bytes(
     """
     day_df = pd.DataFrame(
         [
+            {"Field": "Calculator", "Value": BTF_CALCULATOR_NAME},
+            {"Field": "Calculator website", "Value": BTF_CALCULATOR_URL},
+            {"Field": "Open this record", "Value": BTF_REOPEN_INSTRUCTIONS},
             {"Field": "Record label", "Value": label or ""},
             {"Field": "Patient weight", "Value": float(patient_weight or 0.0)},
             {"Field": "Weight unit", "Value": weight_unit or "kg"},
@@ -354,6 +363,25 @@ def day_to_workbook_bytes(
             if not safe or safe in _INPUT_SHEETS:
                 continue
             frame.to_excel(writer, sheet_name=safe, index=False)
+
+        record_sheet = writer.sheets[RECORD_SHEET]
+        record_sheet.sheet_view.showGridLines = False
+        record_sheet.freeze_panes = "A2"
+        record_sheet.column_dimensions["A"].width = 24
+        record_sheet.column_dimensions["B"].width = 82
+        header_fill = PatternFill(fill_type="solid", fgColor="A4243A")
+        for cell in record_sheet[1]:
+            cell.fill = header_fill
+            cell.font = Font(bold=True, color="FFFFFF")
+        for row in range(2, record_sheet.max_row + 1):
+            record_sheet.cell(row=row, column=1).font = Font(bold=True)
+            record_sheet.cell(row=row, column=2).alignment = Alignment(
+                vertical="top", wrap_text=True
+            )
+        website_cell = record_sheet["B3"]
+        website_cell.hyperlink = BTF_CALCULATOR_URL
+        website_cell.style = "Hyperlink"
+        record_sheet.row_dimensions[4].height = 36
     return buffer.getvalue()
 
 

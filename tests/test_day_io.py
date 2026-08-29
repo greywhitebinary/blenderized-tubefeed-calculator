@@ -16,10 +16,15 @@ complete.
 """
 
 from datetime import time as dtime
+from io import BytesIO
 
 import pytest
+from openpyxl import load_workbook
 
 from src.day_io import (
+    BTF_CALCULATOR_NAME,
+    BTF_CALCULATOR_URL,
+    BTF_REOPEN_INSTRUCTIONS,
     DAY_FORMAT_VERSION,
     INTAKE_SHEET,
     LEGACY_RECORD_SHEET,
@@ -138,6 +143,24 @@ class TestRoundTrip:
         assert len(day.blends) == 1
         assert len(day.intake_log) == 4
         assert day.warnings == []
+
+    def test_record_sheet_identifies_where_and_how_to_reopen_it(
+        self, blends, intake_log, custom_foods
+    ):
+        data = _save(blends, intake_log, custom_foods)
+        workbook = load_workbook(BytesIO(data), data_only=False)
+        record = workbook[RECORD_SHEET]
+        fields = {
+            record.cell(row=row, column=1).value: record.cell(row=row, column=2).value
+            for row in range(2, record.max_row + 1)
+        }
+
+        assert fields["Calculator"] == BTF_CALCULATOR_NAME
+        assert fields["Calculator website"] == BTF_CALCULATOR_URL
+        assert fields["Open this record"] == BTF_REOPEN_INSTRUCTIONS
+        assert record["B3"].hyperlink.target == BTF_CALCULATOR_URL
+        assert record.freeze_panes == "A2"
+        assert workbook_bytes_to_day(data).label == "James W"
 
     def test_every_source_type_survives(self, blends, intake_log, custom_foods):
         """A day is not just blends. Lose the flushes and the fluid total
