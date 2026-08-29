@@ -812,7 +812,7 @@ def _formula_daily(
     The "—" is the same never-fabricate-a-0 contract used everywhere a
     formula's label is silent (Part 2.6, and _FORMULA_COLUMN_TO_NUTRIENT
     in src/intake.py): a blank column means the manufacturer did not
-    disclose it, which is not the same claim as "contains none". All 33
+    disclose it, which is not the same claim as "contains none". All 51
     Canadian formulas currently disclose carbohydrate, fat and free water,
     so this reads as dead code today; it exists because a pack added later
     may not, and a silently fabricated 0 in a macro column is exactly the

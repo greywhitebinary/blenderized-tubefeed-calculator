@@ -70,6 +70,7 @@ from src.calculator import (
     dilute,
     required_daily_volume,
     COMMERCIAL_FORMULAS,
+    MODULARS,
 )
 from src.measures import (
     load_measure_lookup,
@@ -80,6 +81,8 @@ from src.measures import (
 from src.food_search import find_food
 from src.day_io import (
     DayFileError,
+    ROUTE_ORAL,
+    ROUTE_TUBE,
     day_to_workbook_bytes,
     suggested_day_filename,
     workbook_bytes_to_day,
@@ -1257,6 +1260,25 @@ def _intake_source_options() -> tuple[list[str], dict[str, tuple[str, object]]]:
     return options, lookup_map
 
 
+def _intake_modular_options() -> tuple[list[str], dict[str, str]]:
+    """Options for the Add modulars picker.
+
+    Returns (display_options, {display_option: modular_name}). Simpler
+    than _intake_source_options() because a modular is always one kind of
+    thing -- there are no blends to interleave -- but it keeps the same
+    "name first, brand after" rule, for the same reason: a clipped
+    dropdown should keep the product name.
+    """
+    options: list[str] = []
+    lookup: dict[str, str] = {}
+    for name, m in sorted(MODULARS.items(), key=lambda kv: (kv[1].get("brand") or "Other", kv[0])):
+        brand = m.get("brand")
+        label = f"{name}{' – ' + brand if brand else ''}"
+        options.append(label)
+        lookup[label] = name
+    return options, lookup
+
+
 def _queue_intake_toast(what: str) -> None:
     """Confirm an Intake Record add, on the NEXT run.
 
@@ -1305,6 +1327,11 @@ def _intake_source_name(row: dict) -> str:
         blend = st.session_state.blends.get(row["source_id"])
         return blend["name"] if blend else "(deleted blend)"
     elif source_type == "formula":
+        return row["source_id"]
+    elif source_type == "modular":
+        # Named, like a formula. Without this branch a modular row fell
+        # through to the food_description default and displayed as
+        # "(unknown food)" -- it has no food_description to fall back on.
         return row["source_id"]
     elif source_type == "flush":
         return row.get("food_description") or _FLUSH_LABEL
@@ -2975,6 +3002,82 @@ with record_tab:
                 st.rerun()
             else:
                 st.warning("Enter a volume greater than 0 mL.")
+
+    # --- Add modulars: protein/fibre/calorie additives given down the
+    # tube on their own (author's call, 2026-08-29). Sits between the
+    # tube feed and the flushes because that is the order it happens in:
+    # the modular is given, then flushed. Its own expander rather than
+    # three more entries in the tube-feed Source dropdown because the
+    # AMOUNT UNIT DIFFERS PER PRODUCT -- millilitres for a liquid
+    # (HiFibre, ProSource NoCarb), grams for a powder (BeneProtein,
+    # BanatrAll). A single number field that silently changes what it
+    # counts is how someone types 30 meaning millilitres into a field
+    # that has become grams.
+    with st.expander("➕ 🫙 Add modulars"):
+        _mod_options, _mod_map = _intake_modular_options()
+        if not _mod_options:
+            st.caption("No modulars in this data pack.")
+        else:
+            md1, md2, md3 = st.columns([1, 2, 1])
+            md_time = md1.time_input("Time (optional)", value=None, key="md_time_input")
+            md_label = md2.selectbox("Modular", _mod_options, key="md_source_select")
+            md_name = _mod_map[md_label]
+            md_basis = MODULARS[md_name]["basis"]
+            md_amount = md3.number_input(
+                f"Amount ({md_basis})",
+                min_value=0.0,
+                value=0.0,
+                step=1.0 if md_basis == "g" else 5.0,
+                format="%g",
+                key="md_amount_input",
+            )
+            # The manufacturer's own wording, where the sheet gives it.
+            # Shown rather than applied: the sheets disagree (60 mL a
+            # scoop in hospital practice, 120 mL a packet on Banatrol's,
+            # 30 mL on ProSource's), so the water actually used is
+            # entered as a flush by the person who gave it.
+            # One list holds both things tubed and things eaten, so the
+            # row says which. Defaulting to the tube keeps the common
+            # case one click shorter, and the wrong answer here moves a
+            # number between the Tube Feed and Food & Drink totals rather
+            # than changing what was given.
+            md_route_label = st.radio(
+                "How was it given?",
+                ["Down the tube", "By mouth"],
+                horizontal=True,
+                key="md_route_radio",
+            )
+            md_route = ROUTE_TUBE if md_route_label == "Down the tube" else ROUTE_ORAL
+            _directions = MODULARS[md_name].get("directions")
+            if _directions:
+                _note(_directions)
+            if md_basis == "g":
+                _note(
+                    "A powder adds no fluid on its own. Record the water it was "
+                    "mixed with as a flush."
+                )
+            if st.button("Add to record below", key="md_add_btn"):
+                if md_amount > 0:
+                    st.session_state.next_intake_id += 1
+                    st.session_state.intake_log.append(
+                        {
+                            "id": st.session_state.next_intake_id,
+                            "time": md_time,
+                            "source_type": "modular",
+                            "source_id": md_name,
+                            "food_description": None,
+                            "amount": float(md_amount),
+                            "unit": md_basis,
+                            "counts_as_fluid": md_basis == "mL",
+                            "route": md_route,
+                        }
+                    )
+                    _queue_intake_toast(
+                        f"{md_name}, {md_amount:g} {md_basis} ({md_route_label.lower()})"
+                    )
+                    st.rerun()
+                else:
+                    st.warning(f"Enter an amount greater than 0 {md_basis}.")
 
     # --- Add water flush: three precisions, one list (author feedback
     # 2026-07-20). A single flush for the precise; a with-feeds

@@ -537,7 +537,7 @@ def required_daily_volume(
 # this IS allowed to fall back — formula profiles are reference data, not
 # structural (see src/nutrients.py's module docstring for that distinction).
 # Deliberately NOT kept in lockstep with every CSV column/row (e.g. it
-# has 4 fields and 8 formulas where the CSV has 12 and 33) -- it exists
+# has 4 fields and 8 formulas where the CSV has 12 and 51) -- it exists
 # only so the app still runs with *some* reference data if the CSV is
 # ever missing, not as a mirror of the full catalog.
 _FORMULAS_FALLBACK: dict[str, dict[str, float]] = {
@@ -718,6 +718,121 @@ def commercial_formulas(pack: str = DEFAULT_PACK) -> dict[str, dict[str, float]]
 #: caller while `canada` is the only pack that exists -- see
 #: `commercial_formulas()` for what to call when that stops being true.
 COMMERCIAL_FORMULAS: dict[str, dict[str, float]] = commercial_formulas()
+
+
+#: The nutrient columns of data/packs/<pack>/modulars.csv. Same nutrient
+#: set as _OPTIONAL_NUTRIENT_COLUMNS above and the same optional/None
+#: contract, but named `_per_unit` rather than `_per_mL` DELIBERATELY: a
+#: modular's unit is a millilitre for a liquid (MCT Oil, HiFibre) and a
+#: GRAM for a powder (BeneProtein, BanatrAll), and which one it is lives
+#: in the row's `basis` column. Naming these `_per_mL` would state a unit
+#: that is wrong for half the table -- the same class of silent unit
+#: error that put four wrong Abbott feeds into formulas.csv in 2026-08.
+_MODULAR_NUTRIENT_COLUMNS = tuple(
+    col.replace("_per_mL", "_per_unit") for col in _OPTIONAL_NUTRIENT_COLUMNS
+)
+
+#: What a `basis` value may say. A row with anything else is a data error
+#: loud enough to refuse, not to guess at: "mL" and "g" scale a dose
+#: differently and there is no safe default between them.
+_MODULAR_BASES = ("mL", "g")
+
+
+def _load_modulars(pack: str = DEFAULT_PACK) -> dict[str, dict[str, object]]:
+    """Load modulars (protein/fibre/calorie additives) from CSV.
+
+    CSV format: name,brand,basis,kcal_per_unit,protein_per_unit,
+    <_MODULAR_NUTRIENT_COLUMNS>,free_water_per_unit,directions,source,verified
+
+    A modular is not a feed. It is something added to a feed or given
+    down the tube on its own -- a scoop of protein powder, a dose of
+    liquid fibre -- and it is deliberately NOT in formulas.csv, so it can
+    never turn up in the Results tab's comparator being weighed against a
+    blend as though it were complete nutrition (author's call,
+    2026-08-28).
+
+    `basis` is what makes this table different from the formula one, and
+    it is MANDATORY: "mL" for a liquid, "g" for a powder. Callers must
+    read it before multiplying by an amount, and the Intake Record must
+    label its amount field in the row's own unit -- a number field that
+    silently changes what it counts is how someone enters 30 g meaning
+    30 mL.
+
+    `free_water_per_unit` follows the same optional/None contract as
+    everything else here: a powder's sheet does not state a water
+    content, and the water it is stirred into is the RD's own flush, not
+    a property of the powder. Blank means "not disclosed", never 0.
+
+    `directions` is the manufacturer's own mixing or tube instruction,
+    quoted where the sheet gives one and blank where it does not. It is
+    free text for display only, never parsed: the sheets disagree with
+    each other (BeneProtein is given in 60 mL in hospital practice,
+    Banatrol's own sheet says 120 mL, ProSource says 30 mL), which is
+    exactly why the app must not hold a single default dilution.
+
+    Args:
+        pack: Data pack name (e.g. "canada"). Defaults to DEFAULT_PACK.
+
+    Returns:
+        name -> dict with "basis" (str), "brand"/"directions"/"source"
+        (str | None) and every nutrient column (float | None).
+
+    Raises:
+        FileNotFoundError: if the pack has no modulars.csv. Unlike
+            formulas.csv there is NO hardcoded fallback -- an incomplete
+            modular table would silently under-count a patient's protein,
+            and no reference data at all is a better failure than some.
+        ValueError: if a row's `basis` is missing or not in _MODULAR_BASES.
+    """
+    modulars_csv = Path(__file__).resolve().parent.parent / "data" / "packs" / pack / "modulars.csv"
+    if not modulars_csv.exists():
+        raise FileNotFoundError(f"No modulars.csv for data pack {pack!r}: {modulars_csv}")
+
+    df = pd.read_csv(modulars_csv)
+    return {row["name"]: _modular_entry(row) for _, row in df.iterrows()}
+
+
+def _modular_entry(row) -> dict[str, object]:
+    """Validate and build one modulars.csv row's entry.
+
+    Split out of `_load_modulars()` so the basis check is reachable
+    without a file on disk: it is the one rule in this module that
+    silently corrupts a dose rather than raising, if it is ever dropped.
+    """
+    name = row["name"]
+    basis = row.get("basis")
+    if pd.isna(basis) or basis not in _MODULAR_BASES:
+        raise ValueError(
+            f"modulars.csv row {name!r} has basis {basis!r}; expected one of "
+            f"{_MODULAR_BASES}. A dose cannot be scaled without knowing whether "
+            f"its amount is millilitres or grams."
+        )
+    entry: dict[str, object] = {
+        "basis": str(basis),
+        "kcal_per_unit": float(row["kcal_per_unit"]),
+        "protein_per_unit": float(row["protein_per_unit"]),
+    }
+    for col in ("brand", "directions", "source"):
+        val = row.get(col)
+        entry[col] = val if pd.notna(val) else None
+    for col in (*_MODULAR_NUTRIENT_COLUMNS, "free_water_per_unit"):
+        val = row.get(col)
+        entry[col] = float(val) if pd.notna(val) else None
+    return entry
+
+
+@lru_cache(maxsize=None)
+def modulars(pack: str = DEFAULT_PACK) -> dict[str, dict[str, object]]:
+    """The modular table for `pack`, loaded once per pack.
+
+    Same pack-awareness discipline as `commercial_formulas()` above: a
+    pack-aware caller calls this, not the MODULARS constant.
+    """
+    return _load_modulars(pack)
+
+
+#: The DEFAULT pack's modulars, frozen at import -- see `modulars()`.
+MODULARS: dict[str, dict[str, object]] = modulars()
 
 
 def compare_with_formula(

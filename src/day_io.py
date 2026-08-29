@@ -148,6 +148,17 @@ class ParsedDay:
         return ", ".join(bits)
 
 
+#: A modular row's route, as stored on the row and as written to the
+#: day file. "tube" is the default everywhere: it is what every modular
+#: row meant before the column existed, and it is what most of these
+#: products are for. "oral" exists because the same list holds Boost
+#: Pudding, which its own sheet marks oral use only.
+ROUTE_TUBE = "tube"
+ROUTE_ORAL = "oral"
+_ROUTE_TEXT = {ROUTE_TUBE: "Tube", ROUTE_ORAL: "Mouth"}
+_ROUTE_FROM_TEXT = {"tube": ROUTE_TUBE, "mouth": ROUTE_ORAL, "oral": ROUTE_ORAL}
+
+
 def _time_to_text(value: Any) -> str:
     """Times are written HH:MM so the Intake sheet sorts and reads plainly."""
     if isinstance(value, dtime):
@@ -290,6 +301,16 @@ def day_to_workbook_bytes(
             "Amount": float(row.get("amount", 0.0) or 0.0),
             "Unit": row.get("unit", "mL") or "mL",
             "Counts as fluid": "Yes" if row.get("counts_as_fluid") else "No",
+            # How a MODULAR was given, and blank for every other row type.
+            # A modular list holds both things tubed (BeneProtein stirred
+            # into water) and things eaten (Boost Pudding), so the row --
+            # not the product -- is what says which total it belongs in.
+            # A file written before this column existed simply has no
+            # value here, and loads as "tube", which is what every
+            # modular row in such a file was already counted as.
+            "Route": (
+                _ROUTE_TEXT.get(row.get("route"), "") if row.get("source_type") == "modular" else ""
+            ),
             # Same blank-not-zero rule as the Ingredients sheet above.
             "Measure label": row.get("measure_label") or "",
             "Measure grams": float(row["measure_grams"]) if row.get("measure_grams") else "",
@@ -307,6 +328,7 @@ def day_to_workbook_bytes(
             "Amount",
             "Unit",
             "Counts as fluid",
+            "Route",
             "Measure label",
             "Measure grams",
         ],
@@ -547,10 +569,10 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
 
         if not source_type:
             continue
-        if source_type not in ("blend", "formula", "flush", "oral"):
+        if source_type not in ("blend", "formula", "modular", "flush", "oral"):
             parsed.warnings.append(
                 f"Intake row {line} has source type '{source_type}', which isn't "
-                "one of blend/formula/flush/oral — skipped."
+                "one of blend/formula/modular/flush/oral — skipped."
             )
             continue
         if amount is None or amount <= 0:
@@ -570,6 +592,16 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
             # go and fix (2026-08-20 second review).
             if not raw_source:
                 parsed.warnings.append(f"Intake row {line} (formula) names no formula — skipped.")
+                continue
+            source_id = raw_source
+        elif source_type == "modular":
+            # Same shape as the formula branch above: a modular names its
+            # product by name, not by a numeric code, so a blank cell
+            # identifies nothing and must not fall through to the numeric
+            # branch below (which would warn about a "source id" the file
+            # was never meant to carry).
+            if not raw_source:
+                parsed.warnings.append(f"Intake row {line} (modular) names no modular — skipped.")
                 continue
             source_id = raw_source
         else:
@@ -602,6 +634,12 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
                 "amount": amount,
                 "unit": _coerce_str(row.get("Unit")) or "mL",
                 "counts_as_fluid": _coerce_bool(row.get("Counts as fluid")),
+                # Modular rows only. Anything unrecognised, and any file
+                # written before this column existed, reads as "tube" --
+                # the behaviour those files already had.
+                "route": _ROUTE_FROM_TEXT.get(
+                    (_coerce_str(row.get("Route")) or "").strip().lower(), ROUTE_TUBE
+                ),
                 "measure_label": _coerce_str(row.get("Measure label")) or None,
                 "measure_grams": _coerce_float(row.get("Measure grams")),
             }

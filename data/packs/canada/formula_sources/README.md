@@ -47,11 +47,36 @@ The RD check in step 3 is the safety mechanism. Never skip it.
 
 ## Scope
 
-Adult tube-feeding-labeled formulas only — not pediatric/Junior lines
-(e.g. Compleat Junior, Peptamen Junior, Nutren Junior, Alfamino Junior)
-and not oral-only supplements not meant for tube delivery (e.g. Boost,
-BeneProtein). If you want one of those added anyway, just say so
-explicitly when asking for the update.
+Adult products only, not pediatric or Junior lines (e.g. Compleat
+Junior, Peptamen Junior, Nutren Junior, Alfamino Junior, Boost Kids
+Essentials).
+
+Oral nutritional supplements are included, meaning the adult Ensure and
+Boost lines. They are here because people do put them down a tube. A
+manufacturer's "for oral feeding" line describes the product's intended
+use, and it is not a statement about what community practice actually
+does with it.
+
+What that wording cannot tell you, and what this catalog therefore does
+not try to encode, is duration. A sip feed is a poor choice as the
+permanent sole source of nutrition for someone on long-term tube
+feeding. It can be a good choice for someone with a PEG placed to get
+them through a course of radiation, where the horizon is weeks rather
+than months or years and cost matters. That judgment belongs to the RD
+reading the results, not to a filter on this table.
+
+Modulars and medical foods are in scope as well, since a powder such as
+BeneProtein dissolves in water and goes down a tube. They live in their
+own table, `../modulars.csv`, because a powder is measured in grams
+while this one is per millilitre. That table also holds products that
+are eaten rather than tubed (Boost Pudding), which is why an Intake
+Record row for a modular records how it was given.
+
+Thickeners stay out (e.g. ThickenUp). Viscosity is not computable from
+nutrient data, and it is already on the out-of-scope list in
+`BUSINESS_CASE.md`.
+
+Author's scope calls, 2026-08-28 and 2026-08-29.
 
 ## Columns in ../formulas.csv
 

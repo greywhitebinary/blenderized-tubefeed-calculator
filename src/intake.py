@@ -16,14 +16,22 @@ making of it, and an intake-record row is what was actually given,
 referencing a blend by name without needing to know how many times it was
 made (section 6.2 of the design doc).
 
+A "modular" row is a protein/fibre/calorie additive given down the
+tube on its own (data/packs/<pack>/modulars.csv). It is a separate
+source_type from "formula" because its amount is in the product's
+own basis -- grams for a powder -- and because a powder contributes
+no fluid, while every formula row is entirely liquid.
+
 Row shape (session_state["intake_log"] items in app/streamlit_app.py):
     {
         "id": int,                          # unique row id (widget keys, deletion)
         "time": datetime.time | None,        # optional -- unset rows sort last
-        "source_type": "blend"|"formula"|"flush"|"oral",
+        "source_type": "blend"|"formula"|"modular"|"flush"|"oral",
         "source_id": int | str | None,       # blend id / formula name / None / food_code
         "food_description": str | None,      # oral rows only (display name)
-        "amount": float,                     # mL for blend/formula/flush; g or mL for oral
+        "amount": float,                     # mL for blend/formula/flush; the modular's
+                                             # own basis unit (mL or g) for modular;
+                                             # g or mL for oral
         "unit": "mL" | "g",
         "counts_as_fluid": bool,
     }
@@ -53,6 +61,7 @@ try:
         calculate_daily_totals,
         compute_nutrient_totals_and_coverage,
         COMMERCIAL_FORMULAS,
+        MODULARS,
         NUTRIENT_CODES,
     )
 except ImportError:
@@ -62,6 +71,7 @@ except ImportError:
         calculate_daily_totals,
         compute_nutrient_totals_and_coverage,
         COMMERCIAL_FORMULAS,
+        MODULARS,
         NUTRIENT_CODES,
     )
 
@@ -69,7 +79,7 @@ except ImportError:
 # Which source_types display under which Intake Record section header
 # (FEED_LOG_REWORK.md section 6.3 -- "Tube Feed" and "Food & Drink" are a
 # DISPLAY grouping over one list, not two separately-maintained logs).
-TUBE_FEED_SOURCE_TYPES = ("blend", "formula", "flush")
+TUBE_FEED_SOURCE_TYPES = ("blend", "formula", "modular", "flush")
 FOOD_DRINK_SOURCE_TYPES = ("oral",)
 
 # Water-source labels for IntakeTotals.water_sources. "Free water" here
@@ -78,6 +88,7 @@ FOOD_DRINK_SOURCE_TYPES = ("oral",)
 # recipe it IS the recipe. A flush is the only water given as water.
 WATER_BLEND_LABEL = "BTF blend — free water"
 WATER_FORMULA_LABEL = "Commercial formula — free water"
+WATER_MODULAR_LABEL = "Modular — free water"
 WATER_ORAL_LABEL = "Oral food & drink — free water"
 WATER_FLUSH_LABEL = "Water flushes"
 
@@ -135,6 +146,18 @@ _FORMULA_COLUMN_TO_NUTRIENT: dict[str, str] = {
     "folate_dfe_ug_per_mL": "folate_dfe_ug",
     "vitamin_b12_ug_per_mL": "vitamin_b12_ug",
     "selenium_ug_per_mL": "selenium_ug",
+}
+
+# The same mapping for modulars.csv, whose columns carry the identical
+# nutrient set and units under `_per_unit` names -- derived rather than
+# retyped so the two tables cannot drift apart silently. What a "unit" is
+# comes from the row's own `basis` (see src/calculator.py::_load_modulars):
+# a millilitre for a liquid modular, a GRAM for a powder. The modular
+# branch below multiplies by the row's amount in that unit, so callers
+# must not hand it an amount in the other one.
+_MODULAR_COLUMN_TO_NUTRIENT: dict[str, str] = {
+    col.replace("_per_mL", "_per_unit"): nutrient
+    for col, nutrient in _FORMULA_COLUMN_TO_NUTRIENT.items()
 }
 
 
@@ -358,6 +381,7 @@ def aggregate_intake(
     nutrient_amount_df: pd.DataFrame,
     custom_foods: dict[int, dict[str, float]] | None = None,
     formulas: dict[str, dict] | None = None,
+    modular_table: dict[str, dict] | None = None,
 ) -> IntakeTotals:
     """Aggregate the Intake Record into daily totals (FEED_LOG_REWORK.md
     section 3.1 / section 2). Sums each row's contribution directly -- no
@@ -413,6 +437,8 @@ def aggregate_intake(
     """
     if formulas is None:
         formulas = COMMERCIAL_FORMULAS
+    if modular_table is None:
+        modular_table = MODULARS
 
     family_totals = {
         TUBE_FEED_LABEL: _empty_family_totals(),
@@ -440,7 +466,14 @@ def aggregate_intake(
     for row in intake_log:
         source_type = row.get("source_type")
         amount = float(row.get("amount", 0.0) or 0.0)
-        family = TUBE_FEED_LABEL if source_type in TUBE_FEED_SOURCE_TYPES else FOOD_DRINK_LABEL
+        # A modular carries its own route, because one list holds both
+        # things given down the tube (BeneProtein stirred into water) and
+        # things eaten (Boost Pudding, whose sheet says oral use only).
+        # Every other source_type is inherently one route or the other.
+        if source_type == "modular" and row.get("route") == "oral":
+            family = FOOD_DRINK_LABEL
+        else:
+            family = TUBE_FEED_LABEL if source_type in TUBE_FEED_SOURCE_TYPES else FOOD_DRINK_LABEL
 
         row_nutrients: dict[str, float] = {}
         row_fluid = 0.0
@@ -501,6 +534,52 @@ def aggregate_intake(
                 disclosed.add("water_g")
             row_coverage = {name: (1 if name in disclosed else 0, 1) for name in NUTRIENT_CODES}
 
+        elif source_type == "modular":
+            modular = modular_table.get(row.get("source_id"))
+            if modular is None:
+                continue
+            # `amount` is in the modular's OWN unit -- millilitres for a
+            # liquid, grams for a powder -- which is why the Intake
+            # Record labels its amount field from the row's basis rather
+            # than hardcoding "mL" the way the tube-feed form does.
+            row_nutrients = {
+                "energy_kcal": modular["kcal_per_unit"] * amount,
+                "protein_g": modular["protein_per_unit"] * amount,
+            }
+            for col, nutrient_key in _MODULAR_COLUMN_TO_NUTRIENT.items():
+                per_unit = modular.get(col)
+                if per_unit is not None:
+                    row_nutrients[nutrient_key] = per_unit * amount
+            fw_per_unit = modular.get("free_water_per_unit")
+            if fw_per_unit is not None:
+                row_nutrients["water_g"] = fw_per_unit * amount
+            # THE reason this branch exists rather than reusing the
+            # formula one: a liquid modular is fluid given, a powder is
+            # not. A scoop of BeneProtein adds no volume to the day -- the
+            # water it is stirred into is the RD's own flush row, and
+            # counting the powder as fluid too would double-count it. The
+            # manufacturers' own dilutions disagree (60 mL a scoop in
+            # hospital practice, 120 mL a packet on Banatrol's sheet,
+            # 30 mL on ProSource's), so the app never infers the water --
+            # it is entered as the flush it actually was.
+            row_fluid = amount if modular["basis"] == "mL" else 0.0
+            # Coverage: identical contract to the formula branch above --
+            # one product, one instance per tracked nutrient, "supplying"
+            # only where this modular's sheet actually discloses a value.
+            # Modular panels disclose far LESS than a feed's (a Canadian
+            # Nutrition Facts table carries no vitamins at all), so this
+            # is what keeps a day built on modulars honest about how much
+            # of it is unknown rather than reading as zeros.
+            disclosed = {"energy_kcal", "protein_g"}
+            disclosed.update(
+                nutrient_key
+                for col, nutrient_key in _MODULAR_COLUMN_TO_NUTRIENT.items()
+                if modular.get(col) is not None
+            )
+            if fw_per_unit is not None:
+                disclosed.add("water_g")
+            row_coverage = {name: (1 if name in disclosed else 0, 1) for name in NUTRIENT_CODES}
+
         elif source_type == "flush":
             row_fluid = amount
 
@@ -549,6 +628,7 @@ def aggregate_intake(
                 label = {
                     "blend": WATER_BLEND_LABEL,
                     "formula": WATER_FORMULA_LABEL,
+                    "modular": WATER_MODULAR_LABEL,
                     "oral": WATER_ORAL_LABEL,
                 }[source_type]
                 water_sources[label] = water_sources.get(label, 0.0) + row_water

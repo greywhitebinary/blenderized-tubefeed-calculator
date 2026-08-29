@@ -611,7 +611,7 @@ def test_a_formula_column_the_csv_leaves_blank_shows_a_dash_not_a_zero(
     nutrient_amount_df,
 ):
     """The never-fabricate-a-0 contract, tested on _formula_daily directly
-    because all 33 shipped formulas currently disclose every macro, so no
+    because all 51 shipped formulas currently disclose every macro, so no
     real row can exercise it. A blank column means the manufacturer did
     not say, which is a different claim from "contains none" -- printing
     0.0 g of fat against a feed would be the app inventing a label value.

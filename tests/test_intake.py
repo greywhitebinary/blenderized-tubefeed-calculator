@@ -689,7 +689,7 @@ class TestRealCatalogVitaminMineralColumns:
         assert totals.nutrient_coverage["retinol_ug"] == (0, 1)
 
     def test_every_catalog_formula_column_reaches_nutrient_totals(self, blends, nutrient_amount_df):
-        """Every one of the 33 real formulas, fed alone for a day: every
+        """Every one of the 51 real formulas, fed alone for a day: every
         vitamin/mineral column that row discloses must show up in
         nutrient_totals at the right scaled value, and every one it
         leaves blank must show (0, 1) coverage rather than vanishing.
@@ -701,7 +701,7 @@ class TestRealCatalogVitaminMineralColumns:
         from src.intake import _FORMULA_COLUMN_TO_NUTRIENT
 
         real_formulas = commercial_formulas("canada")
-        assert len(real_formulas) == 33, "expected the full Canadian catalog"
+        assert len(real_formulas) == 51, "expected the full Canadian catalog"
 
         amount = 300.0
         for name, formula in real_formulas.items():
