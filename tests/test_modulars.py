@@ -244,3 +244,43 @@ def test_loader_reads_the_real_pack():
     table = _load_modulars("canada")
     assert table, "the shipped pack must have modulars"
     assert all("basis" in m for m in table.values())
+
+
+class TestEveryRowLandsInASection:
+    """The Intake Record's row list and its totals must agree about where
+    a row belongs.
+
+    The rule was written out twice -- once in src.intake for the totals,
+    once in the app for the "Everything given" list -- and the app's copy
+    named blend/formula/flush explicitly. Adding "modular" therefore
+    produced a row that was counted in the row total and then rendered in
+    neither section: invisible on screen and impossible to delete
+    (2026-08-29). Both callers now ask intake_row_family().
+    """
+
+    @pytest.mark.parametrize(
+        "row",
+        [
+            {"source_type": "blend", "source_id": 1},
+            {"source_type": "formula", "source_id": "Jevity 1.2 Cal"},
+            {"source_type": "flush", "source_id": None},
+            {"source_type": "oral", "source_id": 123},
+            {"source_type": "modular", "source_id": "BeneProtein", "route": "tube"},
+            {"source_type": "modular", "source_id": "Boost Pudding", "route": "oral"},
+            # A modular row from a day file written before the route
+            # column existed. It must still land somewhere.
+            {"source_type": "modular", "source_id": "BeneProtein"},
+        ],
+    )
+    def test_row_is_assigned_exactly_one_section(self, row):
+        from src.intake import FOOD_DRINK_LABEL, TUBE_FEED_LABEL, intake_row_family
+
+        assert intake_row_family(row) in (TUBE_FEED_LABEL, FOOD_DRINK_LABEL)
+
+    def test_route_decides_the_section_for_a_modular(self):
+        from src.intake import FOOD_DRINK_LABEL, TUBE_FEED_LABEL, intake_row_family
+
+        tubed = {"source_type": "modular", "source_id": "BeneProtein", "route": "tube"}
+        eaten = {"source_type": "modular", "source_id": "Boost Pudding", "route": "oral"}
+        assert intake_row_family(tubed) == TUBE_FEED_LABEL
+        assert intake_row_family(eaten) == FOOD_DRINK_LABEL

@@ -125,6 +125,7 @@ from src.nutrients import (
 )
 from src.intake import (
     aggregate_intake,
+    intake_row_family,
     resolve_blend_profile,
     blend_fluid_fraction,
     sorted_intake_log,
@@ -1179,7 +1180,9 @@ _record_title = escape(recipe_name or "BTF record")
 st.markdown(
     f'<h1 class="record-title"><span>🥕🥦🥤</span><span>{_record_title}</span><img '
     f'src="data:image/svg+xml;base64,{_tubing_icon}" alt="Enteral tubing with purple ENFit connectors">'
-    "<span>💧🍌</span></h1>",
+    # 🫙 sits immediately after the tubing, the same order as the Intake
+    # Record's sections: the tube feed, then the modulars beside it.
+    "<span>🫙💧🍌</span></h1>",
     unsafe_allow_html=True,
 )
 # Orientation only (author, 2026-08-19). The disclaimer that used to open
@@ -3048,14 +3051,11 @@ with record_tab:
                 key="md_route_radio",
             )
             md_route = ROUTE_TUBE if md_route_label == "Down the tube" else ROUTE_ORAL
-            _directions = MODULARS[md_name].get("directions")
-            if _directions:
-                _note(_directions)
-            if md_basis == "g":
-                _note(
-                    "A powder adds no fluid on its own. Record the water it was "
-                    "mixed with as a flush."
-                )
+            # No directions or explanatory notes here, deliberately
+            # (author, 2026-08-29): a food in this app is a name and an
+            # amount, and a modular is not special enough to be
+            # different. The manufacturers' instructions live in the
+            # archived sheets under data/packs/<pack>/formula_sources/.
             if st.button("Add to record below", key="md_add_btn"):
                 if md_amount > 0:
                     st.session_state.next_intake_id += 1
@@ -3184,8 +3184,11 @@ with record_tab:
         st.caption("No intake logged yet.")
     else:
         _ordered_rows = sorted_intake_log(st.session_state.intake_log)
-        _tube_rows = [r for r in _ordered_rows if r["source_type"] in ("blend", "formula", "flush")]
-        _oral_rows = [r for r in _ordered_rows if r["source_type"] == "oral"]
+        # Asks src.intake for the rule rather than restating it: this
+        # line used to list the tube source_types itself and silently
+        # dropped modular rows out of both sections (2026-08-29).
+        _tube_rows = [r for r in _ordered_rows if intake_row_family(r) == TUBE_FEED_LABEL]
+        _oral_rows = [r for r in _ordered_rows if intake_row_family(r) == FOOD_DRINK_LABEL]
 
         def _render_intake_row(row: dict, index: int) -> None:
             # Banded rows (Change 1.6, author request 2026-08-15) -- same
@@ -3241,7 +3244,11 @@ with record_tab:
         _times_given: dict[tuple, int] = {}
         _order: list[tuple] = []
         for _r in _ordered_rows:
-            if _r["source_type"] in ("blend", "formula"):
+            # Modulars are named alongside blends and feeds rather than
+            # counted as a category: "BeneProtein x3" is the same kind of
+            # fact as "Jevity 1.2 x3" -- a product given repeatedly, which
+            # is what this line is for.
+            if _r["source_type"] in ("blend", "formula", "modular"):
                 _key = (_r["source_type"], _r["source_id"])
                 if _key not in _times_given:
                     _times_given[_key] = 0

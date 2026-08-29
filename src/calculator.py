@@ -742,7 +742,7 @@ def _load_modulars(pack: str = DEFAULT_PACK) -> dict[str, dict[str, object]]:
     """Load modulars (protein/fibre/calorie additives) from CSV.
 
     CSV format: name,brand,basis,kcal_per_unit,protein_per_unit,
-    <_MODULAR_NUTRIENT_COLUMNS>,free_water_per_unit,directions,source,verified
+    <_MODULAR_NUTRIENT_COLUMNS>,free_water_per_unit,source,verified
 
     A modular is not a feed. It is something added to a feed or given
     down the tube on its own -- a scoop of protein powder, a dose of
@@ -763,19 +763,21 @@ def _load_modulars(pack: str = DEFAULT_PACK) -> dict[str, dict[str, object]]:
     content, and the water it is stirred into is the RD's own flush, not
     a property of the powder. Blank means "not disclosed", never 0.
 
-    `directions` is the manufacturer's own mixing or tube instruction,
-    quoted where the sheet gives one and blank where it does not. It is
-    free text for display only, never parsed: the sheets disagree with
-    each other (BeneProtein is given in 60 mL in hospital practice,
-    Banatrol's own sheet says 120 mL, ProSource says 30 mL), which is
-    exactly why the app must not hold a single default dilution.
+    There is deliberately NO directions/instructions column. One existed
+    briefly and was removed 2026-08-29: a food in this app is a name and
+    an amount, and a modular is not special enough to be different
+    (author). It also rotted immediately -- two of the eight rows had
+    text describing something other than the numbers stored beside it.
+    The manufacturers' mixing and tube instructions live in the archived
+    sheets under formula_sources/, which is where a claim about a product
+    can be checked against its source.
 
     Args:
         pack: Data pack name (e.g. "canada"). Defaults to DEFAULT_PACK.
 
     Returns:
-        name -> dict with "basis" (str), "brand"/"directions"/"source"
-        (str | None) and every nutrient column (float | None).
+        name -> dict with "basis" (str), "brand"/"source" (str | None)
+        and every nutrient column (float | None).
 
     Raises:
         FileNotFoundError: if the pack has no modulars.csv. Unlike
@@ -812,7 +814,7 @@ def _modular_entry(row) -> dict[str, object]:
         "kcal_per_unit": float(row["kcal_per_unit"]),
         "protein_per_unit": float(row["protein_per_unit"]),
     }
-    for col in ("brand", "directions", "source"):
+    for col in ("brand", "source"):
         val = row.get(col)
         entry[col] = val if pd.notna(val) else None
     for col in (*_MODULAR_NUTRIENT_COLUMNS, "free_water_per_unit"):

@@ -323,12 +323,14 @@ their rows are per UNIT, and a unit is a millilitre for a liquid and a
 4. `free_water_per_unit` stays blank for a powder. A dry powder has no
    water content, and the water it is stirred into is the dietitian's own
    flush, not a property of the product.
-5. `directions` is the manufacturer's own wording, quoted where the sheet
-   gives one. It is shown to the user and never parsed. Do **not** invent
-   a dilution: the sheets disagree with each other (60 mL a scoop in
-   hospital practice for BeneProtein, 120 mL a packet on Banatrol's
-   sheet, 30 mL on ProSource's), which is exactly why the app carries no
-   default.
+5. There is **no directions column**, on purpose. A food in this app is
+   a name and an amount, and a modular is the same. Mixing and tube
+   instructions belong in the archived sheet under `formula_sources/`,
+   where the claim can be checked against its source. (Note also that the
+   manufacturers disagree on dilution — 60 mL a scoop in hospital
+   practice for BeneProtein, 120 mL a packet on Banatrol's sheet, 30 mL
+   on ProSource's — so the app carries no default and the water actually
+   used is recorded as a flush.)
 6. Save and rerun. The modular appears in the Intake Record's "Add
    modulars" section. It deliberately does **not** appear in the Results
    comparator, which reads the formulary only — comparing a protein

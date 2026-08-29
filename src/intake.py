@@ -161,6 +161,26 @@ _MODULAR_COLUMN_TO_NUTRIENT: dict[str, str] = {
 }
 
 
+def intake_row_family(row: dict) -> str:
+    """Which Intake Record section a row belongs to.
+
+    THE one definition. It used to be written out twice -- once here for
+    the totals, once in the app for the "Everything given" list -- and
+    the two drifted the moment "modular" was added: the app's copy listed
+    blend/formula/flush explicitly, so modular rows were counted in the
+    row total and then rendered in neither section, invisible and
+    undeletable (2026-08-29). Both callers now ask this.
+
+    A modular carries its own route, because one list holds both things
+    given down the tube (BeneProtein stirred into water) and things eaten
+    (Boost Pudding, whose sheet says oral use only). Every other
+    source_type is inherently one route or the other.
+    """
+    if row.get("source_type") == "modular" and row.get("route") == "oral":
+        return FOOD_DRINK_LABEL
+    return TUBE_FEED_LABEL if row.get("source_type") in TUBE_FEED_SOURCE_TYPES else FOOD_DRINK_LABEL
+
+
 class InvalidBlendError(ValueError):
     """A blend has ingredients but no measured volume -- the one real
     invalidity that survives the rework (section 6.2): densities can't be
@@ -466,14 +486,7 @@ def aggregate_intake(
     for row in intake_log:
         source_type = row.get("source_type")
         amount = float(row.get("amount", 0.0) or 0.0)
-        # A modular carries its own route, because one list holds both
-        # things given down the tube (BeneProtein stirred into water) and
-        # things eaten (Boost Pudding, whose sheet says oral use only).
-        # Every other source_type is inherently one route or the other.
-        if source_type == "modular" and row.get("route") == "oral":
-            family = FOOD_DRINK_LABEL
-        else:
-            family = TUBE_FEED_LABEL if source_type in TUBE_FEED_SOURCE_TYPES else FOOD_DRINK_LABEL
+        family = intake_row_family(row)
 
         row_nutrients: dict[str, float] = {}
         row_fluid = 0.0
