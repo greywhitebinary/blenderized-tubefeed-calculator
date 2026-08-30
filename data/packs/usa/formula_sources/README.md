@@ -1,6 +1,7 @@
-# US product sheets — reference only, NOT a source for any row
+# US product sheets — provenance notes, reference only
 
-Everything in this folder is a **United States** product document.
+The US product documents used for future US work belong locally in
+`reference_documents/usa/`. They are not included in the public repository.
 
 **`data/packs/usa/` is NOT a usable data pack.** It holds archived source
 documents and nothing else: no `nutrients.csv`, no `formulas.csv`, no
@@ -20,7 +21,7 @@ Medtrition is a US company represented in Canada by CMI Canada, and the
 Canadian range is both smaller and differently named. The Canadian sheets
 live in `../../canada/formula_sources/medtrition/` and are the authority
 for anything that ships.
-These US guides are kept for two narrower purposes.
+These US guides serve two narrower purposes when they are available locally.
 
 The first is corroboration. When a Canadian panel and its US counterpart
 agree on serving size and macronutrients, that is evidence the two are the

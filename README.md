@@ -138,6 +138,13 @@ form and the label-photo schema. Adding a row there adds the nutrient
 everywhere. See `MAINTAINING.md` for the column meanings and the workflow
 for updating formulas from manufacturer PDFs.
 
+Manufacturer source documents are not needed to run the app and are not
+stored in this public repository. Keep them locally under
+`reference_documents/<country>/`; Git ignores that folder. The public source
+register in `data/packs/SOURCES.md` maps each regional CSV to the official
+manufacturer source and explains how to review an update without publishing
+the document.
+
 ## How it's built
 
 Streamlit and pandas, with the math in plain Python under `src/`.

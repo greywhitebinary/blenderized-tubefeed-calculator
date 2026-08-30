@@ -1,10 +1,10 @@
-# formula_sources/ — manufacturer PDFs behind formulas.csv
+# formula_sources/ — provenance notes for `formulas.csv`
 
-Drop the manufacturer's healthcare-professional product PDF for each
-commercial formula in this folder. These PDFs are the **audit trail** for
-the numbers in `../formulas.csv` — the "no black boxes" philosophy applied
-to reference data: every kcal/mL and protein/mL in the comparator should
-be traceable to a document a colleague can open and check.
+The manufacturer documents used to review the Canadian formula rows are kept
+locally in `reference_documents/canada/`, which is ignored by Git. They are
+not required at application runtime. The public audit trail is the source
+filename and page recorded in `../formulas.csv`, together with the source
+register in `../SOURCES.md`.
 
 ## The workflow (no parser, no code)
 
@@ -14,14 +14,13 @@ and a silent mis-parse would put a wrong number in a clinical comparator.
 Instead, the update loop is:
 
 1. **Download** the product information PDF from the manufacturer's
-   healthcare-professional site (Nestlé Health Science, Abbott Nutrition,
-   etc.) into this folder. Keep the vendor's filename, prefix the year if
-   it isn't in it (e.g. `2026_peptamen-1.5-product-info.pdf`).
+   healthcare-professional site into `reference_documents/canada/`. Keep
+   the vendor's filename, and prefix the year if it is not already present.
 2. **Open a session with an AI coding assistant** (Claude Code or any
    other assistant able to read PDFs and edit files in this project) and
    say something like:
 
-   > Read the new PDFs in data/packs/canada/formula_sources/ and update
+   > Read the new PDFs in reference_documents/canada/ and update
    > formulas.csv — name, brand, kcal_per_mL, protein_per_mL, the
    > nutrient columns listed below, and free_water_per_mL if the PDF
    > states a water content, with the source (filename + page number)
@@ -103,7 +102,7 @@ here.
 | `magnesium_per_mL` | magnesium density (mg/mL) — not on any Canadian label, but on every manufacturer's technical-data panel |
 | `phosphorus_per_mL` | phosphorus density (mg/mL) — same as magnesium |
 | `free_water_per_mL` | free-water content per mL. |
-| `source` | filename of the PDF in this folder + page number (or "EN spreadsheet 2018" for not-yet-re-verified legacy rows) |
+| `source` | source-document filename + page number (or "EN spreadsheet 2018" for not-yet-re-verified legacy rows); the local document belongs in `reference_documents/canada/` |
 | `verified` | date the numbers were last checked against the source |
 
 All nutrient columns except `kcal_per_mL`/`protein_per_mL` are

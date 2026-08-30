@@ -221,14 +221,17 @@ Full instructions live in `data/packs/canada/formula_sources/README.md`.
 The short version:
 
 1. **Download** the product's healthcare-professional PDF from the
-   manufacturer's site into `data/packs/canada/formula_sources/`.
+   manufacturer's site into `reference_documents/canada/`. This local folder
+   is ignored by Git.
 2. **Ask an AI coding assistant** able to read PDFs and edit files here:
-   > Read the new PDFs in data/packs/canada/formula_sources/ and update
+   > Read the new PDFs in reference_documents/canada/ and update
    > formulas.csv — show me each extracted value next to the PDF text
    > you got it from.
-3. **You verify the diff** — the numbers per formula, seconds to check
-   against the PDF. You are the safety mechanism; never skip this.
-4. Commit.
+3. **You verify the diff** against the PDF. You are the safety mechanism;
+   never skip this.
+4. Update the row-level source and verification date, and update
+   `data/packs/SOURCES.md` if the source register changes. Commit the CSV and
+   source-register changes, but never the PDF.
 
 ---
 

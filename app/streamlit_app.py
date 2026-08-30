@@ -754,7 +754,7 @@ if _pending_day is not None:
 # before instantiation is exactly how a "Load example" button is supposed
 # to preset a widget it doesn't itself own.
 if load_example_clicked:
-    # Synthetic case: James W, H&N RT wk 5, syringe bolus day. Real CNF
+    # Synthetic demonstration case: H&N RT week 5, syringe bolus day. Real CNF
     # foods only -- see the ingredient table in the task/CONTEXT.md S9
     # 2026-07-23 entry for the sourcing rationale behind each pick
     # (COOKED variants preferred where the case calls for them; "Carrot,
@@ -1157,7 +1157,7 @@ if load_example_clicked:
         st.session_state["target_protein_g"] = 100.0
         st.session_state["target_fluid_mL"] = 2250.0
 
-        st.session_state["recipe_name_input"] = "Example — James W (H&N RT wk 5)"
+        st.session_state["recipe_name_input"] = "Example — Demo case (H&N RT week 5)"
         st.session_state["delivery_method_input"] = "BTF using 24Fr PEG tube via syringe bolus"
         st.rerun()
     else:

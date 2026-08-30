@@ -1,10 +1,11 @@
-# Medtrition — Canadian sheets (CMI Canada)
+# Medtrition — Canadian provenance notes (CMI Canada)
 
 The Canadian-labelled product sheets for the Medtrition products available
-in Canada. **These are the authority for any Medtrition row in
-`../../formulas.csv`.** The US guides in `../../../usa/formula_sources/`
-are not, and must never
-be cited in a `source` column.
+in Canada are the authority for the Medtrition rows in `../../formulas.csv`.
+The source images are kept locally in
+`reference_documents/canada/medtrition/` and are not required by the app.
+The US guides are not Canadian sources and must never be cited in a `source`
+column.
 
 Medtrition, Inc. is represented in Canada by CMI Canada, whose Canadian
 range is much smaller than the US catalogue and uses different product
@@ -12,7 +13,11 @@ names. Only what CMI Canada lists is in scope, on the author's call
 (2026-08-28): the rest of the US catalogue is not something a Canadian
 patient can obtain.
 
-## Files
+## Local files
+
+Place the two-page sheets in `reference_documents/canada/medtrition/` using
+the filenames listed below. The folder is ignored by Git, so these source
+images remain available for local review without being published.
 
 Each product is a two-page sheet. Page 1 is the product front, page 2
 carries the bilingual Nutrition Facts / Valeur nutritive panel and the
