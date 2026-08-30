@@ -1,20 +1,20 @@
-# Blenderized Tube Feed Calculator
+# Blenderized Tube Feeding Calculator
 
-Work out the calories, protein, fluid and micronutrients in a home-blended
-tube feed, and see what happens when you change it.
+Estimate the calories, protein, fluid, and micronutrients in a home-blended
+tube feed, then see how changes to the blend or daily intake affect the total.
 
-Built for registered dietitians, on the **Canadian Nutrient File (CNF)
-2026**. It gives estimates; the clinical judgment stays with the
-dietitian using it.
+BTFCalc is designed for dietitians and teams supporting blenderized tube
+feeding. It uses the 2026 Canadian Nutrient File (CNF) as its food reference
+data and supports, but does not replace, clinical judgement.
 
 ### ▶ Try it: [btfcalc.feedformflow.ca](https://btfcalc.feedformflow.ca)
 
 **[Watch the 3-minute demo](https://vimeo.com/1216832087)**, which follows
 the tool from targets through to the chart note.
 
-There is nothing to install and no account to create. Click **"Load example
-record"** in the top row to see a worked case with a nine-ingredient blend, a
-commercial formula, water flushes and one oral food.
+There is nothing to install and no account to create. Load the example record
+to see a worked case with a nine-ingredient blend, a commercial formula, water
+flushes, and one oral food.
 
 ![The Daily intake record tab: the day's intake summarised in one line, a per-source breakdown of energy, macros and minerals split into Tube Feed, Food & Drink and Total, and a water ledger showing where every millilitre came from](docs/screenshot-daily-intake-record.png)
 
@@ -58,9 +58,8 @@ commercial formula, water flushes and one oral food.
   Nutrition Facts panel and reference data lives in
   `data/packs/canada/`. Another country would be a new pack of CSVs, not
   a code change.
-- **No default targets anywhere.** Targets start blank and you enter
-  patient-specific values, or leave them blank and read the totals. A
-  population default is not defensible for tube-fed patients.
+- **No default targets.** Targets start blank. Enter patient-specific values or
+  leave them blank and review the totals.
 - **A zero can mean "never measured", not "none present".** The report's
   *Coverage* column shows how many of your sources actually supplied a
   value for each nutrient, and rows where nothing did are hidden rather
@@ -68,13 +67,9 @@ commercial formula, water flushes and one oral food.
 - **No patient data is stored.** The app keeps nothing server-side. Saved
   days download to your own machine, and they contain whatever you typed
   in the record label.
-- **Estimates only.** This tool cannot measure viscosity, tube flow or
-  tolerance, and it does not compute targets or assess anyone.
-- **It is a calculator, not a clinician.** It does not recommend a feeding
-  plan or decide anything about a patient. The dietitian using it makes
-  those decisions and remains responsible for them.
-- **Using it creates no professional relationship.** See the
-  [medical disclaimer](#medical-disclaimer) below.
+- **Clinical decisions remain with the clinician.** The calculator cannot
+  measure viscosity, tube flow, or tolerance. It does not set targets,
+  recommend a feeding plan, or assess an individual.
 
 ---
 
@@ -147,8 +142,7 @@ for updating formulas from manufacturer PDFs.
 
 Streamlit and pandas, with the math in plain Python under `src/`.
 
-- 236 unit tests, plus 9 verification checks, eight of which drive the
-  real UI through Streamlit's `AppTest`
+- Automated tests cover the calculation layer and key Streamlit workflows
 - GitHub Actions runs all of it on every push and fails the build on lint
 - `src/` is Streamlit-free, so the calculations are testable without a
   browser
@@ -185,29 +179,13 @@ to adapt it for another country's data.
 dietitian, but not your dietitian. See the
 [medical disclaimer](#medical-disclaimer) below.
 
-## Who this is for
-
-Built for dietitians and the other healthcare professionals who support
-blenderized tube feeding.
-
-If you're a patient, a parent or a caregiver doing this at home, you're
-welcome to use it. The numbers are the same. What differs is what
-happens next: bring what you find to your own healthcare team, who can
-weigh it against everything else they know about the person in front of
-them.
-
 ## Medical disclaimer
 
-This is a calculator for dietitians and the teams supporting blenderized
-tube feeding. It gives estimates to inform clinical judgment, not to
-replace it, so check the numbers before you act on them.
-
-Anyone is welcome to use it, but it is not a substitute for professional
-medical advice, diagnosis or treatment, and using it creates no
-dietitian–client or other professional relationship. For anything about a
-specific person's care, ask their own physician, registered dietitian or
-qualified health provider, and never disregard or delay that advice
-because of something calculated here.
+This tool does not create a dietitian–client or other professional
+relationship and is not a substitute for professional medical advice, diagnosis,
+or treatment. For advice about an individual’s care, consult their physician,
+registered dietitian, or other qualified health professional. Do not delay
+seeking that advice because of a result from this calculator.
 
 The author is a registered dietitian, but is not your dietitian and cannot
 advise on any individual's care.
