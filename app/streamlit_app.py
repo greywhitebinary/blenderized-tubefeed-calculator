@@ -1215,11 +1215,11 @@ st.markdown(
 # link. The words carry it; git carries the SVG if it is ever wanted back.
 with st.container(key="pagenote"):
     st.caption(
-        "Blenderized Tube Feeding Calculator: a [Feed. Form. Flow.]"
-        "(https://feedformflow.substack.com/p/feed-form-flow) project. "
+        "Blenderized Tube Feeding Calculator, a [Feed. Form. Flow.]"
+        "(https://feedformflow.substack.com/p/feed-form-flow) project.  \n"
         "First time here? Watch the 3-minute demo or load the example record. "
         "Work left to right: set optional targets, build or select a blend, "
-        "then record the daily intake and see the totals."
+        "record the daily intake, and review the totals."
     )
 
 
@@ -3683,6 +3683,7 @@ with st.container(key="pagefooter"):
         "version and is not affiliated with or endorsed by Health Canada. "
         "Commercial formula values come from each manufacturer's published "
         "product information.\n"
+        "- **Display tip:** Adjust Zoom in your browser menu, or use `Ctrl +/−` on Windows and `⌘ +/−` on Mac. You can also pinch on touchscreens and trackpads.\n"
         "- Issues or feedback? Please [open an issue at GitHub]"
         "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
         "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).",
