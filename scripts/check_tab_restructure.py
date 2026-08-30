@@ -1,9 +1,9 @@
 """AppTest check for the 2026-07-20 tab restructure (scratch verification).
 
-Asserts: three tabs named Nutrition Targets / Feed Recipes / Daily Intake
-Record render on fresh load with no exception; after loading the example
-day, the Feed Recipes tab carries the per-blend density panel, dilution
-what-if, comparator, and flow test, and the Daily Intake Record tab
+Asserts: three tabs named Nutrition targets / Feed recipes / Daily intake
+record render on fresh load with no exception; after loading the example
+day, the Feed recipes tab carries the per-blend density panel, dilution
+what-if, comparator, and flow test, and the Daily intake record tab
 carries the intake editor, daily totals/adequacy, chart note, and export.
 """
 
@@ -28,7 +28,7 @@ def main() -> None:
     assert not at.exception, f"fresh load raised: {at.exception}"
 
     labels = [t.label for t in at.tabs]
-    assert labels == ["Nutrition Targets", "Feed Recipes", "Daily Intake Record"], labels
+    assert labels == ["Nutrition targets", "Feed recipes", "Daily intake record"], labels
     print(f"tabs OK: {labels}")
 
     # Fresh load: all three tab shells render (targets inputs, blend

@@ -1185,41 +1185,16 @@ st.markdown(
     "<span>🫙💧🍌</span></h1>",
     unsafe_allow_html=True,
 )
-# Orientation only (author, 2026-08-19). The disclaimer that used to open
-# this line is gone from the top: the footer already carries it in full --
-# under development, informs judgment rather than replacing it, check the
-# numbers -- and saying it twice on one page made the top note longer
-# without making it safer. Verified against the footer before removing.
-#
-# It says "First time here?" and is shown to everyone, every visit, because
-# the app cannot know who is new: nothing persists, so there is no returning
-# user to recognise. That, plus its position directly under the title, is
-# why it is set smaller than a normal caption (st-key-pagenote in
-# app/styles.css).
-#
-# The calculator name and quiet byline remain in the SAME paragraph rather
-# than taking a line each (author, 2026-08-19). The app is shared as
-# btfcalc.feedformflow.com, but that domain FORWARDS to
-# btfcalc.streamlit.app, so the address bar loses the branding the reader
-# arrived through, and "Feed. Form. Flow." then reaches the footer as a name
-# they have never seen. Naming it here fixes that, and tells anyone who
-# bookmarked the streamlit URL whose tool this is.
-#
-# Deliberately not a link: an outbound link at the top of the page invites
-# leaving before anything has been done. The footer carries the clickable one.
-# No Substack logo beside it (author, 2026-08-19). The mark earned its place
-# in the footer, where it labelled an invitation to go and read something.
-# Here the line is a byline -- it says who made this, not "go to Substack" --
-# and a brand logo in the first words on the page is louder than a byline
-# should be. It also put Substack's orange immediately against the maroon
-# link. The words carry it; git carries the SVG if it is ever wanted back.
+# This compact note identifies the calculator, the Feed. Form. Flow. project,
+# and its Canadian data scope before giving the workflow. Detailed sources and
+# clinical-use information remain in the footer's About section.
 with st.container(key="pagenote"):
     st.caption(
         "Blenderized Tube Feeding Calculator, a [Feed. Form. Flow.]"
-        "(https://feedformflow.substack.com/p/feed-form-flow) project.  \n"
-        "First time here? Watch the 3-minute demo or load the example record. "
+        "(https://feedformflow.substack.com/p/feed-form-flow) project. "
+        "Uses Canadian food and commercial product information.  \n"
         "Work left to right: set optional targets, build or select a blend, "
-        "record the daily intake, and review the totals."
+        "then record the daily intake and review the totals."
     )
 
 
@@ -1446,7 +1421,7 @@ COMPARATOR_BLEND_PICKER_THRESHOLD = 4
 
 
 targets_tab, recipes_tab, record_tab = st.tabs(
-    ["Nutrition Targets", "Feed Recipes", "Daily Intake Record"]
+    ["Nutrition targets", "Feed recipes", "Daily intake record"]
 )
 
 with targets_tab:
@@ -3657,34 +3632,26 @@ st.divider()
 # attribution paragraph. See st-key-pagefooter in app/styles.css.
 with st.container(key="pagefooter"):
     st.caption(
-        "- ⚠️ **Under development.** A calculator for dietitians and the teams supporting "
-        "blenderized tube feeding, and anyone is welcome to use it. It is built to inform "
-        "clinical judgment, not to replace it. Please use with caution and check numbers "
-        "before acting on them.\n"
-        "- Using this tool creates no dietitian–client or other professional relationship, and "
-        "it is no substitute for professional medical advice, diagnosis or treatment. For "
-        "anything about a specific person's care, consult their physician, registered "
-        "dietitian, or other qualified health professional. Do not delay seeking that "
-        "advice because of anything calculated here.\n"
-        # Attribution required by Health Canada's CNF copyright guidelines
-        # (author supplied them, 2026-08-19). Two of their five conditions were
-        # unmet before this line existed: "Health Canada be identified as the
-        # source", and that the reproduction not be represented as official or
-        # as affiliated with or endorsed by them. Their requested form is
-        # "Canadian Nutrient File, Health Canada, <year>" -- name first, year
-        # last, which is why this reads differently from the search label.
-        #
-        # The last sentence is not required by Health Canada: it stops this
-        # line implying CNF is the source of the 33 commercial formulas, which
-        # come from manufacturers' product guides (cited per row in
-        # formulas.csv's source and verified columns).
-        "- Food values come from the Canadian Nutrient File, Health Canada, 2026, "
-        "used under Health Canada's copyright guidelines. This is not an official "
-        "version and is not affiliated with or endorsed by Health Canada. "
-        "Commercial formula values come from each manufacturer's published "
-        "product information.\n"
+        "- ⚠️ **Review calculations before clinical use.**\n"
+        "- **Related tool:** [ENCalc](https://encalc.feedformflow.ca) — adult inpatient enteral nutrition calculator.\n"
         "- **Display tip:** Adjust Zoom in your browser menu, or use `Ctrl +/−` on Windows and `⌘ +/−` on Mac. You can also pinch on touchscreens and trackpads.\n"
         "- Issues or feedback? Please [open an issue at GitHub]"
         "(https://github.com/greywhitebinary/blenderized-tubefeed-calculator/issues), or "
         "[find me on LinkedIn](https://www.linkedin.com/in/hui-jun-gail-chew/).",
     )
+    with st.expander("About this calculator", expanded=False):
+        st.caption(
+            "BTFCalc is designed for dietitians and teams supporting blenderized tube "
+            "feeding. It supports, but does not replace, clinical judgement.\n\n"
+            "This tool does not create a dietitian–client or other professional "
+            "relationship and is not a substitute for professional medical advice, "
+            "diagnosis, or treatment. For advice about an individual's care, consult "
+            "their physician, registered dietitian, or other qualified health "
+            "professional. Do not delay seeking that advice because of a result from "
+            "this calculator.\n\n"
+            "Food values come from the Canadian Nutrient File, Health Canada, 2026, "
+            "used under Health Canada's copyright guidelines. This is not an official "
+            "version and is not affiliated with or endorsed by Health Canada. "
+            "Commercial formula values come from manufacturers' Canadian product "
+            "information."
+        )
