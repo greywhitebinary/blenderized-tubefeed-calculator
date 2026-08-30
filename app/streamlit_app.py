@@ -1171,7 +1171,7 @@ with top_l:
     # default value but also had its value set via Session State" warning.
     if "recipe_name_input" not in st.session_state:
         st.session_state["recipe_name_input"] = "My BTF record"
-    recipe_name = _narrow(1, 1).text_input("Patient / record label", key="recipe_name_input")
+    recipe_name = _narrow(2, 1).text_input("Patient / record label", key="recipe_name_input")
 
 _tubing_icon = b64encode(
     (PROJECT_ROOT / "assets" / "enteral-enfit-tubing.svg").read_bytes()
