@@ -54,10 +54,12 @@ the note will look like once it lands in the chart. It is deliberately not
 sized in rem: it previews a foreign surface, so it must not scale with the
 app's 125% base the way the chrome around it does.
 
-The toolbar is app chrome, so it is 0.875rem -- 17.5px against that 125%
-root, the same size as the .box-heading above it, so heading and button read
-as peers on one row. rem resolves against the document root even inside the
-shadow root, so this tracks the app.
+The toolbar is app chrome, so it matches a Streamlit secondary button exactly
+-- inherited font-size, 2.5rem min-height, 0.5rem radius -- because "looks
+like the other buttons" is the whole point of the control. Every value was
+measured from a rendered page rather than remembered; see the CSS. rem
+resolves against the document root even inside the shadow root, so it tracks
+the app's 125% base.
 
 WHAT GOES ON THE CLIPBOARD
 --------------------------
@@ -72,13 +74,27 @@ The editable variant sanitises paste for the same reason. Anything pasted in
 is reduced to plain text before it enters the note, so Word markup cannot
 ride through the editor and out via the clipboard.
 
-SILENCE MEANS IT WORKED
------------------------
-A successful copy says nothing. You find out it worked when you paste, so a
-confirmation is only clutter, and a stale one is actively misleading: it
-implies the clipboard still matches a note the calculator has since changed.
+THE MESSAGE TRACKS THE CLIPBOARD, NOT THE CLICK
+-----------------------------------------------
+"Copied." is worth saying only for as long as it stays true, so this
+remembers a fingerprint of the text that was actually copied and compares it
+against the text on screen.
 
-A FAILED copy always speaks, because it is otherwise invisible.
+That turns one message into two. While they still match you get "Copied.",
+quietly. When they stop matching -- a rate changed, a duration changed, or
+the note was edited by hand -- it becomes "Changed since you copied it. Copy
+again before pasting." in the primary colour.
+
+The second one is the reason any of this exists. The dangerous case is the
+quiet one: copy the note, change a value, and the box rewrites itself while
+the clipboard still holds the old numbers, with nothing on screen saying the
+thing about to be pasted into the chart is out of date.
+
+The fingerprint lives in sessionStorage because a changed calculation
+REMOUNTS this component and discards every variable in the module's closure.
+The clipboard does not reset when that happens, so neither can this.
+
+A FAILED copy always speaks too, because it is otherwise invisible.
 navigator.clipboard needs a secure context, so opening either app over plain
 http from another device on the ward network makes the write fail. The
 fallback selects the note and says so, because a clinician who is not told
@@ -174,12 +190,16 @@ button:focus-visible {
    actually announce. Toggling visibility on a region that already holds its
    text is the pattern assistive technology may never notice.
 
-   Both only ever carry something the reader has to act on -- a copy that did
-   not happen, or edits about to be replaced -- so both take the primary
-   colour, which this app already uses to mean "this matters". Measured 6.98:1
-   on the light ground and 6.17:1 on the dark one, so both pass AA for text. */
-[data-role="status"] { font-size: .875rem; }
-[data-role="copy-status"] { font-size: .875rem; color: #A4243A; }
+   The copy status has two moods and they must not look alike. "Copied." is
+   a quiet confirmation, so it is ordinary text at reduced weight. Anything
+   warning that the clipboard no longer matches the note is the reader's
+   problem to act on, so it takes the primary colour this app already uses
+   for something that matters -- measured 6.98:1 on the light ground and
+   6.17:1 on the dark one, both passing AA for text. */
+[data-role="status"] { font-size: .875rem; color: #A4243A; }
+[data-role="copy-status"] { font-size: .875rem; }
+[data-role="copy-status"][data-kind="ok"] { opacity: .7; }
+[data-role="copy-status"][data-kind="warn"] { color: #A4243A; }
 [data-role="status"]:empty, [data-role="copy-status"]:empty { display: none; }
 
 /* Arial 15px previews how the note lands in Epic; deliberately not rem. */
@@ -202,7 +222,8 @@ button:focus-visible {
 
 /* Measured the same way with the page in dark mode. */
 @media (prefers-color-scheme: dark) {
-    [data-role="copy-status"] { color: #E0708A; }
+    [data-role="status"] { color: #E0708A; }
+    [data-role="copy-status"][data-kind="warn"] { color: #E0708A; }
     button {
         border-color: rgba(245, 245, 245, 0.2);
         background: #131720;
@@ -235,6 +256,49 @@ export default function(component) {
     body.setAttribute('aria-label', data.label);
   }
 
+  // What is on the clipboard, and does it still match what is on screen?
+  //
+  // "Copied." is only worth saying if it stays true. The dangerous case is
+  // the quiet one: copy the note, change a rate, and the box rewrites itself
+  // while your clipboard still holds the old numbers -- nothing on screen
+  // says the thing you are about to paste into the chart is out of date.
+  //
+  // So remember a fingerprint of the text that was actually copied, compare
+  // it against the text on screen, and let the message say which of the two
+  // situations you are in. It lives in sessionStorage because changing a
+  // calculator value REMOUNTS this component, which throws away every
+  // variable in this closure; the clipboard, meanwhile, does not care.
+  //
+  // Non-cryptographic djb2 on purpose: SubtleCrypto is async and needs a
+  // secure context, and a secure context is exactly what we cannot assume.
+  const fingerprint = (text) => {
+    let h = 5381;
+    for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
+    return String(h);
+  };
+  const copiedKey = data.storageKey + ':copied';
+  const readCopied = () => { try { return sessionStorage.getItem(copiedKey); } catch (_) { return null; } };
+  const writeCopied = (v) => {
+    try { v === null ? sessionStorage.removeItem(copiedKey) : sessionStorage.setItem(copiedKey, v); }
+    catch (_) {}
+  };
+
+  const showStatus = (kind, text) => {
+    copyStatus.dataset.kind = kind;
+    copyStatus.textContent = text;
+  };
+
+  // Called on mount and after anything that can change the text on screen.
+  const reconcileCopyState = () => {
+    const copied = readCopied();
+    if (!copied) { showStatus('', ''); return; }
+    if (copied === fingerprint(body.innerText)) {
+      showStatus('ok', 'Copied.');
+    } else {
+      showStatus('warn', 'Changed since you copied it. Copy again before pasting.');
+    }
+  };
+
   let saved;
   if (data.editable) {
     try { saved = JSON.parse(sessionStorage.getItem(data.storageKey)); } catch (_) { saved = null; }
@@ -256,7 +320,10 @@ export default function(component) {
     body.oninput = () => {
       saved.html = body.innerHTML;
       sessionStorage.setItem(data.storageKey, JSON.stringify(saved));
-      copyStatus.textContent = '';
+      // Editing by hand puts the note out of step with the clipboard just as
+      // surely as a changed calculation does, so it goes through the same
+      // comparison rather than silently blanking the message.
+      reconcileCopyState();
     };
     // Reduce every paste to plain text, so nothing pasted from Word can enter
     // the note and then reach the clipboard as text/html. Cerner inherits
@@ -318,10 +385,15 @@ export default function(component) {
       sessionStorage.setItem(data.storageKey, JSON.stringify(saved));
       refresh.hidden = true;
       status.textContent = '';
+      reconcileCopyState();
     };
   } else {
     body.innerHTML = data.bodyHtml;
   }
+
+  // Runs on every mount -- including the remount a changed calculation
+  // causes -- which is what turns a standing "Copied." into the warning.
+  reconcileCopyState();
 
   copyBtn.onclick = async () => {
     const plain = body.innerText;
@@ -336,11 +408,11 @@ export default function(component) {
       } else {
         throw new Error('no clipboard');
       }
-      // Success says nothing, deliberately. You find out it worked when you
-      // paste, so a confirmation is only clutter -- and a stale one is worse
-      // than clutter, because it implies the clipboard still matches a note
-      // the calculator has since changed. Silence means it worked.
-      copyStatus.textContent = '';
+      // Record WHAT was copied, not merely that a copy happened. That is the
+      // difference between a message that decays into a lie and one that
+      // keeps telling the truth as the note changes around it.
+      writeCopied(fingerprint(plain));
+      reconcileCopyState();
     } catch (_) {
       // Failure MUST speak, because it is otherwise invisible.
       // navigator.clipboard needs a secure context, so this is the path taken
@@ -357,8 +429,11 @@ export default function(component) {
       selection.removeAllRanges();
       selection.addRange(range);
       const key = navigator.platform && /Mac/i.test(navigator.platform) ? '\\u2318C' : 'Ctrl+C';
-      copyStatus.textContent =
-        'Could not copy automatically. The note is selected \\u2014 press ' + key + ' to copy it.';
+      // Nothing reached the clipboard, so forget any earlier copy rather than
+      // leaving a "Copied." that a later remount would resurrect.
+      writeCopied(null);
+      showStatus('warn',
+        'Could not copy automatically. The note is selected \\u2014 press ' + key + ' to copy it.');
     }
   };
 }
@@ -394,6 +469,12 @@ def render_copy_block(
     if editable and not storage_key:
         raise ValueError("an editable copy block needs a storage_key")
 
+    # Every block needs somewhere to remember what was copied, read-only ones
+    # included -- that is what lets "Copied." turn into a warning when the
+    # note moves on. Editable blocks already have a case-scoped key for their
+    # draft and reuse it; read-only blocks get one derived from their id.
+    storage_key = storage_key or f"copy-block:{block_id}"
+
     signature = sha256(body_html.encode("utf-8")).hexdigest()
 
     # The signature is part of the KEY, not just the payload, and that is what
@@ -427,7 +508,7 @@ def render_copy_block(
             "bodyHtml": body_html,
             "label": label,
             "editable": editable,
-            "storageKey": storage_key or "",
+            "storageKey": storage_key,
             "signature": signature,
         },
         key=widget_key,
