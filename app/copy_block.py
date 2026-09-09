@@ -374,9 +374,27 @@ def render_copy_block(
     if editable and not storage_key:
         raise ValueError("an editable copy block needs a storage_key")
 
+    signature = sha256(body_html.encode("utf-8")).hexdigest()
+
+    # The signature is part of the KEY, not just the payload, and that is what
+    # makes the block track the calculator at all.
+    #
+    # A component's JavaScript runs when the component MOUNTS. Sending it new
+    # `data` under an unchanged key does not re-run it, so the note on screen
+    # stayed frozen at whatever it said when the page first drew it: change a
+    # rate or a feeding duration and Python regenerated the note correctly
+    # while the browser kept showing the old one. "Update from calculator" was
+    # broken by the same cause -- it restored `data.bodyHtml` from the mount,
+    # which was the stale text, so it appeared to do nothing at all.
+    #
+    # Folding the signature in remounts the block exactly when the generated
+    # text changes and never otherwise, so an unrelated rerun does not disturb
+    # a draft mid-edit. Editing the note itself never reruns Python, so typing
+    # cannot remount it either.
     widget_key = f"_copy_block_{block_id}"
     if instance:
         widget_key = f"{widget_key}_{instance}"
+    widget_key = f"{widget_key}_{signature[:12]}"
 
     component = st.components.v2.component(
         f"copy_block_{block_id}",
@@ -390,7 +408,7 @@ def render_copy_block(
             "label": label,
             "editable": editable,
             "storageKey": storage_key or "",
-            "signature": sha256(body_html.encode("utf-8")).hexdigest(),
+            "signature": signature,
         },
         key=widget_key,
     )
