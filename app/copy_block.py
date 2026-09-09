@@ -71,6 +71,18 @@ Keeping font declarations out of the payload is what prevents that.
 The editable variant sanitises paste for the same reason. Anything pasted in
 is reduced to plain text before it enters the note, so Word markup cannot
 ride through the editor and out via the clipboard.
+
+SILENCE MEANS IT WORKED
+-----------------------
+A successful copy says nothing. You find out it worked when you paste, so a
+confirmation is only clutter, and a stale one is actively misleading: it
+implies the clipboard still matches a note the calculator has since changed.
+
+A FAILED copy always speaks, because it is otherwise invisible.
+navigator.clipboard needs a secure context, so opening either app over plain
+http from another device on the ward network makes the write fail. The
+fallback selects the note and says so, because a clinician who is not told
+will paste whatever was on the clipboard beforehand into a chart.
 """
 
 from __future__ import annotations
@@ -98,7 +110,7 @@ COPY_BLOCK_HTML = f"""
   <button data-action="copy" type="button">{_COPY_ICON}<span data-role="label"></span></button>
   <button data-action="refresh" type="button" hidden>Update from calculator</button>
   <span data-role="status" role="alert"></span>
-  <span data-role="copy-status" aria-live="polite"></span>
+  <span data-role="copy-status" role="alert"></span>
 </div>
 <div class="copy-body"></div>
 """
@@ -160,9 +172,14 @@ button:focus-visible {
 
 /* Empty at rest and filled when something happens, so the live regions
    actually announce. Toggling visibility on a region that already holds its
-   text is the pattern assistive technology may never notice. */
-[data-role="status"] { font-size: .875rem; opacity: .8; }
-[data-role="copy-status"] { font-size: .875rem; }
+   text is the pattern assistive technology may never notice.
+
+   Both only ever carry something the reader has to act on -- a copy that did
+   not happen, or edits about to be replaced -- so both take the primary
+   colour, which this app already uses to mean "this matters". Measured 6.98:1
+   on the light ground and 6.17:1 on the dark one, so both pass AA for text. */
+[data-role="status"] { font-size: .875rem; }
+[data-role="copy-status"] { font-size: .875rem; color: #A4243A; }
 [data-role="status"]:empty, [data-role="copy-status"]:empty { display: none; }
 
 /* Arial 15px previews how the note lands in Epic; deliberately not rem. */
@@ -185,6 +202,7 @@ button:focus-visible {
 
 /* Measured the same way with the page in dark mode. */
 @media (prefers-color-scheme: dark) {
+    [data-role="copy-status"] { color: #E0708A; }
     button {
         border-color: rgba(245, 245, 245, 0.2);
         background: #131720;
@@ -318,27 +336,29 @@ export default function(component) {
       } else {
         throw new Error('no clipboard');
       }
-      // Confirmation exists because a clipboard write can fail silently --
-      // see the catch below -- and without it you would paste whatever was
-      // on the clipboard before into a chart note and never know. It is also
-      // the only signal a screen-reader user gets that the button did
-      // anything. It clears itself so it does not sit there as clutter.
-      copyStatus.textContent = 'Copied.';
-      clearTimeout(copyStatus._timer);
-      copyStatus._timer = setTimeout(() => { copyStatus.textContent = ''; }, 3000);
+      // Success says nothing, deliberately. You find out it worked when you
+      // paste, so a confirmation is only clutter -- and a stale one is worse
+      // than clutter, because it implies the clipboard still matches a note
+      // the calculator has since changed. Silence means it worked.
+      copyStatus.textContent = '';
     } catch (_) {
+      // Failure MUST speak, because it is otherwise invisible.
       // navigator.clipboard needs a secure context, so this is the path taken
-      // when the app is opened over plain http from another device on the LAN.
-      // Select the text so the browser's own Copy still works.
+      // when the app is opened over plain http from another device on the
+      // ward network -- and a clinician who is not told will paste whatever
+      // was on the clipboard beforehand into a chart note.
+      //
+      // Select the text so the browser's own Copy still finishes the job,
+      // then say exactly that. No timer: this is an instruction the reader
+      // still has to act on, not a report of something already done.
       const range = document.createRange();
       range.selectNodeContents(body);
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
-      // Deliberately NOT on a timer: this one is an instruction the reader
-      // still has to act on, not a confirmation of something already done.
-      clearTimeout(copyStatus._timer);
-      copyStatus.textContent = 'Select Copy in your browser to finish copying.';
+      const key = navigator.platform && /Mac/i.test(navigator.platform) ? '\\u2318C' : 'Ctrl+C';
+      copyStatus.textContent =
+        'Could not copy automatically. The note is selected \\u2014 press ' + key + ' to copy it.';
     }
   };
 }
