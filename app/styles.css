@@ -242,9 +242,34 @@ html {
    only turns opaque 40% of the way across, so tab text bleeds under the
    arrow. Use the app's maroon, widen to a thumb-sized target, enlarge the
    chevron, and bring the gradient opaque at 25% so the icon always sits on
-   solid ground. #fff is Streamlit's default light background -- no
-   backgroundColor is set in .streamlit/config.toml, and the app already
-   hardcodes light-theme colours elsewhere (see _note). */
+   solid ground.
+
+   A fade has to end in the colour it is fading INTO, so this rule needs a
+   literal page colour and cannot avoid one. The light stop was #ffffff on
+   the stated assumption that no backgroundColor was set; that is no longer
+   true, so it now tracks the #FCFAF9 in .streamlit/config.toml (2026-09-09,
+   matched to EN-Calc). Hardcoded white against a warm off-white page is a
+   visible seam beside the tabs.
+
+   >>> THESE TWO COLOURS MUST TRACK .streamlit/config.toml BY HAND. <<<
+   Streamlit 1.62 does NOT expose the theme as CSS custom properties -- the
+   whole shipped frontend defines exactly five custom properties and none of
+   them is a theme colour, so var(--background-color) resolves to nothing and
+   would make the declaration invalid, dropping the gradient entirely and
+   letting tab text run under the arrow. That is worse than the seam, so do
+   not "improve" this into a var. scripts/check_css_hooks.py cannot catch
+   this class of drift either; it checks selector names, not colours.
+
+   The transparent end is spelled `transparent` rather than rgba(...,0):
+   gradients interpolate with premultiplied alpha, so it fades out through
+   the opaque stop's own hue instead of through grey.
+
+   The dark half stays in @media (prefers-color-scheme: dark) for the same
+   reason -- with no theme token to read, the OS setting is the only signal
+   available in CSS. That keeps the known limitation the previous author
+   recorded: it follows the OS, so it can disagree with a theme picked by
+   hand in Streamlit's settings menu (2026-08-21). Revisit if a viewer
+   reports a pale smear beside the tabs. */
 [data-testid="stTabsScrollLeft"],
 [data-testid="stTabsScrollRight"] {
     color: #A4243A !important;
@@ -256,23 +281,17 @@ html {
     height: 1.5rem !important;
 }
 [data-testid="stTabsScrollRight"] {
-    background-image: linear-gradient(to right, rgba(255, 255, 255, 0), #ffffff 25%) !important;
+    background-image: linear-gradient(to right, transparent, #FCFAF9 25%) !important;
 }
 [data-testid="stTabsScrollLeft"] {
-    background-image: linear-gradient(to left, rgba(255, 255, 255, 0), #ffffff 25%) !important;
+    background-image: linear-gradient(to left, transparent, #FCFAF9 25%) !important;
 }
-/* The one place a real page colour is unavoidable: a fade has to end in
-   the colour it is fading INTO, and transparent would defeat the point.
-   #0e1117 is Streamlit's own dark background. This is the rule to revisit
-   if a viewer ever reports a pale smear beside the tabs -- unlike the
-   others it follows the OS setting, so it can disagree with a theme
-   picked by hand in Streamlit's settings menu (2026-08-21). */
 @media (prefers-color-scheme: dark) {
     [data-testid="stTabsScrollRight"] {
-        background-image: linear-gradient(to right, rgba(14, 17, 23, 0), #0e1117 25%) !important;
+        background-image: linear-gradient(to right, transparent, #0E1117 25%) !important;
     }
     [data-testid="stTabsScrollLeft"] {
-        background-image: linear-gradient(to left, rgba(14, 17, 23, 0), #0e1117 25%) !important;
+        background-image: linear-gradient(to left, transparent, #0E1117 25%) !important;
     }
 }
 

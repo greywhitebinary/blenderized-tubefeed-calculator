@@ -15,7 +15,26 @@ primaryColor = "#A4243A"
 # Streamlit renders along with their hover and visited states, and so there
 # is no !important fight with Streamlit's own stylesheet.
 linkColor = "#A4243A"
-secondaryBackgroundColor = "#f9e8eb"
+secondaryBackgroundColor = "#F9E8EB"
+
+# Page ground and body text, matched to EN-Calc (2026-09-09) so the two
+# calculators read as one family of tools. Streamlit's defaults are a pure
+# white page and a blue-grey #31333F text; against EN-Calc's warm off-white
+# the difference is the first thing the eye catches when they sit side by
+# side. Nothing else in this file changed value -- secondaryBackgroundColor
+# above is the same pale pink, respelled in caps to match the twin file.
+#
+# >>> CHANGING backgroundColor MEANS EDITING app/styles.css TOO. <<<
+# The tab-scroll fade gradients need a literal colour to fade INTO, and
+# Streamlit 1.62 does not expose the theme as CSS custom properties, so they
+# cannot read it from here. Both stops are hardcoded in that file, one per
+# colour scheme; see the comment above [data-testid="stTabsScrollLeft"].
+# Leaving them behind is how a visible seam appears beside the tabs.
+backgroundColor = "#FCFAF9"
+textColor = "#292526"
+# Streamlit's own default stack, stated explicitly rather than left implied,
+# so both repos declare the same thing.
+font = "sans serif"
 
 # Dark-theme overrides (author asked for the app to work in both themes,
 # 2026-08-21). The colours above are read in BOTH themes, which is what
@@ -33,8 +52,16 @@ secondaryBackgroundColor = "#f9e8eb"
 [theme.dark]
 # The pale pink, taken down to a maroon-tinted charcoal: still recognisably
 # the same family, but white text sits on it cleanly.
-secondaryBackgroundColor = "#3a2429"
+secondaryBackgroundColor = "#3A2429"
 # The maroon lifted for contrast against a dark page. #A4243A on near-black
 # is legible but muddy; this is the same hue with the lightness raised.
 primaryColor = "#E0708A"
 linkColor = "#E0708A"
+# Stated rather than inherited, for the same reason as the light theme above:
+# both calculators should declare the same ground and text rather than one
+# naming them and the other relying on a default. These ARE Streamlit's own
+# dark defaults, so nothing shifts visually -- the value is that the dark
+# gradient stop in app/styles.css now has a declared colour to track instead
+# of an assumed one.
+backgroundColor = "#0E1117"
+textColor = "#F5F5F5"
