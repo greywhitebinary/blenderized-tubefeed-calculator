@@ -1,0 +1,73 @@
+name: Dependency canary
+
+# WHAT THIS IS FOR
+#
+# ci.yml tells you whether the app works with the versions it pins. This
+# tells you whether it will work with the versions coming next, which is a
+# different and more useful question when your streamlit pin is exact.
+#
+# requirements.txt pins streamlit==1.62.0 on purpose, because app/styles.css
+# targets Streamlit's internal data-testid attributes and a minor release can
+# rename them. That pin makes upgrades safe but also makes them expensive to
+# evaluate: the only way to find out used to be to upgrade and look. This
+# workflow does the looking, on a schedule, against nothing but a scratch
+# environment.
+#
+# IT MUST NOT GATE A PUSH. There is deliberately no `push:` trigger. This
+# job goes red for reasons outside the repo -- an upstream release breaks, a
+# prerelease lands, a transitive dependency yanks a version -- and a red
+# result here is information, not a defect. Treat it as "do not upgrade yet",
+# never as "main is broken".
+
+"on":
+  workflow_dispatch:
+  schedule:
+    # Wednesday 06:00 UTC, deliberately offset from ci.yml's Monday run so a
+    # red canary is never confused with a red CI run in the same digest.
+    - cron: "0 6 * * 3"
+
+jobs:
+  latest:
+    name: Against the latest releases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install dev dependencies, then force everything to latest
+        run: |
+          pip install -r requirements-dev.txt
+          # --upgrade overrides the pins deliberately. This is the whole
+          # point of the job, and it is why it runs nowhere near a deploy.
+          pip install --upgrade streamlit pandas openpyxl pillow anthropic
+
+      - name: Show what is actually installed
+        run: pip list
+
+      # This is the check the pin exists for, and the one a test suite
+      # cannot perform: AppTest never sees a stylesheet, so a renamed
+      # data-testid breaks the page while every test stays green.
+      - name: CSS hooks still exist in the latest Streamlit
+        run: python scripts/check_css_hooks.py
+
+      - name: Run pytest
+        run: pytest tests/ -v
+
+      - name: AppTest checks (every scripts/check_*.py)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          scripts=(scripts/check_*.py)
+          if [ ${#scripts[@]} -eq 0 ]; then
+            echo "No scripts/check_*.py found -- the gate would pass vacuously."
+            exit 1
+          fi
+          echo "Running ${#scripts[@]} checks."
+          for s in "${scripts[@]}"; do
+            echo "::group::$s"
+            python "$s"
+            echo "::endgroup::"
+          done

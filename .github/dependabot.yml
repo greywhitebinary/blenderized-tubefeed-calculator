@@ -1,0 +1,30 @@
+version: 2
+
+# Security patches for everything EXCEPT streamlit.
+#
+# requirements.txt pins streamlit==1.62.0 deliberately, because app/styles.css
+# targets Streamlit's internal data-testid attributes. Left to itself
+# Dependabot would open a pull request every week proposing exactly the
+# upgrade that has to stay deliberate -- and a recurring PR nobody intends to
+# merge is how people learn to ignore the whole feed. So streamlit is ignored
+# here and canary.yml owns that decision instead, because the canary can
+# actually answer whether the CSS hooks survive the new version.
+#
+# Everything else genuinely benefits: the exact pin blocks security patches
+# along with everything else, and this is what puts them back.
+
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    ignore:
+      # Owned by canary.yml + scripts/check_css_hooks.py, not by Dependabot.
+      - dependency-name: "streamlit"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
