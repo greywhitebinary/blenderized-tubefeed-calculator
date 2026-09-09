@@ -105,6 +105,7 @@ from src.targets import empty_targets
 # The Streamlit layer's own modules. Imported after the sys.path insert
 # above, which is what makes `app` importable as a package.
 from app.add_food import render_add_food_ui, food_search_index
+from app.copy_block import render_copy_block
 from app.ui_common import _left_aligned, _narrow, _note
 from src.report import (
     generate_adequacy_report,
@@ -2017,6 +2018,10 @@ with recipes_tab:
             # so the card can legitimately show fewer lines than the
             # selector's item count. group_ingredients_for_card() owns the
             # rule, including why "1 large egg" never merges with "75 g".
+            #
+            # Rendered by render_copy_block since 2026-09-09, so the copy
+            # control here is the same one the Chart Note and both of
+            # EN-Calc's notes use. It was st.code, for its free copy icon.
             _card_lines = [selected_blend["name"] or f"Blend {selected_blend_id}"]
             for ing in group_ingredients_for_card(selected_blend["ingredients"]):
                 _label = ing.get("measure_label")
@@ -2054,7 +2059,12 @@ with recipes_tab:
             # the moment you hand the recipe over, not for every edit, so
             # it should not push the rows above it up the page every time.
             with st.expander("📋 Recipe card — copy to hand over"):
-                st.code("\n".join(_card_lines), language=None)
+                st.session_state["_recipe_card_generated"] = "\n".join(_card_lines)
+                render_copy_block(
+                    "<br>".join(escape(line) for line in _card_lines),
+                    block_id="btf_recipe_card",
+                    label="Copy card",
+                )
 
         else:  # _view == "Nutrition" (Change 1.4)
             # compute_ingredient_breakdown() is the SAME merge-and-scale
@@ -3514,7 +3524,20 @@ with record_tab:
         # it is still shown in the Feed Recipes tab and saved to the
         # workbook, it just isn't part of the pasted note.
         _note_text = "\n".join(_summary_lines)
-        st.code(_note_text, language=None)
+        # render_copy_block, not st.code (2026-09-09). st.code gave this the
+        # hover copy icon for free, which is elegant but names itself to
+        # nobody -- and EN-Calc's chart note had a labelled button instead, so
+        # the two tools disagreed about how you copy a note. copy_block.py is
+        # shared between them; see its docstring.
+        #
+        # Stored in session state because AppTest has no accessor for a
+        # Components v2 block the way it had at.code, and three scripts/
+        # checks read this text. Same idiom EN-Calc already uses.
+        st.session_state["_chart_note_generated_record"] = _note_text
+        render_copy_block(
+            "<br>".join(escape(line) for line in _summary_lines),
+            block_id="btf_chart_note",
+        )
 
     # --- One file: the day you can reopen, and the report you can file ---
     #

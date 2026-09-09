@@ -78,7 +78,14 @@ def main() -> None:
 
     # The example day produces a chart note and a non-empty adequacy table.
     # Anchored on the headings, not the timeline text, which varies.
-    note_text = "\n".join(c.value or "" for c in at.code)
+    #
+    # Read from session state rather than at.code since 2026-09-09: the note
+    # is a Components v2 copy block now (app/copy_block.py), which AppTest
+    # cannot reach, so it publishes its plain text here for this check.
+    # SafeSessionState maps attribute access to keys, so it has no .get().
+    key = "_chart_note_generated_record"
+    assert key in at.session_state, "no chart note rendered for the example day"
+    note_text = at.session_state[key]
     for heading in ("Feed regimen:", "Oral intake:", "Total daily intake:"):
         assert heading in note_text, f"chart note missing {heading!r}"
     assert len(at.dataframe) > 0

@@ -9,6 +9,19 @@ sys.path.insert(0, str(ROOT))
 
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
+# The chart note and the recipe card were st.code until 2026-09-09, and this
+# script read them back with [c.value for c in at.code]. They are now
+# Components v2 blocks (app/copy_block.py), which AppTest has no accessor
+# for, so each publishes its plain text to session state for exactly this
+# purpose -- the same idiom EN-Calc's own tests already use.
+COPY_BLOCK_KEYS = ("_chart_note_generated_record", "_recipe_card_generated")
+
+
+def copy_block_texts(app_test) -> list[str]:
+    """Text of every copy block currently on the page."""
+    return [app_test.session_state[k] for k in COPY_BLOCK_KEYS if k in app_test.session_state]
+
+
 at = AppTest.from_file(str(ROOT / "app" / "streamlit_app.py"), default_timeout=180)
 at.run()
 assert not at.exception, at.exception
@@ -102,7 +115,7 @@ assert not at.exception, at.exception
 # delivery-method line plus totals by category, nothing else. Attribution
 # to the right recipe is still guarded -- by the per-blend widgets above
 # and by the recipe-file round-trip in section 5.
-note_blocks = [c.value for c in at.code]
+note_blocks = copy_block_texts(at)
 assert note_blocks, "no chart note rendered"
 assert all(
     "Flow test" not in (n or "") for n in note_blocks
@@ -119,7 +132,7 @@ at.session_state["blends"][unfed_id] = {
 }
 at.run()
 assert not at.exception, at.exception
-note2 = "\n".join(c.value or "" for c in at.code)
+note2 = "\n".join(copy_block_texts(at))
 assert "Never fed blend" not in note2, "a blend not fed today leaked into the day's chart note"
 print("OK: a blend not fed today stays out of the day's chart note")
 
