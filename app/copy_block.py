@@ -117,27 +117,45 @@ COPY_BLOCK_CSS = """
     margin-bottom: .5rem;
 }
 
-/* 0.875rem matches the .box-heading this sits beside; see the module
-   docstring on why the toolbar and the body are sized differently. */
+/* A Streamlit secondary button, reproduced. Every value below was MEASURED
+   from getComputedStyle on a real rendered button rather than guessed --
+   "looks like the other buttons in the app" is the entire point of this
+   control, and the shadow root means Streamlit's own CSS cannot reach in.
+
+   Measured (light): font 20px/32px Source Sans 400, padding 5px 15px,
+   min-height 50px, radius 10px, 1px border rgba(41,37,38,.2), background
+   #fff, colour rgb(41,37,38). Expressed in rem where it tracks the 125%
+   root. The note BODY is the deliberate exception; see the module docstring.
+
+   Hover and active tint the BACKGROUND and leave border and text alone,
+   which is the part worth not re-deriving from memory: a plain grey tint
+   here read as obviously foreign next to the real buttons. */
 button {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: .4rem;
-    padding: .25rem .7rem;
-    border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-    border-radius: .3rem;
-    background: transparent;
+    min-height: 2.5rem;
+    padding: .25rem .75rem;
+    border: 1px solid rgba(41, 37, 38, 0.2);
+    border-radius: .5rem;
+    background: #FFFFFF;
     color: inherit;
     font-family: inherit;
-    font-size: .875rem;
-    line-height: 1.5;
+    font-size: inherit;
+    font-weight: 400;
+    line-height: 1.6;
     cursor: pointer;
 }
-button:hover { background: rgba(128, 128, 128, 0.15); }
+/* An author `display` on button beats the UA stylesheet's [hidden] rule, so
+   without this the refresh button is visible in every app at all times --
+   including the read-only ones, where it means nothing at all. */
+button[hidden] { display: none; }
+button:hover { background: rgba(217, 120, 129, 0.15); }
+button:active { background: rgba(217, 120, 129, 0.25); }
 button:focus-visible {
     outline: none;
-    border-color: #A4243A;
-    box-shadow: 0 0 0 2px rgba(164, 36, 58, 0.25);
+    box-shadow: 0 0 0 2px rgba(164, 36, 58, 0.4);
 }
 
 /* Empty at rest and filled when something happens, so the live regions
@@ -165,11 +183,15 @@ button:focus-visible {
     box-shadow: 0 0 0 2px rgba(164, 36, 58, 0.25);
 }
 
+/* Measured the same way with the page in dark mode. */
 @media (prefers-color-scheme: dark) {
-    button:focus-visible {
-        border-color: #E0708A;
-        box-shadow: 0 0 0 2px rgba(224, 112, 138, 0.3);
+    button {
+        border-color: rgba(245, 245, 245, 0.2);
+        background: #131720;
     }
+    button:hover { background: rgba(195, 172, 186, 0.15); }
+    button:active { background: rgba(195, 172, 186, 0.25); }
+    button:focus-visible { box-shadow: 0 0 0 2px rgba(224, 112, 138, 0.45); }
     .copy-body:focus {
         border-color: #E0708A;
         box-shadow: 0 0 0 2px rgba(224, 112, 138, 0.3);
@@ -222,25 +244,53 @@ export default function(component) {
     // the note and then reach the clipboard as text/html. Cerner inherits
     // pasted markup, and foreign font declarations are the documented failure.
     body.addEventListener('paste', (event) => {
-      event.preventDefault();
       const text = (event.clipboardData || window.clipboardData).getData('text/plain');
-      const selection = window.getSelection();
-      if (!selection || !selection.rangeCount) return;
-      const range = selection.getRangeAt(0);
-      range.deleteContents();
-      const fragment = document.createDocumentFragment();
-      const lines = text.split(/\\r\\n|\\r|\\n/);
-      lines.forEach((line, index) => {
-        if (index > 0) fragment.appendChild(document.createElement('br'));
-        fragment.appendChild(document.createTextNode(line));
-      });
-      const last = fragment.lastChild;
-      range.insertNode(fragment);
-      if (last) {
-        range.setStartAfter(last);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
+      if (text === null || text === undefined) return;
+      event.preventDefault();
+
+      // execCommand first, and it is the path that actually runs. It is
+      // deprecated but universally implemented, and crucially it finds the
+      // caret itself: this editor lives in a shadow root, where
+      // window.getSelection() does not reliably reach inside, so a
+      // Range-based insert can find no range at all and silently drop the
+      // paste after preventDefault has already cancelled it.
+      let inserted = false;
+      try {
+        inserted = document.execCommand('insertText', false, text);
+      } catch (_) {
+        inserted = false;
+      }
+
+      if (!inserted) {
+        // Shadow-aware fallback: ShadowRoot.getSelection exists in Chrome,
+        // and window.getSelection is right everywhere the editor is in the
+        // light DOM. If neither yields a range inside the editor, append
+        // rather than lose what the user pasted.
+        const root = body.getRootNode();
+        const selection = (root && root.getSelection) ? root.getSelection() : window.getSelection();
+        const fragment = document.createDocumentFragment();
+        text.split(/\\r\\n|\\r|\\n/).forEach((line, index) => {
+          if (index > 0) fragment.appendChild(document.createElement('br'));
+          fragment.appendChild(document.createTextNode(line));
+        });
+        const last = fragment.lastChild;
+        let range = null;
+        if (selection && selection.rangeCount) {
+          const candidate = selection.getRangeAt(0);
+          if (body.contains(candidate.commonAncestorContainer)) range = candidate;
+        }
+        if (range) {
+          range.deleteContents();
+          range.insertNode(fragment);
+          if (last) {
+            range.setStartAfter(last);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        } else {
+          body.appendChild(fragment);
+        }
       }
       body.dispatchEvent(new Event('input'));
     });
@@ -268,7 +318,14 @@ export default function(component) {
       } else {
         throw new Error('no clipboard');
       }
+      // Confirmation exists because a clipboard write can fail silently --
+      // see the catch below -- and without it you would paste whatever was
+      // on the clipboard before into a chart note and never know. It is also
+      // the only signal a screen-reader user gets that the button did
+      // anything. It clears itself so it does not sit there as clutter.
       copyStatus.textContent = 'Copied.';
+      clearTimeout(copyStatus._timer);
+      copyStatus._timer = setTimeout(() => { copyStatus.textContent = ''; }, 3000);
     } catch (_) {
       // navigator.clipboard needs a secure context, so this is the path taken
       // when the app is opened over plain http from another device on the LAN.
@@ -278,6 +335,9 @@ export default function(component) {
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
+      // Deliberately NOT on a timer: this one is an instruction the reader
+      // still has to act on, not a confirmation of something already done.
+      clearTimeout(copyStatus._timer);
       copyStatus.textContent = 'Select Copy in your browser to finish copying.';
     }
   };
