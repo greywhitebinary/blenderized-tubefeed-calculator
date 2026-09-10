@@ -37,7 +37,7 @@ from src.label_extract import (
 from src.measures import get_measures_for_food
 from src.nutrients import DEFAULT_PACK, defs_for_tier, registry_by_name
 
-from app.ui_common import _narrow, _note
+from app.ui_common import _narrow, render_alert
 
 # ---------------------------------------------------------------------------
 # Label-photo extraction: rate limiting and the API client
@@ -335,7 +335,7 @@ def render_add_food_ui(
                             key=f"{key_prefix}_grams_direct",
                         )
                 else:
-                    _note("No household measures for this food.")
+                    render_alert("guidance", "No household measures for this food.")
                     calculated_grams = _narrow().number_input(
                         "Grams",
                         min_value=0.0,
@@ -348,10 +348,12 @@ def render_add_food_ui(
                 # Nothing found is an honest answer, and after three
                 # layers it usually means CNF really doesn't have it --
                 # so point at the way out rather than just saying no.
-                _note(
+                render_alert(
+                    "guidance",
                     "No foods found. Try fewer words, or switch to "
                     "<strong>Enter a Canada Nutrition Facts label</strong> above to add "
-                    "this food yourself."
+                    "this food yourself.",
+                    allow_html=True,
                 )
         else:
             st.caption(f"Type at least {MIN_QUERY_LEN} characters to search.")
@@ -453,9 +455,10 @@ def render_add_food_ui(
         if _result:
             _reg = registry_by_name(DEFAULT_PACK)
             _missing_labels = [_reg[_m].label for _m in _result["missing"] if _m in _reg]
-            st.success(
+            render_alert(
+                "success",
                 f"Filled in {_result['found']} values from your photo. "
-                "**Check every one against the label before adding it.**"
+                "**Check every one against the label before adding it.**",
             )
             if _missing_labels:
                 # Named, not silently left at 0: an absent line and a
@@ -500,9 +503,10 @@ def render_add_food_ui(
                     "Every value stays editable and nothing is saved until you press Add."
                 )
                 if _session_left <= 0 or _day_left <= 0:
-                    _note(
+                    render_alert(
+                        "guidance",
                         "Photo reading has reached its limit for now — please type "
-                        "the values in below."
+                        "the values in below.",
                     )
                 else:
                     _photo = st.file_uploader(
@@ -523,7 +527,7 @@ def render_add_food_ui(
                                     pack=DEFAULT_PACK,
                                 )
                             except LabelExtractionError as _exc:
-                                _note(str(_exc))
+                                render_alert("guidance", str(_exc))
                             else:
                                 _label_record_call()
                                 # STAGE the drafts; do not write widget keys
@@ -699,9 +703,9 @@ def render_add_food_ui(
             _custom_label = add_custom_button_label or f"{add_button_label} custom food"
             if st.button(f"➕ {_custom_label}", key=f"{key_prefix}_add_custom_btn"):
                 if not cname:
-                    st.warning("Please enter a food name.")
+                    render_alert("warning", "Please enter a food name.")
                 elif cserving <= 0:
-                    st.warning("Serving size must be positive.")
+                    render_alert("warning", "Serving size must be positive.")
                 else:
                     code = st.session_state.next_custom_code
                     st.session_state.next_custom_code -= 1

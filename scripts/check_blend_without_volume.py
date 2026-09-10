@@ -76,6 +76,22 @@ DeltaGenerator.download_button = _spy_method
 streamlit.download_button = _spy_module
 
 
+def alerts(app_test, phrase):
+    """Alert texts containing `phrase`.
+
+    Was [w.value for w in at.warning ...] until 2026-09-09. The app now draws
+    its call-outs as its own .app-alert markup (app/ui_common.render_alert),
+    shared with EN-Calc, so AppTest's at.warning no longer sees them -- they
+    arrive as markdown. Matching on the phrase keeps every assertion below
+    testing the same thing it always did.
+    """
+    return [
+        m.value
+        for m in app_test.markdown
+        if "app-alert" in (m.value or "") and phrase in (m.value or "")
+    ]
+
+
 def main() -> None:
     at = AppTest.from_file(str(ROOT / "app" / "streamlit_app.py"), default_timeout=240)
     at.run()
@@ -97,8 +113,8 @@ def main() -> None:
     print("OK: the page survived")
 
     # Matched on the one phrase common to the singular and plural wording.
-    warnings = [w.value for w in at.warning if "cannot be completed" in w.value]
-    assert warnings, f"no warning explaining why totals are missing; warnings were {at.warning}"
+    warnings = alerts(at, "cannot be completed")
+    assert warnings, "no warning explaining why totals are missing"
     assert blend_name in warnings[0], f"the warning does not name the blend: {warnings[0]!r}"
     print(f"OK: it names the blend -- {warnings[0][:72]}...")
 
@@ -121,13 +137,13 @@ def main() -> None:
     print(f"OK: still downloadable and reloadable -- {parsed.summary}")
 
     # --- The warning clears on the SAME run the volume is typed.
-    stale = [w.value for w in at.warning if "no measured volume yet" in w.value]
+    stale = alerts(at, "no measured volume yet")
     assert stale, "the per-blend volume warning is missing while the volume is 0"
     next(n for n in at.number_input if n.key == f"vol_{blend_id}").set_value(1000.0).run()
     assert not at.exception, at.exception
-    assert not [
-        w for w in at.warning if "no measured volume yet" in w.value
-    ], "the volume warning lagged a render -- it should clear as soon as a volume is entered"
+    assert not alerts(
+        at, "no measured volume yet"
+    ), "the volume warning lagged a render -- it should clear as soon as a volume is entered"
     banner = [m.value for m in at.markdown if m.value.startswith("**Today:")]
     assert banner, "totals did not come back after a volume was entered"
     print(f"OK: warning cleared and totals returned -- {banner[0]}")
@@ -155,7 +171,7 @@ def main() -> None:
         next(n for n in at.number_input if n.key == f"vol_{_bid}").set_value(0.0).run()
         assert not at.exception, at.exception
 
-    plural = [w.value for w in at.warning if "cannot be completed" in w.value]
+    plural = alerts(at, "cannot be completed")
     assert plural, "no warning when two referenced blends both lack a volume"
     text = plural[0]
     for expected in ("The final volumes for", "are missing", "Add the volumes"):

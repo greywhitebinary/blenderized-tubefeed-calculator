@@ -106,7 +106,7 @@ from src.targets import empty_targets
 # above, which is what makes `app` importable as a package.
 from app.add_food import render_add_food_ui, food_search_index
 from app.copy_block import render_copy_block
-from app.ui_common import _left_aligned, _narrow, _note
+from app.ui_common import _left_aligned, _narrow, render_alert
 from src.report import (
     generate_adequacy_report,
     generate_clinical_screen,
@@ -211,7 +211,7 @@ def _confirm_recipe_import(entries) -> None:
         st.markdown(f"**Loading recipe: {entries[0][0].name or 'unnamed'}**")
 
     if total_rows == 0:
-        _note("No usable ingredient rows were found in that file.")
+        render_alert("guidance", "No usable ingredient rows were found in that file.")
         if st.button("Cancel", key="recipe_import_cancel_empty"):
             _clear()
             st.rerun()
@@ -240,7 +240,7 @@ def _confirm_recipe_import(entries) -> None:
             st.markdown(f"**{r_index + 1}. {parsed.name or 'unnamed'}**")
 
         for warning in parsed.row_warnings:
-            _note(warning)
+            render_alert("guidance", warning)
 
         choices: list[int | None] = []
         for index, row in enumerate(resolved):
@@ -718,7 +718,7 @@ if _day_file is not None and st.session_state.get("_last_day_upload") != _day_fi
     try:
         st.session_state["_pending_day"] = workbook_bytes_to_day(_day_file.getvalue())
     except DayFileError as _exc:
-        _note(str(_exc))
+        render_alert("guidance", str(_exc))
     else:
         st.session_state["_last_day_upload"] = _day_file.name
         st.rerun()
@@ -728,12 +728,13 @@ if _day_file is not None and st.session_state.get("_last_day_upload") != _day_fi
 # has been working for ten minutes should get to say no.
 _pending_day = st.session_state.get("_pending_day")
 if _pending_day is not None:
-    st.warning(
+    render_alert(
+        "warning",
         f"**Open this saved record?** {_pending_day.summary}. "
-        "This replaces the blends, intake record and targets currently on screen."
+        "This replaces the blends, intake record and targets currently on screen.",
     )
     for _w in _pending_day.warnings:
-        _note(_w)
+        render_alert("guidance", _w)
     _dc1, _dc2, _dc3 = st.columns([1, 1, 3])
     if _dc1.button("Open it", key="day_open_confirm", width="stretch"):
         st.session_state["_apply_day"] = _pending_day
@@ -1162,7 +1163,7 @@ if load_example_clicked:
         st.session_state["delivery_method_input"] = "BTF using 24Fr PEG tube via syringe bolus"
         st.rerun()
     else:
-        st.error("Could not find example foods in CNF.")
+        render_alert("error", "Could not find example foods in CNF.")
 
 with top_l:
     # Seed the default only the very first time this key ever exists,
@@ -1708,9 +1709,10 @@ with recipes_tab:
         f"vol_{selected_blend_id}", selected_blend["measured_volume_mL"]
     )
     if selected_blend["ingredients"] and float(_volume_now or 0.0) <= 0:
-        st.warning(
+        render_alert(
+            "warning",
             "This blend has ingredients but no measured volume yet — "
-            "densities can't be computed until you enter one below."
+            "densities can't be computed until you enter one below.",
         )
 
     st.divider()
@@ -1770,7 +1772,7 @@ with recipes_tab:
     st.subheader("Ingredients")
 
     if not selected_blend["ingredients"]:
-        _note("Add ingredients above to get started.")
+        render_alert("guidance", "Add ingredients above to get started.")
     else:
         # Recipe / Nutrition switcher (Change 1.1, plan
         # you-know-the-line-vectorized-milner.md). Same ingredient list,
@@ -2192,9 +2194,10 @@ with recipes_tab:
     if _ft_match is not None:
         _ft_current = _ft_match
     else:
-        _note(
+        render_alert(
+            "guidance",
             f"This blend's saved flow-test result, \"{_ft_current}\", isn't "
-            'one this app recognises, so it was reset to "Not done".'
+            'one this app recognises, so it was reset to "Not done".',
         )
         _ft_current = "Not done"
 
@@ -2349,7 +2352,7 @@ with recipes_tab:
         "(selected at the top of this tab)"
     ):
         if _selected_invalid:
-            st.warning("This blend has ingredients but no measured volume yet.")
+            render_alert("warning", "This blend has ingredients but no measured volume yet.")
         elif selected_profile is None:
             st.caption("Add ingredients and a measured volume to the blend above.")
         else:
@@ -2381,9 +2384,10 @@ with recipes_tab:
     )
 
     if selected_profile is None:
-        _note(
+        render_alert(
+            "guidance",
             "Add ingredients and a measured volume to the blend above "
-            "to use the dilution what-if."
+            "to use the dilution what-if.",
         )
     else:
         w1, w2 = st.columns([1, 2])
@@ -2447,12 +2451,14 @@ with recipes_tab:
                 if tk > 0 and tp > 0:
                     ro = required_daily_volume(selected_profile, tk, tp)
                     rd = required_daily_volume(diluted, tk, tp)
-                    _note(
+                    render_alert(
+                        "guidance",
                         f"Required daily volume of just this blend to meet "
                         f"{tk:.0f} kcal + {tp:.0f} g protein:<br>"
                         f"<strong>{ro:.0f} mL</strong> → "
                         f"<strong>{rd:.0f} mL</strong> after dilution "
-                        f"(+{rd - ro:.0f} mL)"
+                        f"(+{rd - ro:.0f} mL)",
+                        allow_html=True,
                     )
 
                 # --- Commit the preview into a real, documentable blend ---
@@ -2511,10 +2517,11 @@ with recipes_tab:
                     f"pulls through the tube."
                 )
                 if _water_code is None:
-                    _note(
+                    render_alert(
+                        "guidance",
                         "Couldn't find a plain water entry in CNF, so this can't "
                         "be saved automatically. Add the water as an ingredient "
-                        "yourself and re-measure the volume."
+                        "yourself and re-measure the volume.",
                     )
                 elif st.button(
                     f"➕ Save as a new blend with {added_mL:.0f} mL {liquid_type.lower()}",
@@ -2661,7 +2668,7 @@ with recipes_tab:
         try:
             _parsed_list = workbook_bytes_to_recipes(_uploaded.getvalue())
         except RecipeFileError as exc:
-            _note(str(exc))
+            render_alert("guidance", str(exc))
         else:
             st.session_state["_pending_recipe"] = [
                 (_p, resolve_ingredients(_p, fn, search_index=food_search_index(fn)))
@@ -2686,7 +2693,10 @@ with recipes_tab:
     # longer the point.
     st.subheader("Compare Blends and Formulas")
     if selected_profile is None:
-        _note("Add ingredients and a measured volume to the blend above " "to use the comparator.")
+        render_alert(
+            "guidance",
+            "Add ingredients and a measured volume to the blend above " "to use the comparator.",
+        )
     else:
         compare_volume_mL = _narrow(1, 3).number_input(
             "Compare at daily volume (mL)",
@@ -2907,12 +2917,13 @@ with record_tab:
                 _names, _plural = _quoted[0], False
             else:
                 _names, _plural = ", ".join(_quoted[:-1]) + " and " + _quoted[-1], True
-            st.warning(
+            render_alert(
+                "warning",
                 f"The final volume{'s' if _plural else ''} for {_names} "
                 f"{'are' if _plural else 'is'} missing. Without a measured final "
                 "volume, the calculations required for the Intake Record below cannot "
                 f"be completed. Add the volume{'s' if _plural else ''} on the Feed "
-                "Recipes tab under Blend details."
+                "Recipes tab under Blend details.",
             )
         if _unknown_formulas:
             # Same construction as the no-volume warning just above, for
@@ -2924,12 +2935,13 @@ with record_tab:
                 _fnames, _fplural = _fquoted[0], False
             else:
                 _fnames, _fplural = ", ".join(_fquoted[:-1]) + " and " + _fquoted[-1], True
-            st.warning(
+            render_alert(
+                "warning",
                 f"The formula{'s' if _fplural else ''} {_fnames} in the Intake Record "
                 f"{'are' if _fplural else 'is'} not recognised by this app, so "
                 f"{'their' if _fplural else 'its'} amount cannot be included in the "
                 "calculations required for the Intake Record below. Delete the row on "
-                "the Daily Intake Record tab and re-add it from the formula list there."
+                "the Daily Intake Record tab and re-add it from the formula list there.",
             )
     else:
         # Always-visible summary line — aggregated NUTRIENT totals, never a
@@ -2989,7 +3001,7 @@ with record_tab:
                 _queue_intake_toast(f"{tf_source_label}, {tf_amount:.0f} mL")
                 st.rerun()
             else:
-                st.warning("Enter a volume greater than 0 mL.")
+                render_alert("warning", "Enter a volume greater than 0 mL.")
 
     # --- Add modulars: protein/fibre/calorie additives given down the
     # tube on their own (author's call, 2026-08-29). Sits between the
@@ -3062,7 +3074,7 @@ with record_tab:
                     )
                     st.rerun()
                 else:
-                    st.warning(f"Enter an amount greater than 0 {md_basis}.")
+                    render_alert("warning", f"Enter an amount greater than 0 {md_basis}.")
 
     # --- Add water flush: three precisions, one list (author feedback
     # 2026-07-20). A single flush for the precise; a with-feeds
@@ -3152,7 +3164,7 @@ with record_tab:
                 _queue_intake_toast(f"{_flush_label}, {_flush_total:.0f} mL")
                 st.rerun()
             else:
-                st.warning("The flush total is 0 mL — nothing to add.")
+                render_alert("warning", "The flush total is 0 mL — nothing to add.")
 
     # --- Add oral intake (inline expander -- see _render_add_oral_ui()'s
     # docstring for why this is an expander rather than st.dialog).
@@ -3292,7 +3304,7 @@ with record_tab:
     if intake_totals is None:
         pass
     elif not st.session_state.intake_log:
-        _note("Add rows to the Intake Record above to see daily totals.")
+        render_alert("guidance", "Add rows to the Intake Record above to see daily totals.")
     else:
         # --- Per-source subtotal breakdown (design doc section 3.5) ---
         st.subheader("Per-Source Breakdown")

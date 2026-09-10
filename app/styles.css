@@ -532,3 +532,75 @@ details summary img {
     display: inline-block !important;
     vertical-align: -0.15em !important;
 }
+
+/* Warning, error, success, info and guidance boxes in the workspace palette.
+   Each keeps its own hue, because the meaning is doing clinical work, but all
+   five are built the same way: a tint of the accent over the page, a rule
+   down the left in the accent itself, and ordinary body text. Building them
+   identically is what makes them read as one set rather than five borrowed
+   widgets. Shared with BTF-Calc, which carries the same block.
+
+   THE TINT IS TRANSLUCENT, NOT MIXED WITH A NAMED GROUND. It used to be
+   color-mix(... , var(--background-color, #FCFAF9)) with a comment claiming
+   it "follows the theme into dark mode without a second palette". It did not:
+   Streamlit 1.62 publishes no theme custom properties at all, so that var
+   never resolved and every alert was permanently mixed against the LIGHT
+   ground. Mixing with `transparent` gives the accent at 10% alpha, which
+   composites over whatever the page actually is. Measured after the repair,
+   body text lands at 12.4-13.1:1 on the light ground and 15.6-16.6:1 on the
+   dark one, in all five kinds.
+
+   The accents are mid-toned so each stays legible on the warm near-white AND
+   on the near-black -- verified, not assumed: warning 3.48/5.21, success
+   4.40/4.12, info 5.10/3.56, all clearing 3:1 both ways with no theme switch.
+
+   The primary maroon is the one exception. #A4243A measures 6.98 on the light
+   ground but 2.60 on the dark one, so it alone is lifted below. That rule
+   reads prefers-color-scheme, which follows the OS and can therefore disagree
+   with a theme picked by hand in Streamlit's settings menu -- the same
+   limitation the tab-scroll gradients carry. It is tolerable HERE and would
+   not be elsewhere: the accent is a decorative rule beside text that stays at
+   `color: inherit`, so the worst case is a muddy stripe, never unreadable
+   content. A same-hue maroon clearing 3:1 both ways does exist (#DC3854) but
+   reads as a different brand colour in daylight, which costs more than it
+   buys. */
+.app-alert {
+    --alert-accent: #A4243A;
+    margin: 0.5rem 0 0.75rem;
+    padding: 0.6rem 0.85rem;
+    border-left: 3px solid var(--alert-accent);
+    border-radius: 0.25rem;
+    background: color-mix(in srgb, var(--alert-accent) 10%, transparent);
+    color: inherit;
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+.app-alert--warning {
+    --alert-accent: #B07D1A;
+}
+
+.app-alert--success {
+    --alert-accent: #3D8266;
+}
+
+.app-alert--info {
+    --alert-accent: #46708C;
+}
+
+/* Empty-state and "nothing here yet" guidance. Maroon rather than the info
+   blue on a recorded decision (BTF-Calc, 2026-07-20: "the pale pink instead
+   of the grey", and _note() was written specifically to avoid st.info's
+   default blue). Mapping guidance onto --info would have quietly reversed
+   that, so it gets its own kind carrying the primary colour instead. */
+.app-alert--guidance {
+    --alert-accent: #A4243A;
+}
+
+@media (prefers-color-scheme: dark) {
+    .app-alert,
+    .app-alert--error,
+    .app-alert--guidance {
+        --alert-accent: #E0708A;
+    }
+}
