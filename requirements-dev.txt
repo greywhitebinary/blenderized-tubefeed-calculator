@@ -5,7 +5,7 @@
 pytest>=8.0
 black>=24.0
 ruff>=0.4
-jupyter>=1.0
+jupyter>=1.1.1
 
 # pyarrow - DELIBERATELY dev-only, not in requirements.txt. Reasoning:
 # src/data_loader.py prefers a pre-built Parquet cache under data/processed/
