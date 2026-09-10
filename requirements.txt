@@ -24,7 +24,7 @@ anthropic>=0.120,<1.0
 # already arrives as a Streamlit dependency, but src/label_extract.py
 # imports it directly -- and this repo has been bitten once already by
 # relying on a package it did not declare (pyarrow, CONTEXT.md §9).
-pillow>=10.0
+pillow>=12.3.0
 
 # streamlit==1.62.0 is PINNED ON PURPOSE - do not loosen to >=1.62.
 # Streamlit Community Cloud resolves a loose spec (e.g. >=1.58) against
