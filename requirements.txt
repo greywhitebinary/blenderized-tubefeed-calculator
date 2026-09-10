@@ -14,7 +14,7 @@
 # ImportError on startup. Installing the dev file avoids it entirely.
 pandas>=2.2
 streamlit==1.62.0
-openpyxl>=3.1
+openpyxl>=3.1.5
 
 # Label-photo reading (src/label_extract.py). Pinned to a major version:
 # this is the one dependency whose API shape a breaking release would
