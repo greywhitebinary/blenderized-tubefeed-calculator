@@ -82,8 +82,9 @@ against the text on screen.
 
 That turns one message into two. While they still match you get "Copied.",
 quietly. When they stop matching -- a rate changed, a duration changed, or
-the note was edited by hand -- it becomes "Changed since you copied it. Copy
-again before pasting." in the primary colour.
+the note was edited by hand -- it becomes "Changed - copy again." in the
+primary colour. Both are kept short deliberately: they sit inline beside the
+button, and a sentence there reads as an error banner rather than a status.
 
 The second one is the reason any of this exists. The dangerous case is the
 quiet one: copy the note, change a value, and the box rewrites itself while
@@ -136,12 +137,19 @@ COPY_BLOCK_HTML = f"""
 COPY_BLOCK_CSS = """
 :host { color: inherit; }
 
+/* Left-aligned, so the button holds still. Right-aligning it looked tidier
+   with an empty toolbar, but the status text shares this row: the moment a
+   message appeared the button slid left to make room, which moved the
+   control at the exact moment you had just clicked it. Anchored left, the
+   button never moves and the message grows into the space beside it. It also
+   puts the button under the heading's left edge, where every other button in
+   both apps sits. */
 .copy-toolbar {
     display: flex;
     gap: .55rem;
     align-items: center;
     flex-wrap: wrap;
-    justify-content: flex-end;
+    justify-content: flex-start;
     margin-bottom: .5rem;
 }
 
@@ -295,7 +303,7 @@ export default function(component) {
     if (copied === fingerprint(body.innerText)) {
       showStatus('ok', 'Copied.');
     } else {
-      showStatus('warn', 'Changed since you copied it. Copy again before pasting.');
+      showStatus('warn', 'Changed \\u2014 copy again.');
     }
   };
 
