@@ -40,9 +40,28 @@ fell back to transparent, and its border-color fell back to currentColor,
 drawing a hard dark line where a faint one was intended, while `font:
 inherit` pulled the label up to the page's 20px base.
 
-So the colours here are written out, and dark mode is handled with a
-prefers-color-scheme media query. Do not reintroduce a var() with a fallback
-either: it reads as though it adapts, when it never will.
+So nothing here reads a theme token, and no var() carries a fallback either:
+that reads as though it adapts, when it never will.
+
+KNOWING WHICH THEME IT IS IN
+----------------------------
+With no token to read, the component works it out two ways.
+
+Everything that can be derived is derived, from currentColor -- which does
+inherit through the shadow boundary and is therefore whatever the live theme
+says text should be. The button's fill and border come from it, so they can
+never fight the page.
+
+The rest -- the pink hover tint, the maroon warnings -- has no honest
+relationship to the text colour, so the JS measures the luminance of the page
+background and sets data-theme accordingly. NOT prefers-color-scheme: that
+reads the operating system, while Streamlit's theme follows the reader's
+choice in its own settings menu. Picking Dark on a light-set machine once left
+a white button carrying near-white text, legible to nobody.
+
+The two halves are layered on purpose. If the detection is ever wrong, the
+derived colours still carry the control, so it degrades to slightly-off
+rather than to unreadable.
 
 TYPOGRAPHY
 ----------
@@ -122,14 +141,19 @@ _COPY_ICON = (
     "</svg>"
 )
 
+# One wrapper element, because the component's `parentElement` is the
+# ShadowRoot itself: it answers querySelector but is not an Element, so it has
+# no dataset and nothing can be marked on it. data-theme goes here instead.
 COPY_BLOCK_HTML = f"""
-<div class="copy-toolbar">
-  <button data-action="copy" type="button">{_COPY_ICON}<span data-role="label"></span></button>
-  <button data-action="refresh" type="button" hidden>Update from calculator</button>
-  <span data-role="status" role="alert"></span>
-  <span data-role="copy-status" role="alert"></span>
+<div class="copy-block">
+  <div class="copy-toolbar">
+    <button data-action="copy" type="button">{_COPY_ICON}<span data-role="label"></span></button>
+    <button data-action="refresh" type="button" hidden>Update from calculator</button>
+    <span data-role="status" role="alert"></span>
+    <span data-role="copy-status" role="alert"></span>
+  </div>
+  <div class="copy-body"></div>
 </div>
-<div class="copy-body"></div>
 """
 
 # Palette written out rather than read from the theme; see the module
@@ -165,7 +189,18 @@ COPY_BLOCK_CSS = """
 
    Hover and active tint the BACKGROUND and leave border and text alone,
    which is the part worth not re-deriving from memory: a plain grey tint
-   here read as obviously foreign next to the real buttons. */
+   here read as obviously foreign next to the real buttons.
+
+   THE BASE COLOURS ARE DERIVED, NOT NAMED. Both the fill and the border come
+   from currentColor, which inherits through the shadow boundary and is
+   therefore whatever the active theme says text should be. That is what makes
+   this survive a theme it cannot see: an earlier version hardcoded #FFFFFF
+   here and switched on prefers-color-scheme, which reads the OPERATING
+   SYSTEM. Streamlit's theme follows the user's own choice in its settings
+   menu instead, so picking Dark on a light-set machine left a white button
+   carrying near-white text -- legible to nobody. Do not reintroduce a fixed
+   colour here; see reconcileTheme() in the JS for the part that cannot be
+   derived. */
 button {
     display: inline-flex;
     align-items: center;
@@ -173,12 +208,19 @@ button {
     gap: .4rem;
     min-height: 2.5rem;
     padding: .25rem .75rem;
-    border: 1px solid rgba(41, 37, 38, 0.2);
+    border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
     border-radius: .5rem;
-    background: #FFFFFF;
+    background: transparent;
     color: inherit;
     font-family: inherit;
-    font-size: inherit;
+    /* 0.875rem, NOT inherit, and this is the easy thing to get wrong.
+       Streamlit renders a button's label as MARKDOWN, so the visible text
+       lands in a nested <p> at 0.875rem (17.5px) while the <button> around it
+       still computes 1rem. Measuring the button and matching THAT gave a
+       label 14% larger than every real one in the app -- which the author
+       spotted by eye before any measurement caught it. Match the text
+       element, not its container. */
+    font-size: .875rem;
     font-weight: 400;
     line-height: 1.6;
     cursor: pointer;
@@ -228,27 +270,37 @@ button:focus-visible {
     box-shadow: 0 0 0 2px rgba(164, 36, 58, 0.25);
 }
 
-/* Measured the same way with the page in dark mode. */
-@media (prefers-color-scheme: dark) {
-    [data-role="status"] { color: #E0708A; }
-    [data-role="copy-status"][data-kind="warn"] { color: #E0708A; }
-    button {
-        border-color: rgba(245, 245, 245, 0.2);
-        background: #131720;
-    }
-    button:hover { background: rgba(195, 172, 186, 0.15); }
-    button:active { background: rgba(195, 172, 186, 0.25); }
-    button:focus-visible { box-shadow: 0 0 0 2px rgba(224, 112, 138, 0.45); }
-    .copy-body:focus {
-        border-color: #E0708A;
-        box-shadow: 0 0 0 2px rgba(224, 112, 138, 0.3);
-    }
+/* Dark-theme values, measured the same way. Keyed off an attribute this
+   component sets from the page it is actually sitting on, NOT off
+   @media (prefers-color-scheme: dark).
+
+   That media query reads the operating system. Streamlit's theme reads the
+   user's choice in its own settings menu, and the two disagree the moment
+   anyone picks Dark on a light-set machine -- which used to leave this
+   component in full light dress on a near-black page. Everything here is a
+   refinement on top of colours that already work in either theme, so if the
+   detection ever fails the control degrades to readable rather than to
+   invisible. See reconcileTheme() in the JS. */
+[data-theme="dark"] [data-role="status"] { color: #E0708A; }
+[data-theme="dark"] [data-role="copy-status"][data-kind="warn"] { color: #E0708A; }
+[data-theme="dark"] button:hover { background: rgba(195, 172, 186, 0.15); }
+[data-theme="dark"] button:active { background: rgba(195, 172, 186, 0.25); }
+[data-theme="dark"] button:focus-visible {
+    box-shadow: 0 0 0 2px rgba(224, 112, 138, 0.45);
+}
+[data-theme="dark"] .copy-body:focus {
+    border-color: #E0708A;
+    box-shadow: 0 0 0 2px rgba(224, 112, 138, 0.3);
 }
 """
 
 COPY_BLOCK_JS = """
 export default function(component) {
   const { data, parentElement } = component;
+  // parentElement is the ShadowRoot: it answers querySelector but is not an
+  // Element, so anything that needs an attribute set on it goes on this
+  // wrapper instead.
+  const root = parentElement.querySelector('.copy-block');
   const body = parentElement.querySelector('.copy-body');
   const copyBtn = parentElement.querySelector('[data-action="copy"]');
   const refresh = parentElement.querySelector('[data-action="refresh"]');
@@ -256,6 +308,43 @@ export default function(component) {
   const copyStatus = parentElement.querySelector('[data-role="copy-status"]');
 
   parentElement.querySelector('[data-role="label"]').textContent = data.label;
+
+  // Which theme is this page ACTUALLY wearing?
+  //
+  // Not what the operating system prefers -- Streamlit lets the reader pick
+  // Light or Dark in its own settings menu, and that choice overrides the OS
+  // without touching prefers-color-scheme. A component styled off the media
+  // query therefore dresses for the wrong page whenever the two disagree.
+  //
+  // Streamlit 1.62 exposes no theme token to CSS and no theme class to the
+  // DOM, so the only honest signal is what the page is actually painted:
+  // measure the luminance of the body background and believe it.
+  const reconcileTheme = () => {
+    let dark = false;
+    try {
+      const parts = getComputedStyle(document.body).backgroundColor.match(/[\\d.]+/g);
+      if (parts && parts.length >= 3) {
+        const [r, g, b] = parts.slice(0, 3).map(Number);
+        dark = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+      }
+    } catch (_) {
+      dark = false;
+    }
+    root.dataset.theme = dark ? 'dark' : 'light';
+  };
+  reconcileTheme();
+
+  // Switching theme in Streamlit's menu repaints the page without rerunning
+  // the script, so nothing would remount this component and the attribute
+  // would go stale. Watch the attributes that repaint touches instead. The
+  // observer is cheap, and the component's own teardown disconnects it.
+  let themeObserver = null;
+  try {
+    themeObserver = new MutationObserver(reconcileTheme);
+    themeObserver.observe(document.body, {attributes: true, attributeFilter: ['style', 'class']});
+    themeObserver.observe(document.documentElement,
+                          {attributes: true, attributeFilter: ['style', 'class', 'data-theme']});
+  } catch (_) {}
 
   if (data.editable) {
     body.setAttribute('contenteditable', 'true');
@@ -443,6 +532,13 @@ export default function(component) {
       showStatus('warn',
         'Could not copy automatically. The note is selected \\u2014 press ' + key + ' to copy it.');
     }
+  };
+
+  // Components v2 calls this when the component goes away. Without it the
+  // theme observer outlives its component, and a changed calculation mounts
+  // a fresh one on every edit.
+  return () => {
+    if (themeObserver) themeObserver.disconnect();
   };
 }
 """
