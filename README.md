@@ -46,7 +46,9 @@ flushes, and one oral food.
   the label in your hand. A nutrient that isn't printed comes back blank,
   never as zero.
 - **Saves your day to a spreadsheet** you can reopen later or edit in
-  Excel, and exports a chart note you can paste into your own records.
+  Excel, and writes a chart note with a **Copy note** button beside it. If
+  you change a value after copying, the note says so rather than letting you
+  paste numbers that have moved on.
 
 ![The Feed recipes tab: a blend's ingredient list with per-ingredient amounts and counts-as-fluid toggles, its measured final volume, and the live kcal/mL and protein g/mL above them](docs/screenshot-feed-recipes.png)
 
@@ -161,6 +163,35 @@ data/packs/canada/     editable reference data
 scripts/               verification checks
 tests/                 unit tests
 ```
+
+### Shared with EN-Calc
+
+This tool has a sibling, the [Adult Inpatient Enteral Nutrition
+Calculator](https://github.com/greywhitebinary/inpatient_feeds_calculator).
+The two are meant to read as one family, so three things are deliberately
+kept identical between the repositories and must be changed in both:
+
+- `app/copy_block.py` — the chart-note copy control. Byte-identical to
+  EN-Calc's `webapp/copy_block.py`, so `diff` between them is the whole sync
+  check. Its own docstring explains the formatting constraint that keeps it
+  that way.
+- `render_alert()` in `app/ui_common.py`, and the `.app-alert` block in
+  `app/styles.css`.
+- The colour tokens in `.streamlit/config.toml`.
+
+### Why `streamlit` is pinned exactly
+
+`app/styles.css` reaches into Streamlit's internal `data-testid` attributes,
+which carry no stability guarantee. A loose requirement once let Streamlit
+Cloud resolve to a newer version at deploy time and silently broke the
+tab-label CSS, so `requirements.txt` pins an exact version on purpose.
+
+No test can catch that class of break — the checks drive Streamlit's Python
+API and never see a stylesheet. `scripts/check_css_hooks.py` fills the gap:
+it reads every selector the stylesheet depends on and asserts each still
+exists in the Streamlit build. `.github/workflows/canary.yml` runs that same
+check weekly against the *latest* releases, so you find out whether the next
+upgrade is safe before attempting it rather than after.
 
 ## Further reading
 
