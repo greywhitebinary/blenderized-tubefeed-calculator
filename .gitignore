@@ -42,3 +42,6 @@ data/raw/
 .coverage
 htmlcov/
 *.egg-info/
+
+# Playwright MCP scratch output (page snapshots, console logs, eval results)
+.playwright-mcp/
