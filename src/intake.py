@@ -146,6 +146,7 @@ _FORMULA_COLUMN_TO_NUTRIENT: dict[str, str] = {
     "folate_dfe_ug_per_mL": "folate_dfe_ug",
     "vitamin_b12_ug_per_mL": "vitamin_b12_ug",
     "selenium_ug_per_mL": "selenium_ug",
+    "vitamin_k_ug_per_mL": "vitamin_k_ug",
 }
 
 # The same mapping for modulars.csv, whose columns carry the identical

@@ -1061,3 +1061,64 @@ class TestFourAbbottFeedsMatchTheirNewSheets:
             "2024_abbott-adult-product-guide.pdf" not in source
         ), f"{feed_name}'s source still cites the superseded 2024 guide: {source!r}"
         assert "Product Information Sheet" in source or "Product_Information_Sheet" in source
+
+
+# ---------------------------------------------------------------------------
+# Atwater energy reconciliation -- every row, not just the sampled ones
+# ---------------------------------------------------------------------------
+#
+# WHY THIS EXISTS. Pivot 1.5 Cal shipped for months with its fat,
+# carbohydrate and fibre taken from the sheet's per-100-mL column but
+# divided by 237, understating all three by a factor of 2.37. Nothing in
+# this suite noticed: the per-column cross-checks above only cover the
+# feeds someone thought to sample, and every other test takes the stored
+# numbers at face value. The row declared 1.5 kcal/mL while its own
+# macronutrients summed to 0.858 -- 57% -- and that arithmetic was sitting
+# in the file the whole time, free to check.
+#
+# This is the cheapest possible guard against the whole class: a column
+# read off the wrong basis, a decimal slipped, a unit confused. Any of
+# those moves the sum by a factor, and a factor is unmissable here.
+#
+# THE BAND. Atwater 4/9/4 is an approximation, and Canadian labels round
+# macronutrients to whole grams on a single serving, so exact agreement is
+# not expected. Ensure Regular is the tightest legitimate row at 97.5%:
+# its 235 mL panel prints 9 g protein, 6 g fat and 36 g carbohydrate
+# against 240 Cal, and those integers admit a true energy anywhere from
+# about 226 to 242 Cal. The loosest is Isosource Fibre 1.0 HP at 105.8%.
+# 97-107% clears every current row with headroom while still catching
+# Pivot by a mile.
+ATWATER_LOW = 0.97
+ATWATER_HIGH = 1.07
+
+
+def _macro_rows():
+    with open(FORMULAS_CSV, encoding="utf-8-sig", newline="") as f:
+        return [
+            row["name"]
+            for row in csv.DictReader(f)
+            if all(
+                (row[c] or "").strip()
+                for c in ("kcal_per_mL", "protein_per_mL", "fat_per_mL", "carbohydrate_per_mL")
+            )
+        ]
+
+
+@pytest.mark.parametrize("feed_name", _macro_rows())
+def test_declared_energy_matches_its_own_macronutrients(feed_name, formulas_by_name):
+    """protein x 4 + fat x 9 + carbohydrate x 4 should land near the
+    declared kcal/mL. A row that fails this disagrees with itself, which
+    means a transcription error rather than a manufacturer disagreement."""
+    row = formulas_by_name[feed_name]
+    kcal = float(row["kcal_per_mL"])
+    atwater = (
+        float(row["protein_per_mL"]) * 4
+        + float(row["fat_per_mL"]) * 9
+        + float(row["carbohydrate_per_mL"]) * 4
+    )
+    ratio = atwater / kcal
+    assert ATWATER_LOW <= ratio <= ATWATER_HIGH, (
+        f"{feed_name}: declared {kcal} kcal/mL but its macronutrients sum to "
+        f"{atwater:.4f} ({ratio:.1%}). Check which basis column each macro was "
+        f"read from -- this is how Pivot 1.5 Cal's 2.37x error presented."
+    )

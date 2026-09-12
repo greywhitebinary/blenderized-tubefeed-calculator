@@ -629,6 +629,7 @@ _OPTIONAL_NUTRIENT_COLUMNS = (
     "folate_dfe_ug_per_mL",
     "vitamin_b12_ug_per_mL",
     "selenium_ug_per_mL",
+    "vitamin_k_ug_per_mL",
 )
 
 

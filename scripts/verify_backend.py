@@ -253,18 +253,21 @@ def main() -> int:
     )
     # 35 since 2026-08-20, when the clinical tier grew from the 5 ASPEN
     # screen nutrients to every vitamin and mineral CNF covers well (author:
-    # "if so much food have them, just add it in"). The counts stay pinned
-    # rather than computed: the registry decides what every report and every
-    # saved file contains, so it changing SIZE should be a deliberate edit
-    # here, not something a stray CSV row does quietly.
-    assert len(registry) == 35, f"expected 35 registry rows, got {len(registry)}"
+    # "if so much food have them, just add it in"). 36 since 2026-09-11, when
+    # vitamin K (CNF 430, phylloquinone) was added: it is the one feed
+    # micronutrient that changes a drug decision, through warfarin and the
+    # INR. The counts stay pinned rather than computed: the registry decides
+    # what every report and every saved file contains, so it changing SIZE
+    # should be a deliberate edit here, not something a stray CSV row does
+    # quietly. This assertion is what caught the vitamin K addition.
+    assert len(registry) == 36, f"expected 36 registry rows, got {len(registry)}"
     label_defs = defs_for_tier("label", pack=DEFAULT_PACK)
     clinical_defs = defs_for_tier("clinical", pack=DEFAULT_PACK)
     engine_defs = defs_for_tier("engine", pack=DEFAULT_PACK)
     assert len(label_defs) == 13, f"expected 13 label-tier nutrients, got {len(label_defs)}"
     assert (
-        len(clinical_defs) == 21
-    ), f"expected 21 clinical-tier nutrients, got {len(clinical_defs)}"
+        len(clinical_defs) == 22
+    ), f"expected 22 clinical-tier nutrients, got {len(clinical_defs)}"
     assert (
         len(engine_defs) == 1
     ), f"expected 1 engine-tier nutrient (water_g), got {len(engine_defs)}"
@@ -339,7 +342,7 @@ def main() -> int:
     assert (
         hidden_clinical == []
     ), f"expected nothing hidden for a full-coverage recipe, got {hidden_clinical}"
-    assert len(clinical) == 21, f"expected 21 clinical-screen rows, got {len(clinical)}"
+    assert len(clinical) == 22, f"expected 22 clinical-screen rows, got {len(clinical)}"
     # The five ASPEN screen nutrients must still be present. Since
     # 2026-08-20 they are joined by every vitamin and mineral CNF covers
     # well, so this asserts a SUBSET: adding a nutrient to the pack should
