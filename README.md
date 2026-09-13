@@ -22,24 +22,23 @@ flushes, and one oral food.
 
 ## What it does
 
-- **Characterizes a blend you already use.** Enter what goes in the
-  blender and the volume you measured coming out. You get kcal/mL,
-  protein g/mL and free-water fraction. Volume is measured, never
-  computed, because blending, air and rinse water make it impossible to
-  calculate from ingredient weights.
+- **Characterises a blend you already use.** Enter the ingredients and
+  measured final volume to calculate kcal/mL, protein g/mL and free-water
+  fraction. Ingredient weights cannot reliably predict blended volume.
+  When you save a thinned copy, its starting volume is the original measured
+  volume plus the water added; you can correct it after remeasuring.
 - **Records a whole day.** Blends, commercial formulas, modulars, water
   flushes and food by mouth in one chronological list. Daily totals are a
-  direct sum of what was actually given.
-- **Counts modulars honestly.** Protein and fibre additives and medical
-  foods are measured in their own unit, grams for a powder and millilitres
-  for a liquid. A powder adds no fluid on its own, so the water it is
-  mixed into is recorded as the flush it actually was rather than
-  guessed at from a dilution the manufacturers do not agree on.
+  direct sum of the amounts entered, whether recording intake or planning
+  what will be given.
+- **Includes modulars.** Enter powders in grams and
+  liquids in millilitres, and specify whether they are given by tube or
+  by mouth. Record any water used to mix a powder separately under water
+  flushes; the calculator does not assume a dilution volume.
 - **Compares against commercial formulas.** 51 adult Canadian tube-feeding
   formulas, filterable by manufacturer, at a daily volume you choose. Sip
-  feeds are included, because people do put them down a tube; whether one
-  suits a given patient depends on how long they will be tube fed, which
-  is your call and not the table's.
+  feeds are included for comparison. The clinician determines whether a
+  product is suitable for the patient's feeding route and nutritional needs.
 - **Searches 5,993 CNF foods** by all your words in any order, with typo
   tolerance. It never chooses a food for you.
 - **Reads a nutrition label from a photo** into a form you check against
@@ -57,21 +56,30 @@ flushes, and one oral food.
 ## Scope and safety
 
 - **Canada only, for now.** Nutrient tracking follows the Canadian
-  Nutrition Facts panel and reference data lives in
-  `data/packs/canada/`. Another country would be a new pack of CSVs, not
-  a code change.
+  Nutrition Facts panel and uses Canadian reference data. Supporting
+  another country would require a reviewed data pack and validation of
+  its nutrient and reporting conventions.
 - **No default targets.** Targets start blank. Enter patient-specific values or
   leave them blank and review the totals.
 - **A zero can mean "never measured", not "none present".** The report's
   *Coverage* column shows how many of your sources actually supplied a
   value for each nutrient, and rows where nothing did are hidden rather
   than shown as a confident 0.
-- **No patient data is stored.** The app keeps nothing server-side. Saved
-  days download to your own machine, and they contain whatever you typed
-  in the record label.
+- **Records are saved by downloading them.** The hosted app processes
+  inputs on its server during the active session, but has no patient-record
+  database or account-based record storage. Download a workbook to keep
+  your work; it includes whatever you entered in the record label. Store
+  and share it according to local privacy policy.
+- **Label photos use an external service.** When photo reading is enabled,
+  the uploaded image is sent to Anthropic to extract the printed values.
+  Upload the product label only, without patient information. You can also
+  enter the values manually.
 - **Clinical decisions remain with the clinician.** The calculator cannot
   measure viscosity, tube flow, or tolerance. It does not set targets,
   recommend a feeding plan, or assess an individual.
+
+If local policy requires calculation inputs to remain on your device, run
+BTFCalc locally and enter label values manually.
 
 ---
 
@@ -91,9 +99,8 @@ It opens at http://localhost:8501. The CNF data ships with the repo, so
 there is nothing else to download.
 
 **Optional:** the label-photo feature calls the Anthropic API. Without a
-key the photo control does not appear, and labels are typed in by hand
-exactly as before the feature existed. To enable it, put your own
-key in `.streamlit/secrets.toml`:
+key the photo control does not appear, and label values can be entered
+manually. To enable it, put your own key in `.streamlit/secrets.toml`:
 
 ```toml
 ANTHROPIC_API_KEY = "your-key-here"
@@ -132,6 +139,7 @@ editor, save, and rerun the app. No Python required.
 |---|---|
 | Which nutrients are tracked, and why | `nutrients.csv` |
 | Commercial formula profiles | `formulas.csv` |
+| Modular profiles | `modulars.csv` |
 | Thinning liquid presets | `thinning_liquids.csv` |
 | Lay-term search synonyms | `food_synonyms.csv` |
 
@@ -169,32 +177,15 @@ chart notes, see [Where new code goes](MAINTAINING.md#where-new-code-goes-src-or
 
 ### Shared with EN-Calc
 
-This tool has a sibling, the [Adult Inpatient Enteral Nutrition
-Calculator](https://github.com/greywhitebinary/inpatient_feeds_calculator).
-The two are meant to read as one family, so three things are deliberately
-kept identical between the repositories and must be changed in both:
-
-- `app/copy_block.py` — the chart-note copy control. Byte-identical to
-  EN-Calc's `webapp/copy_block.py`, so `diff` between them is the whole sync
-  check. Its own docstring explains the formatting constraint that keeps it
-  that way.
-- `render_alert()` in `app/ui_common.py`, and the `.app-alert` block in
-  `app/styles.css`.
-- The colour tokens in `.streamlit/config.toml`.
+BTFCalc and the [Adult Inpatient Enteral Nutrition Calculator](https://encalc.feedformflow.ca)
+share presentation components. See the [maintenance guide](MAINTAINING.md#shared-components-and-streamlit-compatibility)
+before changing those components.
 
 ### Why `streamlit` is pinned exactly
 
-`app/styles.css` reaches into Streamlit's internal `data-testid` attributes,
-which carry no stability guarantee. A loose requirement once let Streamlit
-Cloud resolve to a newer version at deploy time and silently broke the
-tab-label CSS, so `requirements.txt` pins an exact version on purpose.
-
-No test can catch that class of break — the checks drive Streamlit's Python
-API and never see a stylesheet. `scripts/check_css_hooks.py` fills the gap:
-it reads every selector the stylesheet depends on and asserts each still
-exists in the Streamlit build. `.github/workflows/canary.yml` runs that same
-check weekly against the *latest* releases, so you find out whether the next
-upgrade is safe before attempting it rather than after.
+The stylesheet depends on Streamlit's internal markup, so upgrades need
+compatibility checks. The [maintenance guide](MAINTAINING.md#why-streamlit-is-pinned-exactly)
+explains the version pin and the automated checks.
 
 ## Further reading
 

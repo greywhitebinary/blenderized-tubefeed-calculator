@@ -46,7 +46,7 @@ def main() -> None:
     for expected in (
         "Blend",
         "Ingredients",
-        "Per-blend density panel",
+        "Blend nutrient density",
         "Dilution What-If",
         # Renamed from "Commercial Formula Comparator" 2026-08-16, once the
         # RD's own blends became the leading rows of that table.

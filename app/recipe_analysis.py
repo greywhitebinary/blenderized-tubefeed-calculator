@@ -37,9 +37,9 @@ COMPARATOR_BLEND_PICKER_THRESHOLD = 4
 
 
 def render_density(selected_blend, na):
-    # --- Per-blend density panel (EVERY blend, not just selected --
+    # --- Blend nutrient density (EVERY blend, not just selected --
     # densities are still the per-blend lens, design doc section 3.5) ---
-    st.subheader("Per-blend density panel")
+    st.subheader("Blend nutrient density")
     _density_rows = []
     for _bid, _blend in st.session_state.blends.items():
         if not _blend["ingredients"]:

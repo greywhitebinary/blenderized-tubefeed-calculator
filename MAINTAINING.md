@@ -115,7 +115,7 @@ build, so the formatter always wins.
 
 ## Writing copy for the app
 
-Four rules. They exist because this is clinical reference text read by
+These rules apply to public README and website copy. They exist because this is clinical reference text read by
 Canadian dietitians, not a consumer app.
 
 **1. Impersonal for facts, second person for instructions.**
@@ -151,6 +151,10 @@ healthcare the literal reading is money, which is not the claim being made.
 The Dilution What-If asked "what would thinning this blend with water cost
 you?" when the thing being given up is density. It now asks what thinning
 "does to its density". Same care with "expensive", "pay for", "worth it".
+
+Use neutral descriptions of calculation behaviour. Do not describe the tool
+as counting or reporting "honestly"; explain what it includes and how amounts
+are entered.
 
 Copy changes go past the author before they land — the wording gets
 iterated, and the author is the clinical expert on how it should sound.
@@ -389,3 +393,34 @@ in the ingredient list, where every nutrient is counted.
 
 For full design history and the reasoning behind each decision, see
 `CONTEXT.md`.
+
+## Shared components and Streamlit compatibility
+
+### Shared with EN-Calc
+
+This tool has a sibling, the [Adult Inpatient Enteral Nutrition
+Calculator](https://github.com/greywhitebinary/inpatient_feeds_calculator).
+The two are meant to read as one family, so three things are deliberately
+kept identical between the repositories and must be changed in both:
+
+- `app/copy_block.py` — the chart-note copy control. Byte-identical to
+  EN-Calc's `webapp/copy_block.py`, so `diff` between them is the whole sync
+  check. Its own docstring explains the formatting constraint that keeps it
+  that way.
+- `render_alert()` in `app/ui_common.py`, and the `.app-alert` block in
+  `app/styles.css`.
+- The colour tokens in `.streamlit/config.toml`.
+
+### Why `streamlit` is pinned exactly
+
+`app/styles.css` reaches into Streamlit's internal `data-testid` attributes,
+which carry no stability guarantee. A loose requirement once let Streamlit
+Cloud resolve to a newer version at deploy time and silently broke the
+tab-label CSS, so `requirements.txt` pins an exact version on purpose.
+
+No test can catch that class of break — the checks drive Streamlit's Python
+API and never see a stylesheet. `scripts/check_css_hooks.py` fills the gap:
+it reads every selector the stylesheet depends on and asserts each still
+exists in the Streamlit build. `.github/workflows/canary.yml` runs that same
+check weekly against the *latest* releases, so you find out whether the next
+upgrade is safe before attempting it rather than after.
