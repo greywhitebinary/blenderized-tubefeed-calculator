@@ -224,11 +224,21 @@ advise on any individual's care.
 
 ## Licence
 
-[MIT](LICENSE). Use it, fork it, adapt it for another country's data.
+The application’s original code, tests and documentation are licensed under
+[MIT](LICENSE).
 
-The licence includes the standard warranty disclaimer, which matters here:
-the software is provided as is, and clinical responsibility stays with the
-dietitian using it.
+Product names identify the products used in calculations. Nutrient values are
+factual information transcribed from the sources listed in the source register.
+No exclusive rights are claimed over those individual facts, and inclusion
+does not imply manufacturer endorsement.
+
+Source: Canadian Nutrient File, Health Canada, 2026. Health Canada permits
+commercial and non-commercial use under the CNF’s published copyright
+guidelines, including accurate reproduction and attribution. BTFCalc is not
+an official CNF version and is not affiliated with or endorsed by Health Canada.
+
+See the [source register](data/packs/SOURCES.md#licence-and-attribution) for provenance
+and supporting guidance.
 
 ---
 

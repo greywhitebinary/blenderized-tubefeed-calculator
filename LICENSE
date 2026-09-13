@@ -19,3 +19,23 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+NOTE ON SCOPE
+
+The MIT licence above covers the application's original code, tests and
+documentation.
+
+Product names identify the products used in calculations. Nutrient values are
+factual information transcribed from the sources listed in the source register.
+No exclusive rights are claimed over those individual facts, and inclusion
+does not imply manufacturer endorsement.
+
+Source: Canadian Nutrient File, Health Canada, 2026. Health Canada permits
+commercial and non-commercial use under the CNF’s published copyright
+guidelines, including accurate reproduction and attribution. BTFCalc is not
+an official CNF version and is not affiliated with or endorsed by Health Canada.
+CNF retains its own published terms; it is not relicensed under MIT.
+
+See data/packs/SOURCES.md for provenance and supporting guidance.
