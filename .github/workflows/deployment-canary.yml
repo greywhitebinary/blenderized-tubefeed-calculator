@@ -1,0 +1,180 @@
+name: BTFCalc deployment canary
+
+# WHAT THIS IS FOR
+#
+# Streamlit Community Cloud puts an idle app to sleep and shows a "this app
+# has gone to sleep" page with a "Yes, get this app back up!" button on the
+# next visit. Nothing in this repo's CI (ci.yml) or dependency canary
+# (canary.yml) ever visits the *deployed* URL, so a sleeping app can sit
+# unnoticed until a real user hits it. This workflow visits
+# https://btfcalc.streamlit.app on a schedule, wakes it up if asleep, and
+# fails loudly if it never comes back up.
+#
+# Named "deployment canary" (not "canary") deliberately: canary.yml already
+# owns that name for an unrelated dependency-upgrade check.
+
+"on":
+  workflow_dispatch:
+  schedule:
+    # "6am America/Toronto" has no single UTC cron line because Toronto
+    # alternates between EDT (UTC-4) and EST (UTC-5) and GitHub's schedule
+    # cron is always UTC with no DST awareness. Both offsets are scheduled
+    # every day; the guard step below figures out which one is *actually*
+    # 6am local right now and skips the other.
+    - cron: "0 10 * * *" # 06:00 EDT (UTC-4) - roughly mid-March to early November
+    - cron: "0 11 * * *" # 06:00 EST (UTC-5) - roughly early November to mid-March
+
+permissions:
+  contents: read
+
+env:
+  APP_URL: https://btfcalc.streamlit.app
+
+jobs:
+  wake-and-check:
+    name: Wake BTFCalc and confirm it loads
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Only proceed if it's actually 6am America/Toronto right now
+        id: guard
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "Manual dispatch - running regardless of local time."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          hour="$(TZ=America/Toronto date +%H)"
+          echo "Current America/Toronto hour: $hour"
+
+          if [ "$hour" = "06" ]; then
+            echo "It's 6am in Toronto - proceeding."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not the intended local hour (this is the other UTC offset's cron entry) - skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node.js
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright (Chromium only)
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          npm install playwright@latest
+          npx playwright install --with-deps chromium
+
+      - name: Write the wake-and-check script
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          cat <<'EOF' > wake_check.js
+          const { chromium } = require('playwright');
+
+          const APP_URL = process.env.APP_URL;
+          const WAKE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes to fully wake up
+          const GRACE_PERIOD_MS = 30 * 1000; // settle time even if never asleep
+          const WAKE_BUTTON_NAME = /get this app back up/i;
+          const SLEEP_TEXT = /gone to sleep due to inactivity/i;
+          // Streamlit's own stable structural hooks. These have been stable
+          // across many Streamlit releases but are not a public API contract -
+          // re-check them if this workflow starts failing for no visible reason.
+          const APP_ROOT_SELECTOR =
+            '[data-testid="stAppViewContainer"], [data-testid="stApp"]';
+
+          (async () => {
+            const browser = await chromium.launch();
+            try {
+              const page = await browser.newPage();
+
+              console.log(`Navigating to ${APP_URL}`);
+              await page.goto(APP_URL, {
+                waitUntil: "domcontentloaded",
+                timeout: 60_000,
+              });
+
+              const wakeButton = page.getByRole("button", {
+                name: WAKE_BUTTON_NAME,
+              });
+
+              let wasAsleep = false;
+              try {
+                await wakeButton.waitFor({ state: "visible", timeout: 15_000 });
+                wasAsleep = true;
+                console.log("Sleep page detected - clicking the wake button.");
+                await wakeButton.click();
+              } catch {
+                console.log(
+                  "No wake button within 15s - app is probably already awake."
+                );
+              }
+
+              console.log(
+                `Waiting up to ${WAKE_TIMEOUT_MS / 1000}s for the app to load...`
+              );
+              await page.waitForSelector(APP_ROOT_SELECTOR, {
+                state: "visible",
+                timeout: WAKE_TIMEOUT_MS,
+              });
+
+              if (wasAsleep) {
+                const stillAsleep = await wakeButton
+                  .isVisible()
+                  .catch(() => false);
+                const sleepTextVisible = await page
+                  .getByText(SLEEP_TEXT)
+                  .first()
+                  .isVisible()
+                  .catch(() => false);
+                if (stillAsleep || sleepTextVisible) {
+                  throw new Error(
+                    "App root appeared but the sleep page is still showing."
+                  );
+                }
+              }
+
+              console.log(
+                `App structure loaded - waiting a fixed ${
+                  GRACE_PERIOD_MS / 1000
+                }s grace period to catch a render-then-error case.`
+              );
+              await page.waitForTimeout(GRACE_PERIOD_MS);
+
+              const rootStillVisible = await page
+                .locator(APP_ROOT_SELECTOR)
+                .first()
+                .isVisible()
+                .catch(() => false);
+              if (!rootStillVisible) {
+                throw new Error(
+                  "App root container disappeared during the grace period."
+                );
+              }
+              const sleepReappeared = await wakeButton
+                .isVisible()
+                .catch(() => false);
+              if (sleepReappeared) {
+                throw new Error(
+                  "Wake button reappeared during the grace period - app didn't stay up."
+                );
+              }
+
+              console.log("BTFCalc is up and stable.");
+            } catch (err) {
+              console.error(
+                "BTFCalc deployment canary FAILED:",
+                err && err.message ? err.message : err
+              );
+              process.exitCode = 1;
+            } finally {
+              await browser.close();
+            }
+          })();
+          EOF
+
+      - name: Run the wake-and-check script
+        if: steps.guard.outputs.run == 'true'
+        run: node wake_check.js
