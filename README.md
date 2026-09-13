@@ -157,12 +157,15 @@ Streamlit and pandas, with the math in plain Python under `src/`.
   browser
 
 ```
-app/                   the UI: the page, the add-a-food component, styles
+app/                   UI modules for targets, recipes, intake, and shared state
 src/                   calculator, data loading, nutrient registry, file I/O
 data/packs/canada/     editable reference data
 scripts/               verification checks
 tests/                 unit tests
 ```
+
+For the current file map and the path from an entered value to totals and
+chart notes, see [Where new code goes](MAINTAINING.md#where-new-code-goes-src-or-app).
 
 ### Shared with EN-Calc
 

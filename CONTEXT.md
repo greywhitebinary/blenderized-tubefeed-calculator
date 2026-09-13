@@ -203,6 +203,7 @@ blenderized-tubefeed-calculator/
 │   ├── nutrients.py                 # nutrient registry + thinning-liquid presets
 │   ├── calculator.py                # core math: recipe → nutrient profile
 │   ├── intake.py                    # Intake Record aggregation; blend naming; fluids rule
+│   ├── chart_note.py                # chart-note text from aggregated intake and shared source groups
 │   ├── measures.py                  # household-measure → grams; recipe-card grouping
 │   ├── food_search.py               # the three-layer CNF search, and find_food()
 │   ├── label_extract.py             # nutrition-label photo → per-100 g values
@@ -218,7 +219,19 @@ blenderized-tubefeed-calculator/
 ├── app/                              # the Streamlit layer — see MAINTAINING.md,
 │   │                                 # "Where new code goes"
 │   ├── __init__.py
-│   ├── streamlit_app.py             # the page: three tabs, in the order they appear
+│   ├── streamlit_app.py             # entry point and three-tab orchestration
+│   ├── session_state.py             # lifecycle, IDs, and linked-record mutations
+│   ├── record_header.py             # top bar and saved-record upload
+│   ├── example_record.py            # explicit example loading
+│   ├── targets_ui.py                # optional targets and display weight
+│   ├── recipes_ui.py                # recipe section orchestration
+│   ├── recipe_editor.py             # selection, ingredients, volume, flow test
+│   ├── recipe_analysis.py           # density, dilution, comparator
+│   ├── recipe_io_ui.py              # recipe imports and downloads
+│   ├── intake_ui.py                 # daily intake controls and aggregation
+│   ├── intake_helpers.py            # source controls and names
+│   ├── intake_results.py            # tables, note controls, whole-day download
+│   ├── copy_block.py                # shared chart-note copy control
 │   ├── add_food.py                  # the reusable add-a-food component
 │   ├── ui_common.py                 # _note() and _narrow()
 │   └── styles.css                   # the stylesheet (plain CSS, not a Python string)
@@ -233,9 +246,10 @@ blenderized-tubefeed-calculator/
 │   ├── check_label_photo_fill.py    # label photo → filled custom-food form
 │   ├── check_recipe_record.py       # per-blend flow test + named chart note
 │   ├── check_tab_restructure.py     # every section is where it should be
+│   ├── check_workflow_connections.py # note groups, saved wording, deletion, thinning
 │   ├── verify_backend.py            # full backend integration test
 │   └── trace_calculation.py         # hand-checkable calculation + registry trace
-├── tests/                            # ~236 unit tests over src/, run in ~1 second
+├── tests/                            # unit tests over src/
 ├── notebooks/
 │   ├── 00_explore_cnf.ipynb         # data-exploration sandbox
 │   ├── 01_learn_cnf.ipynb           # guided CNF learning notebook (9 parts, executed)
@@ -2230,6 +2244,36 @@ card handed to the family; if that ever matters, the fix is to mention
 it on the card, not to rebuild the recipe.
 
 ---
+### 2026-09-12 — BTF connection repairs and internal UI cleanup
+
+Reviewed how targets, recipes, intake rows, imports, totals, chart notes, and
+saved records connect before reorganizing the UI. Two reproduced defects were
+fixed first: oral modulars now participate in the note's oral/tube grouping,
+and reopening a saved day restores its delivery-method wording. A blank or
+missing saved delivery method clears the previous record's wording. That field
+was already exported, so the workbook schema and version are unchanged.
+
+The entry point was reduced from 3,692 lines to about 200 by extracting the
+screen sections shown in §4. Shared state operations now handle intake IDs,
+ingredient IDs, and deletion of a blend with its linked intake rows. Chart-note
+formatting is a Streamlit-free function in `src/chart_note.py`. See
+`MAINTAINING.md` for the current module map and how to follow a value.
+
+The layout, labels, widget keys, target semantics, measured-volume rules,
+calculation functions, source datasets, styles, and shared sibling components
+were preserved. This was a software connection review and cleanup; it does
+not constitute a new audit of manufacturer values or clinical guidance.
+
+Validation included all 389 existing unit tests, the backend verification and
+hand-trace scripts, every `scripts/check_*.py` workflow check, Ruff, and Black.
+The two repair regressions failed before their repairs and passed afterward.
+Twelve workflow snapshots taken after the repairs matched exactly before and
+after extraction, including displayed values, control order, tables, notes,
+and durable state. Added lifecycle checks cover blend/intake deletion and
+saving a thinned copy without changing the original recipe or intake.
+
+---
+
 ## 10. Quick-start guide (how to run the app)
 
 After restarting your computer:

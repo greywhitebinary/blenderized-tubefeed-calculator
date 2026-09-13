@@ -126,6 +126,7 @@ class ParsedDay:
     intake_log: list[dict[str, Any]] = field(default_factory=list)
     custom_foods: dict[int, dict[str, float]] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    delivery_method: str = ""
 
     @property
     def summary(self) -> str:
@@ -469,6 +470,7 @@ def workbook_bytes_to_day(data: bytes | BytesIO) -> ParsedDay:
     if day_df is not None and {"Field", "Value"}.issubset(day_df.columns):
         values = {_coerce_str(r.get("Field")): r.get("Value") for _, r in day_df.iterrows()}
         parsed.label = _coerce_str(values.get("Record label"))
+        parsed.delivery_method = _coerce_str(values.get("Delivery method"))
         parsed.patient_weight = _coerce_float(values.get("Patient weight")) or 0.0
         parsed.weight_unit = _coerce_str(values.get("Weight unit")) or "kg"
         version = _coerce_float(values.get("Format version"))

@@ -165,8 +165,8 @@ One rule decides it:
 > Anything that doesn't need Streamlit belongs in `src/`.
 
 This isn't style — it's what makes the project testable. Code in `src/`
-can be called directly by a test, so it's covered by the ~236 tests in
-`tests/`, which run in about a second. Code in `app/` can only be reached
+can be called directly by a test, so it is covered by the unit tests in
+`tests/`. Code in `app/` can only be reached
 by starting the whole app through Streamlit's `AppTest`, which is what the
 `scripts/check_*.py` files do: slower, clumsier, and far harder to write a
 sharp test in.
@@ -184,10 +184,44 @@ without mentioning the app at all.
 
 | File | What's in it |
 |---|---|
-| `streamlit_app.py` | The page: the three tabs, in the order they appear |
+| `streamlit_app.py` | Entry point, cached data loading, and the three tabs in display order |
+| `session_state.py` | State initialization, saved-day restoration, blend deletion, and shared ingredient/intake mutations |
+| `record_header.py`, `example_record.py` | Top bar, saved-record upload, and explicit example loading |
+| `targets_ui.py` | Patient weight and the user's optional targets |
+| `recipes_ui.py` | Calls recipe sections in their existing display order |
+| `recipe_editor.py` | Blend selection, ingredients, measured volume, and flow test |
+| `recipe_analysis.py` | Density, dilution preview/copy, and comparison |
+| `recipe_io_ui.py` | Recipe downloads, import preview, and confirmed import |
+| `intake_ui.py`, `intake_helpers.py` | Intake entry/removal, source controls, validation, and aggregation |
+| `intake_results.py` | Daily tables, chart-note controls, and whole-record download |
 | `add_food.py` | The reusable "add a food" search-and-entry component |
-| `ui_common.py` | Two shared helpers, `_note()` and `_narrow()` |
+| `ui_common.py`, `copy_block.py` | Shared presentation helpers and the chart-note copy control |
 | `styles.css` | The stylesheet (plain CSS, not a Python string) |
+
+
+### Following a value through the app
+
+Start with the relevant screen module above. Widgets update the working state
+in `st.session_state`; shared operations in `session_state.py` keep IDs and
+linked records consistent. `intake_ui.py` passes the working blends and intake
+rows to `src/intake.py`, which uses `src/calculator.py` to obtain their nutrient
+contributions. The resulting `IntakeTotals` is passed explicitly to
+`intake_results.py`, which uses `src/report.py` for tables and
+`src/chart_note.py` for the note. The note and tables use the same source-family
+classification, including a modular's oral or tube route.
+
+Whole-record saving and reopening go through `src/day_io.py`; recipe-only
+files go through `src/recipe_io.py`. Reopening a whole record replaces the
+working day, whereas importing recipes adds them alongside existing blends.
+Keep those two behaviors distinct. Keep the existing chart-note fluid
+convention distinct from the table's full-volume I&O convention, too.
+
+The September 2026 extraction preserved tab order, controls, widget keys,
+clinical calculations, and data files. A future edit should stay in the
+smallest relevant module. Run the appropriate `scripts/check_*.py` workflow
+check as well as unit tests when changing how values move between screens.
+`scripts/check_workflow_connections.py` covers modular note grouping, saved
+delivery wording, linked-record deletion, and independent thinned copies.
 
 ---
 
