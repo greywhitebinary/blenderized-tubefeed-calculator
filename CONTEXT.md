@@ -2291,6 +2291,9 @@ thresholds, so the verdicts claimed a standard the app does not have.
 - The same day: targets and weight start blank instead of 0, the table
   is titled **Daily Totals** (also its workbook sheet), and wide tables
   fade at the right edge when there is more to scroll.
+- Each tab now ends with links to the other two tabs, as in ENCalc
+  (`app/tab_navigation.py`, checked by `scripts/check_tab_navigation.py`).
+  The tab strip is keyed `workspace_tab` so a link can open a tab.
 - This changes names under `src/`, so Streamlit Cloud needs **Reboot app**
   after the push (see §11).
 

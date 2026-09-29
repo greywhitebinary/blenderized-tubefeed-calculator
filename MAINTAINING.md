@@ -198,6 +198,7 @@ without mentioning the app at all.
 | `recipe_io_ui.py` | Recipe downloads, import preview, and confirmed import |
 | `intake_ui.py`, `intake_helpers.py` | Intake entry/removal, source controls, validation, and aggregation |
 | `intake_results.py` | Daily tables, chart-note controls, and whole-record download |
+| `tab_navigation.py` | The tab names, and the links to the other tabs at the bottom of each tab |
 | `add_food.py` | The reusable "add a food" search-and-entry component |
 | `ui_common.py`, `copy_block.py` | Shared presentation helpers and the chart-note copy control |
 | `styles.css` | The stylesheet (plain CSS, not a Python string) |

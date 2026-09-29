@@ -682,3 +682,62 @@ details summary img {
         --alert-accent: #E0708A;
     }
 }
+
+/* Links to the other tabs at the bottom of each tab (2026-09-28), copied
+   from ENCalc's styles.css so the two read the same. Rendered by
+   app/tab_navigation.py. Bold text-coloured names under a thin rule; on
+   hover or keyboard focus the name turns claret and a claret bar appears
+   on the rule above it, echoing the selected-tab underline. */
+[class*="st-key-workspace_navigation_"] {
+    padding-top: 2.2rem;
+}
+
+[class*="st-key-workspace_navigation_"] [data-testid="stHorizontalBlock"] {
+    padding-top: 0.3rem;
+    border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+
+[class*="st-key-workspace_nav_"] button,
+[class*="st-key-workspace_nav_"] button p {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    color: inherit !important;
+    background: transparent !important;
+    border: 0 !important;
+    font-weight: 700 !important;
+    box-shadow: none !important;
+}
+
+[class*="st-key-workspace_nav_"] button {
+    position: relative;
+    min-height: 2rem !important;
+    border-radius: 0 !important;
+}
+
+[class*="st-key-workspace_nav_"] button::before {
+    position: absolute;
+    top: calc(-0.3rem - 1px);
+    right: 0;
+    left: 0;
+    height: 2px;
+    background: transparent;
+    content: "";
+}
+
+[class*="st-key-workspace_nav_"] button:hover,
+[class*="st-key-workspace_nav_"] button:hover p,
+[class*="st-key-workspace_nav_"] button:focus-visible,
+[class*="st-key-workspace_nav_"] button:focus-visible p {
+    color: var(--fff-claret) !important;
+    background: transparent !important;
+}
+
+[class*="st-key-workspace_nav_"] button:hover,
+[class*="st-key-workspace_nav_"] button:focus-visible {
+    border-bottom-color: transparent !important;
+}
+
+[class*="st-key-workspace_nav_"] button:hover::before,
+[class*="st-key-workspace_nav_"] button:focus-visible::before {
+    background: var(--fff-claret);
+}

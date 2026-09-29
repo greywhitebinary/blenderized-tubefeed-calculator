@@ -62,6 +62,11 @@ from app.targets_ui import render_targets
 from app.recipes_ui import render_recipes
 from app.intake_ui import render_intake
 from app.intake_results import render_intake_results
+from app.tab_navigation import (
+    WORKSPACE_TABS,
+    WORKSPACE_TAB_KEY,
+    render_workspace_navigation,
+)
 
 
 @st.cache_data
@@ -128,16 +133,24 @@ lookup = get_measure_lookup()
 fg = get_food_group()
 recipe_name, tubing_icon = render_record_header(fn, lookup)
 
+# Keyed so the links at the bottom of each tab can open another tab
+# (app/tab_navigation.py), the same way ENCalc does it.
 targets_tab, recipes_tab, record_tab = st.tabs(
-    ["Nutrition targets", "Feed recipes", "Daily intake record"]
+    list(WORKSPACE_TABS),
+    default=WORKSPACE_TABS[0],
+    key=WORKSPACE_TAB_KEY,
+    on_change="rerun",
 )
 with targets_tab:
     targets, patient_weight_kg = render_targets()
+    render_workspace_navigation(WORKSPACE_TABS[0])
 with recipes_tab:
     render_recipes(fn, na, lookup, fg, targets)
+    render_workspace_navigation(WORKSPACE_TABS[1])
 with record_tab:
     intake_totals, delivery_method = render_intake(fn, na, lookup, fg, tubing_icon)
     render_intake_results(intake_totals, targets, patient_weight_kg, recipe_name, delivery_method)
+    render_workspace_navigation(WORKSPACE_TABS[2])
 
 # --- Footer ---
 #
