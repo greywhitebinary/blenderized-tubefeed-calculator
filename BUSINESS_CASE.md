@@ -274,10 +274,10 @@ the RD is always the final authority.
    the combined numbers, but I still want to see the split." Targets are
    always blank until the RD enters patient-specific numbers — there
    are no population defaults (protein practice runs 1.0-1.5 g/kg, not
-   the 0.8 g/kg population RDA a default would imply). Status
-   indicators: meeting / below / above target — except sodium (a
-   Tolerable Upper Intake Level, not a target to aim for), which reads
-   "Below UL" / "Above UL" instead. Any row with literally zero
+   the 0.8 g/kg population RDA a default would imply). Each row with a
+   target shows the percentage of it and the signed difference
+   ("+120", "−35"); there is no status verdict, since neither the CNF
+   nor a label gives a limit to judge against. Any row with literally zero
    ingredient coverage is hidden with a footnote, rather than shown as
    a confident zero. A second, collapsed **"BTF micro screen"** shows
    magnesium, phosphorus, zinc, vitamin D, and vitamin B12 — nutrients
@@ -788,25 +788,19 @@ makes that error impossible by construction.
 ### A6. Adequacy
 
 ```
-pct_target = (daily_total / target) × 100
-
-status (target_type = RDA | AI | estimate):
-  < 90% of target  → "Below target"
-  90%–110%         → "Meeting target"
-  > 110% of target → "Above target"
-
-status (target_type = UL — a ceiling, not a target to aim for):
-  ≤ 100% of target → "Below UL"
-  > 100% of target  → "Above UL"
+% Target   = daily_total / target × 100
+Difference = daily_total − target      shown as "+120", "−35" or "0"
 ```
 
-Every tracked nutrient carries a `target_type` (RDA / AI / UL /
-estimate, empty defaults to "estimate") in the nutrient registry itself
-— `data/packs/canada/nutrients.csv`'s `target_type` column, not a
-separate targets file. Sodium is the only Canada-pack nutrient marked
-`UL`, so it alone uses the second vocabulary — "Meeting target" would
-misleadingly imply 90-110% of the UL is the goal, when the actual goal
-is simply staying under it.
+Both are "—" when no target is entered. There is **no status verdict**
+(author, 2026-09-28). An earlier version labelled rows "Below / Meeting /
+Above target" at 90 % and 110 %, and sodium "Below UL / Above UL", with a
+coloured cell for each. Neither the Canadian Nutrient File nor a product
+label carries an upper or lower limit, and nobody chose those thresholds,
+so the verdicts claimed a standard the app does not have. Every target is
+the RD's own; whether a difference matters is the RD's judgement. The
+signed difference is written the same way as ENCalc's "Difference
+(planned − goal)" column.
 
 **There are no default targets anywhere in this design.** Targets
 always start blank; the RD enters patient-specific numbers from their
@@ -1046,7 +1040,7 @@ Each country ships as a **data pack** — a folder of plain CSVs, no code:
 ```
 data/packs/
   canada/
-    nutrients.csv          # the registry: what to track, why, and target_type
+    nutrients.csv          # the registry: what to track and why
     formulas.csv            # commercial formula profiles (kcal/mL, protein/mL, free water/mL)
     formula_sources/        # manufacturer HCP PDFs — the audit trail behind formulas.csv
     thinning_liquids.csv    # thinning liquid presets (kcal, protein, water per 100 mL)
@@ -1057,7 +1051,7 @@ data/packs/
 ```
 
 (No `targets.csv` anywhere — there are deliberately no default targets;
-see A6. `target_type` lives on the nutrient registry itself.)
+see A6.)
 
 Canada is the launch pack. The **acceptance criterion this design is
 held to**: adding a country is **writing new CSVs under
@@ -1074,12 +1068,12 @@ planned beyond the 4-week window.
 ### `nutrients.csv` — the registry schema
 
 ```csv
-name,code,label,unit,tier,on_label,show_in_report,offer_target,target_type,decimals,notes
-energy_kcal,208,Energy,kcal,label,yes,yes,yes,,0,Canadian NFt core
-sodium_mg,307,Sodium,mg,label,yes,yes,yes,UL,0,Canadian NFt core; UL not RDA
-potassium_mg,306,Potassium,mg,label,yes,yes,yes,AI,0,Canadian NFt core; added by the 2022 regs — intakes are low
-sugars_g,269,Sugars,g,label,yes,no,no,,1,Canadian NFt core; computed and exported, not shown daily
-water_g,255,Water (moisture),g,engine,no,no,no,,1,Free-water denominator; no label carries moisture
+name,code,label,unit,tier,on_label,show_in_report,offer_target,decimals,notes
+energy_kcal,208,Energy,kcal,label,yes,yes,yes,0,Canadian NFt core
+sodium_mg,307,Sodium,mg,label,yes,yes,yes,0,Canadian NFt core
+potassium_mg,306,Potassium,mg,label,yes,yes,yes,0,Canadian NFt core; added by the 2022 regs — intakes are low
+sugars_g,269,Sugars,g,label,yes,no,no,1,Canadian NFt core; computed and exported, not shown daily
+water_g,255,Water (moisture),g,engine,no,no,no,1,Free-water denominator; no label carries moisture
 magnesium_mg,304,Magnesium,mg,clinical,no,yes,no,,1,Author's EN spreadsheet tracks Mg; not on any NFt
 vitamin_d_ug,328,Vitamin D,µg,clinical,no,yes,no,,1,ASPEN BTF supplementation screen; on US labels but not Canadian
 ```
@@ -1127,9 +1121,9 @@ design does not collapse them into one:
   zinc/vitamin D/B12 likewise, since the micro screen is a one-time
   screen, not something the RD sets a daily number against.
 
-`target_type` (RDA/AI/UL/estimate, empty defaults to "estimate") lives
-on this registry rather than a separate targets file — see A6; there
-are no default targets anywhere in the design.
+There is no target file and no limit column: no default targets exist
+anywhere in the design, and the report shows the difference from the
+RD's own target rather than a verdict — see A6.
 
 The calculator engine reads all four columns off the registry at
 runtime; it is to have no Canada-specific branch anywhere. Build Canada

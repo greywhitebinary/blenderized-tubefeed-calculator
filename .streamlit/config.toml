@@ -30,7 +30,10 @@ secondaryBackgroundColor = "#F9E8EB"
 # cannot read it from here. Both stops are hardcoded in that file, one per
 # colour scheme; see the comment above [data-testid="stTabsScrollLeft"].
 # Leaving them behind is how a visible seam appears beside the tabs.
-backgroundColor = "#FCFAF9"
+# 2026-09-28: #FAFAFA, the one page ground shared with EN-Calc and
+# feedformflow.ca (it was the warmer #FCFAF9). See the Feed. Form. Flow.
+# visual identity guide.
+backgroundColor = "#FAFAFA"
 textColor = "#292526"
 # Streamlit's own default stack, stated explicitly rather than left implied,
 # so both repos declare the same thing.

@@ -1,3 +1,41 @@
+/* Claret for the active colour scheme (2026-09-28). Streamlit's
+   [theme.dark] lifts primaryColor to #E0708A, but rules in this file that
+   named #A4243A directly kept the daylight claret in dark mode, where it
+   measures 2.60:1 on #0E1117: the selected tab, the input borders and the
+   tab-scroll arrows all fell below the 3:1 minimum. They now read this
+   variable instead. Like the other dark rules in this file it follows the
+   OS setting, so it can disagree with a theme picked by hand in
+   Streamlit's settings menu. The twin rule is in ENCalc's styles.css. */
+:root {
+    --fff-claret: #A4243A;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --fff-claret: #E0708A;
+    }
+    /* Selected-option chips take the lifted claret as their fill in dark
+       mode; white text on it is 3.06:1, so the text goes dark (6.2:1). */
+    [data-testid="stMultiSelectTagsContainer"] span {
+        color: #0E1117 !important;
+    }
+}
+
+/* The page note under the title (2026-09-28). Streamlit fades a caption
+   with opacity 0.6, which also faded the "Feed. Form. Flow." link to
+   3.1:1 in light mode and 2.9:1 in dark, below the 4.5:1 text minimum.
+   Lifting the opacity on the caption container itself and muting the text
+   with the soft-ink colour instead keeps the note quieter than body text
+   (6.9:1 light, 11:1 dark) while the link returns to full claret. */
+[class*="st-key-pagenote"] [data-testid="stCaptionContainer"] {
+    opacity: 1 !important;
+    color: #5E5558 !important;
+}
+@media (prefers-color-scheme: dark) {
+    [class*="st-key-pagenote"] [data-testid="stCaptionContainer"] {
+        color: #C9BFC2 !important;
+    }
+}
+
 /* Base font bump: Streamlit's default body text is 16px, at the
    small end of typical websites (~16-19px). Nearly everything in
    Streamlit is sized in rem, so scaling the root scales the whole
@@ -45,7 +83,7 @@ html {
 [role="tab"][aria-selected="true"] p,
 [role="tab"][aria-selected="true"] div,
 [role="tab"][aria-selected="true"] span {
-    color: #A4243A !important;
+    color: var(--fff-claret) !important;
 }
 /* Heading scale -- two tiers, author-tuned on the deploy.
    Tier A: page title (h1) sized to match the tab labels (both 1.25rem,
@@ -173,7 +211,7 @@ html {
        a prefers-color-scheme rule it still holds when a viewer overrides
        the theme in Streamlit's own settings menu. */
     background-color: transparent !important;
-    border: 2px solid #A4243A !important;
+    border: 2px solid var(--fff-claret) !important;
 }
 [data-testid="stTextInput"] [data-baseweb="base-input"],
 [data-testid="stTextInput"] input,
@@ -192,7 +230,7 @@ html {
 [data-testid="stNumberInputContainer"] {
     /* transparent -- see the text-input rule above for why. */
     background-color: transparent !important;
-    border: 2px solid #A4243A !important;
+    border: 2px solid var(--fff-claret) !important;
 }
 /* Every nested wrapper, by attribute AND by structure. The pink sits on
    one of BaseWeb's inner divs and which one has moved between releases;
@@ -247,8 +285,9 @@ html {
    A fade has to end in the colour it is fading INTO, so this rule needs a
    literal page colour and cannot avoid one. The light stop was #ffffff on
    the stated assumption that no backgroundColor was set; that is no longer
-   true, so it now tracks the #FCFAF9 in .streamlit/config.toml (2026-09-09,
-   matched to EN-Calc). Hardcoded white against a warm off-white page is a
+   true, so it now tracks the #FAFAFA in .streamlit/config.toml (2026-09-28,
+   the one page ground shared with EN-Calc and feedformflow.ca; it was
+   #FCFAF9 from 2026-09-09). Hardcoded white against an off-white page is a
    visible seam beside the tabs.
 
    >>> THESE TWO COLOURS MUST TRACK .streamlit/config.toml BY HAND. <<<
@@ -272,7 +311,7 @@ html {
    reports a pale smear beside the tabs. */
 [data-testid="stTabsScrollLeft"],
 [data-testid="stTabsScrollRight"] {
-    color: #A4243A !important;
+    color: var(--fff-claret) !important;
     width: 2.75rem !important;
 }
 [data-testid="stTabsScrollLeft"] svg,
@@ -281,10 +320,10 @@ html {
     height: 1.5rem !important;
 }
 [data-testid="stTabsScrollRight"] {
-    background-image: linear-gradient(to right, transparent, #FCFAF9 25%) !important;
+    background-image: linear-gradient(to right, transparent, #FAFAFA 25%) !important;
 }
 [data-testid="stTabsScrollLeft"] {
-    background-image: linear-gradient(to left, transparent, #FCFAF9 25%) !important;
+    background-image: linear-gradient(to left, transparent, #FAFAFA 25%) !important;
 }
 @media (prefers-color-scheme: dark) {
     [data-testid="stTabsScrollRight"] {
@@ -324,6 +363,44 @@ html {
 }
 [data-testid="stDataFrame"] {
     margin-top: 0.5rem;
+}
+
+/* Right-edge fade on tables that scroll sideways (author, 2026-09-28).
+   The column order is clinical and does not change; the fade only signals
+   that there is more to the right. On a Mac the scrollbar stays hidden
+   until you scroll, so without it a clipped column looks like the end of
+   the table.
+
+   The fade follows the table's own horizontal scroll position: it shows
+   while there is more to the right and is gone at the right-hand end. A
+   table that fits has no scroll range, so its timeline is inactive and no
+   fade is drawn. Browsers without scroll-driven animations (Firefox at the
+   time of writing) show no fade and are otherwise unaffected. The twin rule
+   lives in the other calculator's styles.css; keep the two in step. */
+@property --table-edge-fade {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+}
+
+@keyframes table-edge-fade {
+    0%,
+    90% {
+        --table-edge-fade: 3rem;
+    }
+    100% {
+        --table-edge-fade: 0px;
+    }
+}
+
+/* The data grid scrolls inside glide-data-grid's .dvn-scroller, not the
+   stDataFrame element, so the fade and its timeline sit on the scroller. */
+@supports (animation-timeline: scroll()) {
+    [data-testid="stDataFrame"] .dvn-scroller {
+        mask-image: linear-gradient(to right, #000 calc(100% - var(--table-edge-fade)), transparent);
+        animation: table-edge-fade linear both;
+        animation-timeline: scroll(self inline);
+    }
 }
 
 /* Zebra banding (Change 1.6, author request 2026-08-15): Excel-style
@@ -429,8 +506,9 @@ html {
    pink. Two fixes were tried and reverted: setting the link's hex
    deeper (never the cause), and lifting the fade off the note (opacity
    cannot be undone from inside a faded parent, and moving the muting to
-   a text colour did not shift it either). Whatever Streamlit is doing
-   to that element is not reachable from here. Left as it renders. */
+   a text colour did not shift it either). Resolved 2026-09-28: the
+   fade sits on [data-testid="stCaptionContainer"], and the page-note rule
+   near the top of this file lifts it there (Streamlit 1.62). */
 
 /* The footer: disclaimers, the Health Canada attribution, and the contact
    links (author, 2026-08-19). Set below the page note deliberately, so the

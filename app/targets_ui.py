@@ -36,14 +36,15 @@ def render_targets():
     st.subheader("Patient weight (optional)")
     _w_col, _wu_col = st.columns([3, 1])
     _weight_unit = _wu_col.radio("Unit", ["kg", "lbs"], horizontal=True, key="weight_unit")
-    # Seed the default only the very first time this key ever exists (see
-    # the same comment by "recipe_name_input" above) -- avoids the
-    # Session-State-vs-value= warning when Load Example presets this key.
-    if "patient_weight_input" not in st.session_state:
-        st.session_state["patient_weight_input"] = 0.0
+    # Blank means not entered, the same convention ENCalc uses (author,
+    # 2026-09-28). value=None is what lets the box start empty and be
+    # cleared back to empty; without it Streamlit snaps a cleared box to
+    # min_value. It does not trigger the Session-State-vs-value= warning
+    # either: Streamlit only warns when the default is not None.
     _weight_entered = _w_col.number_input(
         f"Weight ({_weight_unit})",
         min_value=0.0,
+        value=None,
         step=0.5,
         format="%.1f",
         help="Optional — used only to show kcal/kg, protein g/kg, and "
@@ -51,7 +52,10 @@ def render_targets():
         "IBW is computed from it; assessment stays outside this app.",
         key="patient_weight_input",
     )
-    patient_weight_kg = _weight_entered if _weight_unit == "kg" else _weight_entered / 2.20462
+    # Everything downstream still reads 0 as "not provided", so blank is
+    # turned into 0 here, at the one place the form hands it over.
+    _weight_value = _weight_entered or 0.0
+    patient_weight_kg = _weight_value if _weight_unit == "kg" else _weight_value / 2.20462
 
     # The kg conversion gets its own bold line directly under the input
     # (author, 2026-08-08). It used to be tacked onto the end of the
@@ -59,7 +63,7 @@ def render_targets():
     # equals sign and sat at the end of a sentence about something else,
     # which is where a number goes to be missed. It is a live value and
     # the caption is fixed guidance, so they are separate lines now.
-    if _weight_unit == "lbs" and _weight_entered > 0:
+    if _weight_unit == "lbs" and _weight_value > 0:
         # Sized explicitly rather than with st.caption: this page sets
         # `html { font-size: 125% }`, so Streamlit's own caption size
         # lands bigger here than it does anywhere else, and it still
@@ -78,14 +82,10 @@ def render_targets():
             unsafe_allow_html=True,
         )
 
-    # "0", not "blank": this is a number_input seeded to 0.0 with
-    # min_value=0.0, so an empty box is not a state the RD can reach --
-    # clearing it snaps back to 0. Saying "blank" described something the
-    # form cannot do (author feedback 2026-07-30).
-    st.caption("0 = not provided. Display only — not a target.")
+    st.caption("Display only — not a target.")
 
     st.subheader("Targets (optional)")
-    st.caption("0 = no target; enter patient-specific values.")
+    st.caption("Enter patient-specific values.")
     targets = empty_targets()
     tc1, tc2 = st.columns(2)
     cols = (tc1, tc2)
@@ -115,17 +115,16 @@ def render_targets():
             nutrient_name, 1.0 if decimals == 0 else round(10 ** (-decimals), decimals)
         )
         _target_key = f"target_{nutrient_name}"
-        # Seed the default only the very first time this key ever exists
-        # (see the same comment by "recipe_name_input" above) -- avoids
-        # the Session-State-vs-value= warning when Load Example presets
-        # energy/protein/fluid here.
-        if _target_key not in st.session_state:
-            st.session_state[_target_key] = 0.0
-        targets[nutrient_name] = col.number_input(
+        # Blank means no target (see the weight field above for why
+        # value=None). The report and the saved file read 0 as "no
+        # target", so blank becomes 0 here and nothing downstream changes.
+        _entered = col.number_input(
             f"{disp_label} {unit}/day",
             min_value=0.0,
+            value=None,
             step=step,
             format=_TARGET_FORMAT_OVERRIDES.get(nutrient_name, f"%.{min(decimals, 1)}f"),
             key=_target_key,
         )
+        targets[nutrient_name] = _entered or 0.0
     return targets, patient_weight_kg

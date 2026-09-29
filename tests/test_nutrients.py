@@ -17,12 +17,11 @@ exactly these 19 nutrients", which would break the day an RD edits the
 CSV to add or remove a row (as the CONTEXT.md §9 pinned-issues list says
 they expect to, pending a survey of other practicing RDs).
 
-The two places this file DOES pin a Canada-specific fact are called out
-in comments at the point they happen: sodium's numeric CNF code (307)
-and its "UL" target_type. Both are specifically flagged as "worth
-testing" in the brief, because they guard against real historical bugs
-(the CNF "NA" string bug, and the UL-vs-target wording bug) rather than
-just restating today's CSV contents.
+The one place this file DOES pin a Canada-specific fact is called out
+in a comment where it happens: sodium's numeric CNF code (307). It is
+flagged as "worth testing" in the brief because it guards against a real
+historical bug (the CNF "NA" string bug) rather than just restating
+today's CSV contents.
 """
 
 import pytest
@@ -88,7 +87,6 @@ def test_load_registry_returns_nutrientdef_objects_with_expected_fields(canada_r
         assert isinstance(d.on_label, bool)
         assert isinstance(d.show_in_report, bool)
         assert isinstance(d.offer_target, bool)
-        assert isinstance(d.target_type, str)  # "" is valid (see below)
         assert isinstance(d.decimals, int)
         assert isinstance(d.notes, str)
 
@@ -102,18 +100,20 @@ def test_load_registry_names_are_unique(canada_registry):
     assert len(names) == len(set(names))
 
 
-def test_load_registry_empty_target_type_is_the_estimate_default(canada_registry):
-    """target_type is allowed to be blank in the CSV (report.py treats a
-    blank target_type as "estimate"). This checks load_registry() itself
-    faithfully passes that blankness through as "" rather than turning it
-    into the string "nan" (a classic pandas gotcha for an empty CSV
-    cell) -- report.py's `d.target_type or "estimate"` relies on this
-    being a falsy empty string, not the truthy string "nan".
-    """
-    blank_rows = [d for d in canada_registry if d.target_type == ""]
-    assert len(blank_rows) > 0
-    for d in blank_rows:
-        assert d.target_type != "nan"
+def test_registry_carries_no_limit_or_target_type_column():
+    """Neither the CNF nor a product label gives an upper or lower limit,
+    and every target is the RD's own, so the registry records none. A
+    target_type column (RDA/AI/UL) used to drive a "Below UL"/"Above UL"
+    verdict for sodium; it was removed on 2026-09-28 and should not come
+    back without a sourced limit behind it."""
+    import csv
+    from pathlib import Path
+
+    csv_path = Path(__file__).resolve().parent.parent / "data/packs/canada/nutrients.csv"
+    with csv_path.open(encoding="utf-8") as f:
+        header = next(csv.reader(f))
+    assert "target_type" not in header
+    assert not hasattr(NutrientDef, "target_type")
 
 
 def test_load_registry_missing_pack_raises_filenotfounderror():

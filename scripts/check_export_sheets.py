@@ -183,7 +183,7 @@ def main() -> None:
 
     # The report half must be there too -- that is the point of merging the
     # two downloads into one file.
-    for report_sheet in ("Adequacy", "Per-Source Breakdown", "Chart Note"):
+    for report_sheet in ("Daily Totals", "Per-Source Breakdown", "Chart Note"):
         assert report_sheet in sheets, f"no {report_sheet!r} sheet — have {list(sheets)}"
     print("OK: the report sheets ride along in the same file")
 

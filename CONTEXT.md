@@ -186,7 +186,7 @@ blenderized-tubefeed-calculator/
 │   ├── processed/                   # generated parquet (gitignored)
 │   └── packs/
 │       ├── canada/                  # the only pack the app can compute against
-│       │   ├── nutrients.csv        # the nutrient registry (what to track, why, and target_type)
+│       │   ├── nutrients.csv        # the nutrient registry (what to track and why)
 │       │   ├── formulas.csv         # commercial COMPLETE FEED profiles, per mL (CSV)
 │       │   ├── modulars.csv         # modulars & medical foods, per UNIT + a basis column (CSV)
 │       │   ├── thinning_liquids.csv # thinning liquid presets (CSV)
@@ -2272,6 +2272,28 @@ after extraction, including displayed values, control order, tables, notes,
 and durable state. Added lifecycle checks cover blend/intake deletion and
 saving a thinned copy without changing the original recipe or intake.
 
+### 2026-09-28 — Status column replaced by the signed difference
+
+The Daily Totals table no longer has a Status column. It used to label
+rows "Below / Meeting / Above target" at 90 % and 110 %, and sodium
+"Below UL / Above UL" (from a `target_type` registry column), each with a
+coloured cell. The author pointed out that neither the CNF nor any
+product label carries an upper or lower limit, and nobody chose those
+thresholds, so the verdicts claimed a standard the app does not have.
+
+- The column is now **Difference (total − target)**, in the same place:
+  "+120", "−35" (U+2212) or "0" at the nutrient's own decimals, and "—"
+  without a target. It is written like ENCalc's "Difference (planned −
+  goal)". Free water still has no comparison.
+- `target_type` is gone from `nutrients.csv` and `NutrientDef`;
+  `_adequacy_status()`, the 90 %/110 % thresholds, `color_status()` and
+  the `STATUS_*` tints are gone from `src/report.py`.
+- The same day: targets and weight start blank instead of 0, the table
+  is titled **Daily Totals** (also its workbook sheet), and wide tables
+  fade at the right edge when there is more to scroll.
+- This changes names under `src/`, so Streamlit Cloud needs **Reboot app**
+  after the push (see §11).
+
 ---
 
 ## 10. Quick-start guide (how to run the app)
@@ -2313,7 +2335,7 @@ All Canadian reference data lives under `data/packs/canada/` — one
 
 | Data | File |
 |---|---|
-| Nutrient registry (what to track, why, and its target_type) | `data/packs/canada/nutrients.csv` |
+| Nutrient registry (what to track and why) | `data/packs/canada/nutrients.csv` |
 | Commercial formulas (incl. free_water_per_mL) | `data/packs/canada/formulas.csv` |
 | Thinning liquid presets | `data/packs/canada/thinning_liquids.csv` |
 
@@ -2324,7 +2346,7 @@ blank.
 
 Edit the CSV, save, and rerun the app. Changes take effect on next load.
 Adding a nutrient to track is a `nutrients.csv` row (see its `tier` /
-`on_label` / `show_in_report` / `offer_target` / `target_type` columns,
+`on_label` / `show_in_report` / `offer_target` columns,
 documented in `src/nutrients.py`'s module
 docstring) — no Python change needed. Unlike the other two files,
 `nutrients.csv` has **no hardcoded fallback**: if it's missing, the app

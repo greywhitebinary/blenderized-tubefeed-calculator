@@ -324,8 +324,6 @@ enters patient-specific targets in the app, or leaves them blank.
      exported? This is how "show what's needed, not everything" works —
      a nutrient can be `tier=label` but `show_in_report=no`
    - `offer_target` — `yes`/`no`: does the targets form offer a field?
-   - `target_type` — optional `RDA`/`AI`/`UL`/`estimate`; only `UL`
-     changes the adequacy wording. Leave blank otherwise.
 3. Save and rerun the app. No Python change needed — that's the point of
    the registry design. `nutrients.csv` deliberately has **no hardcoded
    fallback**: if it's missing the app fails loudly rather than silently

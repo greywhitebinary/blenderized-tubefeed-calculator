@@ -159,7 +159,7 @@ def main() -> int:
     targets["energy_kcal"] = 1800.0
     targets["protein_g"] = 70.0
     targets["fluid_mL"] = 1400.0
-    targets["sodium_mg"] = 2300.0  # target_type=UL — exercises "Above/Below UL" wording below
+    targets["sodium_mg"] = 2300.0  # compared like any other target — see the Difference check below
     fluid_provided_test_mL = 950.0  # stand-in for the Intake Record's fluid ledger figure
     adequacy, hidden_main = generate_adequacy_report(
         daily,
@@ -273,10 +273,10 @@ def main() -> int:
     ), f"expected 1 engine-tier nutrient (water_g), got {len(engine_defs)}"
     assert engine_defs[0].name == "water_g"
 
-    # show_in_report / offer_target / target_type (round-2 registry columns):
+    # show_in_report / offer_target (round-2 registry columns):
     # 9 of the 13 label-tier nutrients are displayed daily (sat fat/trans
     # fat/cholesterol/sugars are tracked+exported but not shown); the
-    # same 9 are the only offer_target=yes nutrients; only sodium is a UL.
+    # same 9 are the only offer_target=yes nutrients.
     shown_label = [d for d in label_defs if d.show_in_report]
     hidden_label = [d for d in label_defs if not d.show_in_report]
     offer_target_defs = [d for d in registry if d.offer_target]
@@ -294,17 +294,8 @@ def main() -> int:
         "no clinical-tier nutrient (magnesium/phosphorus/zinc/vitamin D/B12) "
         "should offer a target field"
     )
-    sodium_def = next(d for d in registry if d.name == "sodium_mg")
-    assert (
-        sodium_def.target_type == "UL"
-    ), f"sodium target_type should be 'UL', got {sodium_def.target_type!r}"
-    non_sodium_types = {d.target_type for d in registry if d.name != "sodium_mg"}
-    assert non_sodium_types == {
-        ""
-    }, f"only sodium should carry a target_type; found others: {non_sodium_types}"
     print("    9 displayed label nutrients == 9 offer_target nutrients — OK")
     print(f"    Hidden (tracked, not displayed): {sorted(d.name for d in hidden_label)}")
-    print("    Only sodium is target_type=UL — OK")
 
     # Main adequacy table: only tier="label"+show_in_report nutrients + the
     # two fluid rows. No vitamin D / B12 / zinc (tier=clinical) and no
@@ -364,14 +355,19 @@ def main() -> int:
         f"{sorted(set(clinical['Source']))}"
     )
 
-    # target_type="UL" semantics (sodium): must say "Above UL"/"Below UL",
-    # never the old "Above target"/"Meeting target" wording.
+    # No verdict column and no upper-limit wording (2026-09-28): the report
+    # gives the signed difference from the RD's own target, sodium included.
+    from src.report import DIFFERENCE_COLUMN
+
+    assert "Status" not in adequacy.columns, "the Status column should be gone"
     sodium_row = adequacy[adequacy["Nutrient"] == "Sodium"].iloc[0]
-    assert sodium_row["Status"] in ("Above UL", "Below UL"), (
-        f"sodium (target_type=UL) should report 'Above UL'/'Below UL', "
-        f"got {sodium_row['Status']!r}"
-    )
-    print(f"    Sodium status: {sodium_row['Status']!r} (UL vocabulary) — OK")
+    sodium_total = float(sodium_row["Daily Total"])
+    expected = round(sodium_total - 2300.0)
+    shown = sodium_row[DIFFERENCE_COLUMN].replace("\u2212", "-").lstrip("+")
+    assert (
+        int(shown) == expected
+    ), f"sodium difference should be {expected:+d}, got {sodium_row[DIFFERENCE_COLUMN]!r}"
+    print(f"    Sodium difference: {sodium_row[DIFFERENCE_COLUMN]!r} (no UL wording) — OK")
 
     # load_registry() must raise loudly for a pack with no nutrients.csv —
     # this is deliberate (see src/nutrients.py); a silent fallback would

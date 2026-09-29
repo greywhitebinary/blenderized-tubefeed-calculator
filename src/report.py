@@ -25,21 +25,21 @@ another Intake Record row, so aggregate_intake() already produces the
 combined totals, and generate_source_breakdown() gives the "combined, but
 still split" view the regimen summary existed for.
 
-Adequacy logic (Appendix A6), for target_type in {RDA, AI, estimate}:
-    pct_target = (daily_total / target) × 100
+Comparison with a target (Appendix A6). Every target is one the RD typed
+in for this patient; the app ships none. Each row shows the target, the
+daily total as a percentage of it, and the signed difference:
 
-    status:
-      < 90% of target  → "Below target"
-      90%–110%         → "Meeting target"
-      > 110% of target → "Above target"
+    % Target   = daily_total / target × 100
+    Difference = daily_total − target   ("+120", "−35", "0")
 
-For target_type == "UL" (a ceiling, not something to aim for — e.g.
-sodium), the vocabulary is different: >100% of a UL is "Above UL", and
-anything ≤100% is "Below UL". "Meeting target" would misleadingly imply
-90-110% is the goal, when for a UL the goal is simply staying under it.
-target_type now lives on the nutrient registry itself (NutrientDef.
-target_type — see src/nutrients.py) rather than a separate targets.csv;
-UL-ness is a property of the nutrient, not of a default value.
+There is no verdict column. It used to read "Below target" / "Meeting
+target" / "Above target" at 90 % and 110 %, and "Above UL" / "Below UL"
+for sodium, with a coloured cell for each. Neither the Canadian Nutrient
+File nor a product label carries an upper or lower limit, and nobody
+chose those thresholds, so the verdicts claimed a standard the app does
+not have (author, 2026-09-28). Whether a difference matters is the RD's
+call. The signed difference matches ENCalc's "Difference (planned −
+goal)" column, so both calculators state it the same way.
 
 Two report tables, split by nutrient tier (src/nutrients.py):
   - generate_adequacy_report()  → tier="label" nutrients with
@@ -91,9 +91,9 @@ except ImportError:
     )
 
 
-# Adequacy status thresholds (Appendix A6)
-BELOW_THRESHOLD = 0.90  # < 90% → Below
-ABOVE_THRESHOLD = 1.10  # > 110% → Above
+# Column header for the signed difference. Spelled out so the sign reads
+# one way only: positive means the day provided more than the target.
+DIFFERENCE_COLUMN = "Difference (total − target)"
 
 # Source column: where a number in this row could have come from, named
 # in the RD's own vocabulary -- CNF, NFt (Health Canada's term for the
@@ -145,31 +145,21 @@ def _brands_by_nutrient(feed_names) -> dict[str, set[str]]:
     return out
 
 
-def _adequacy_status(daily_total: float, target: float, target_type: str = "estimate") -> str:
-    """Determine adequacy status for a nutrient.
+def _signed_difference(daily_total: float, target: float, decimals: int) -> str:
+    """daily_total − target as signed text, or "—" when there is no target.
 
-    For target_type == "UL" (a ceiling — e.g. sodium):
-      ≤ 100% of target → "Below UL"
-      > 100% of target  → "Above UL"
-
-    For every other target_type (RDA / AI / estimate):
-      < 90% of target  → "Below target"
-      90%–110%         → "Meeting target"
-      > 110% of target → "Above target"
-
-    If target is 0 (not entered), returns "No target" regardless of type.
+    Written the way ENCalc writes it: "+120", "−35" (a true minus sign,
+    U+2212) and "0". Rounded to the nutrient's own precision BEFORE the
+    sign is chosen, so a difference of −0.04 g shows as "0.0", not "−0.0".
     """
     if target <= 0:
-        return "No target"
-    pct = daily_total / target
-    if target_type == "UL":
-        return "Above UL" if pct > 1.0 else "Below UL"
-    if pct < BELOW_THRESHOLD:
-        return "Below target"
-    elif pct > ABOVE_THRESHOLD:
-        return "Above target"
-    else:
-        return "Meeting target"
+        return "—"
+    diff = round(daily_total - target, max(decimals, 0))
+    if diff > 0:
+        return "+" + _fmt(diff, decimals)
+    if diff < 0:
+        return "−" + _fmt(-diff, decimals)
+    return _fmt(0.0, decimals)
 
 
 def _fmt(value: float, decimals: int) -> str:
@@ -288,20 +278,12 @@ def _tier_rows(
     patient_weight_kg: float | None = None,
     brands: dict[str, set[str]] | None = None,
 ) -> list[dict]:
-    """Build report rows for a list of NutrientDef (one tier's worth).
-
-    target_type now comes straight off each NutrientDef (registry-owned —
-    see src/nutrients.py) instead of a separate targets.csv-derived dict;
-    an empty target_type ("" — every nutrient except sodium today)
-    behaves as "estimate" (the default, non-UL vocabulary).
-    """
+    """Build report rows for a list of NutrientDef (one tier's worth)."""
     rows = []
     for d in defs:
         daily_val = daily_totals.get(d.name, 0.0)
         target_val = targets.get(d.name, 0.0)
-        ttype = d.target_type or "estimate"
         pct = (daily_val / target_val * 100) if target_val > 0 else 0.0
-        status = _adequacy_status(daily_val, target_val, ttype)
 
         row: dict = {
             "Nutrient": d.label,
@@ -317,7 +299,7 @@ def _tier_rows(
                 **row,
                 "Target": _fmt(target_val, d.decimals) if target_val > 0 else "—",
                 "% Target": _fmt(pct, 0) if target_val > 0 else "—",
-                "Status": status,
+                DIFFERENCE_COLUMN: _signed_difference(daily_val, target_val, d.decimals),
                 "Source": _source_text(d, brands),
                 "Coverage": _coverage_text(d.name, coverage),
                 "_zero_coverage": _zero_coverage(d.name, coverage),
@@ -365,8 +347,8 @@ def generate_adequacy_report(
     get a row anywhere. Rows with zero coverage (no ingredient supplied a
     value) are dropped — see the second return value.
 
-    Columns: Nutrient, Daily Total, Unit, Target, % Target, Status, Source,
-    Coverage
+    Columns: Nutrient, Daily Total, Unit, [Per kg], Target, % Target,
+    Difference (total − target), Source, Coverage
 
     Args:
         daily_totals:      nutrient_name -> daily total amount (already
@@ -379,11 +361,9 @@ def generate_adequacy_report(
                             free_water_per_mL (see src/intake.py's module
                             docstring for why that blending is deliberate).
         targets:           nutrient_name → target_value. Defaults to {}
-                            (renders "No target" for everything). target_type
-                            (RDA/AI/UL/estimate) is read straight off the
-                            registry now (NutrientDef.target_type) — no
-                            separate targets.csv exists (there are no
-                            default targets anywhere in this app).
+                            (every Target, % Target and Difference cell
+                            renders "—"). There are no default targets
+                            anywhere in this app.
         pack:               Which data pack's nutrient registry to report
                             against. Defaults to DEFAULT_PACK ("canada").
         fluid_provided_mL: The Intake Record's full-volume I&O-convention
@@ -419,8 +399,8 @@ def generate_adequacy_report(
     # lookup -- see daily_totals' docstring note above for what it blends.
     # Demoted to secondary/informational (not compared against the fluid
     # target -- that's "Fluids provided"'s job below): it carries its own
-    # completeness/coverage flag and no Target/% Target/Status of its own,
-    # so it never renders a misleading adequacy verdict for a number that
+    # completeness/coverage flag and no Target/% Target/Difference of its
+    # own, so it is never compared against the fluid target for a number that
     # structurally under-counts custom/label foods (no label carries
     # moisture) and formula rows without a free_water_per_mL value.
     # 0 dp, NOT water_g's registry decimals (1). The registry describes it
@@ -444,7 +424,7 @@ def generate_adequacy_report(
             **_free_water_row,
             "Target": "—",
             "% Target": "—",
-            "Status": "Informational — see Fluids provided",
+            DIFFERENCE_COLUMN: "—",
             # Short enough to READ in the cell. This used to carry all three
             # sentences of the explanation, which no column width can fit --
             # a grid cell cannot wrap, so it truncated at ~40 characters and
@@ -479,7 +459,7 @@ def generate_adequacy_report(
             **_fluid_row,
             "Target": _fmt(fluid_target, 0) if fluid_target > 0 else "—",
             "% Target": _fmt(fluid_pct, 0) if fluid_target > 0 else "—",
-            "Status": _adequacy_status(fluid_val, fluid_target, "estimate"),
+            DIFFERENCE_COLUMN: _signed_difference(fluid_val, fluid_target, 0),
             "Source": "Full volume of counts-as-fluid ingredients (I&O convention) + flushes",
             "Coverage": "—",
             "_zero_coverage": False,
@@ -656,7 +636,7 @@ def generate_clinical_screen(
     reasons — the author's EN spreadsheet, or ASPEN BTF guidance — not
     because they're on a Canadian Nutrition Facts table. A custom food
     entered from a label can NEVER supply these (see the Source column
-    and each NutrientDef.on_label); a "Below target" here may partly
+    and each NutrientDef.on_label); a low total here may partly
     reflect that structural gap rather than the recipe itself, and CNF
     coverage for some of these is well under 100% (vitamin D ~88%, so a
     low number may reflect missing CNF data, not missing nutrition — see
@@ -671,11 +651,10 @@ def generate_clinical_screen(
         nutrient_coverage: nutrient_name -> (n_supplying, n_total), from
                             the same aggregation.
 
-    Same columns as generate_adequacy_report(): Nutrient, Daily Total,
-    Unit, Target, % Target, Status, Source, Coverage. None of these
+    Columns: Nutrient, Daily Total, Unit, Source, Coverage. None of these
     nutrients is offer_target="yes" (see src/nutrients.py — magnesium and
-    phosphorus deliberately so; see src/targets.py's module docstring)
-    so they always render "No target" here — that's correct, not a bug.
+    phosphorus deliberately so; see src/targets.py's module docstring),
+    so the target columns are dropped here — see the comment below.
     Rows with zero coverage are dropped — see the second return value.
     """
     if targets is None:
@@ -691,15 +670,15 @@ def generate_clinical_screen(
         brands=_brands_by_nutrient(feed_names),
     )
     frame, hidden = _finalize(rows)
-    # Target / % Target / Status are dropped from THIS table only. Not one
+    # The target columns are dropped from THIS table only. Not one
     # of the 21 clinical-tier nutrients offers a target field (checked
     # against the registry, and tests/test_targets.py pins it), so those
-    # three columns could never say anything but "—", "—" and "No target"
-    # on every row. "No target" was untrue as English besides: DRIs for
+    # columns could never say anything but "—" on every row. (A "No
+    # target" status used to sit here too, and was untrue as English: DRIs for
     # these exist, they depend on age and sex, and this tool simply does
-    # not take them. One honest absence beats three columns of noise
-    # saying something false (author, 2026-08-21).
-    return frame.drop(columns=["Target", "% Target", "Status"], errors="ignore"), hidden
+    # not take them.) One honest absence beats columns of noise
+    # (author, 2026-08-21).
+    return frame.drop(columns=["Target", "% Target", DIFFERENCE_COLUMN], errors="ignore"), hidden
 
 
 def generate_formula_comparison(
@@ -987,7 +966,7 @@ def stripe_rows(frame: pd.DataFrame):
     """Alternating row tints for a table, as a pandas Styler.
 
     Streamlit's dataframe has no striping setting, so this paints it the
-    same way color_status() paints a Status cell. The hand-built lists
+    through a pandas Styler. The hand-built lists
     (Ingredients, the intake record) get theirs from CSS instead, over
     the .st-key-zebrarow hook -- those are not tables, so they cannot
     use this (author request 2026-08-21, matching the two).
@@ -996,8 +975,7 @@ def stripe_rows(frame: pd.DataFrame):
     A fixed light grey is right on a white page and wrong on a dark one,
     where it would paint near-white bands across a dark table; a
     translucent overlay darkens a light theme and lightens a dark one by
-    the same small amount. Same reason color_status() sets its text
-    colour explicitly.
+    the same small amount.
 
     Chain it before any cell-level styling -- `stripe_rows(df).map(...)`
     -- so the more specific colour wins on the cells that have one.
@@ -1031,29 +1009,3 @@ def stripe_rows(frame: pd.DataFrame):
                 decimals = max(decimals, len(text.split(".")[1].rstrip("0")))
         formats[column] = f"{{:.{min(decimals, 3)}f}}"
     return styler.format(formats) if formats else styler
-
-
-def color_status(val: str) -> str:
-    """Pandas-Styler CSS for an adequacy Status cell.
-
-    Moved out of app/streamlit_app.py 2026-08-17 to sit beside
-    _adequacy_status(), which produces the exact strings it matches on --
-    the two drift apart silently if they live in different files, and only
-    here can it be tested.
-
-    "Above UL" and "Below target" are both concerning (red); "Below UL"
-    and "Meeting target" are both fine (green) -- a UL is a ceiling, not
-    an aim, so "Below UL" reads as "fine" the same way "Meeting target"
-    does for an RDA/AI nutrient.
-
-    Text colour is set explicitly alongside each pale background: without
-    it, a dark theme renders near-white text on pale pink and the status
-    becomes unreadable.
-    """
-    if val in ("Below target", "Above UL"):
-        return "background-color: #ffcccc; color: #1a1a1a"
-    elif val == "Above target":
-        return "background-color: #ffe0b2; color: #1a1a1a"
-    elif val in ("Meeting target", "Below UL"):
-        return "background-color: #c8e6c9; color: #1a1a1a"
-    return ""

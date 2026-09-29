@@ -190,8 +190,8 @@ absent, the inner join in step [3] produces no row, so the numeric sum in
 step [5] receives no contribution. A numeric CNF zero, by contrast, stays
 in the join and counts as supplied coverage. The report's Coverage column
 shows that distinction. Totals can only be UNDER-estimated when a row is
-absent; for sparse nutrients, a "Below target" flag may partly reflect
-missing data rather than missing nutrition.
+absent; for sparse nutrients, a total below its target may partly
+reflect missing data rather than missing nutrition.
 """)
     any_missing = False
     for i in recipe.ingredients:

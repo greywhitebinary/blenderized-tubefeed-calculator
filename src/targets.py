@@ -18,10 +18,10 @@ survives is empty_targets() — it still hands the app a dict of
 zero-valued target keys to build the custom-targets form from, but its
 keys now come from the nutrient registry's `offer_target` column
 (data/packs/<pack>/nutrients.csv — see src/nutrients.py) instead of a
-targets.csv row list. `target_type` (RDA/AI/UL/estimate — the UL-ness
-that drives sodium's "Above UL" wording) also moved into the registry
-as of this round, since it's a property of the nutrient, not of a
-default value; src/report.py reads it off NutrientDef directly now.
+targets.csv row list. (A `target_type` column — RDA/AI/UL — briefly
+lived in the registry to word sodium as a UL. It was removed on
+2026-09-28: neither the CNF nor a label carries a limit, and every target
+here is the RD's own, so the report shows the difference, not a verdict.)
 
 Deliberately NOT offered as a target field: magnesium and phosphorus
 (the author's clinical reasoning stands from the prior round: refeeding-
@@ -51,7 +51,7 @@ def empty_targets(pack: str = DEFAULT_PACK) -> dict[str, float]:
     CNF nutrient — it's the target for the derived fluid-adequacy row
     (src/report.py). tier="clinical" nutrients (magnesium, phosphorus,
     zinc, vitamin D, B12) are NOT offer_target and so have no key here —
-    the BTF micro screen always renders "No target" for them, correctly.
+    the BTF micro screen drops its target columns for them, correctly.
     """
     targets = {d.name: 0.0 for d in load_registry(pack) if d.offer_target}
     targets["fluid_mL"] = 0.0

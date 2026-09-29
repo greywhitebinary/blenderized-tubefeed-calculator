@@ -46,13 +46,6 @@ nutrients.csv columns:
                     (magnesium, phosphorus, zinc, vitamin D, B12) are
                     deliberately target-less — see src/targets.py's module
                     docstring.
-    target_type     "RDA" | "AI" | "UL" | "estimate" | "" (empty) — the
-                    nature of a target, if one is ever entered for this
-                    nutrient. The only behavioral consumer is UL wording
-                    ("Above UL"/"Below UL" instead of "Above/Meeting/Below
-                    target") — see src/report.py. Only sodium_mg is "UL"
-                    today; every other row may be left empty (report.py
-                    treats empty as "estimate", the default vocabulary).
     decimals        how many decimal places to display this nutrient at
     notes           free-text provenance / rationale
 
@@ -105,9 +98,6 @@ class NutrientDef:
                          report table (see module docstring).
         offer_target:   Whether the custom-targets form offers a target
                          field for this nutrient (see module docstring).
-        target_type:    "RDA" | "AI" | "UL" | "estimate" | "" — nature of
-                         a target if one is entered; only "UL" changes
-                         report wording (see module docstring).
         decimals:       Display precision for daily totals.
         notes:          Free-text provenance / clinical rationale.
     """
@@ -120,7 +110,6 @@ class NutrientDef:
     on_label: bool
     show_in_report: bool
     offer_target: bool
-    target_type: str
     decimals: int
     notes: str
 
@@ -167,7 +156,6 @@ def _load_registry_cached(pack: str) -> tuple[NutrientDef, ...]:
                 f"{csv_path}: nutrient '{row['name']}' has invalid tier "
                 f"'{tier}' — must be one of {VALID_TIERS}"
             )
-        target_type = str(row["target_type"]).strip() if pd.notna(row["target_type"]) else ""
         defs.append(
             NutrientDef(
                 name=str(row["name"]).strip(),
@@ -178,7 +166,6 @@ def _load_registry_cached(pack: str) -> tuple[NutrientDef, ...]:
                 on_label=str(row["on_label"]).strip().lower() == "yes",
                 show_in_report=str(row["show_in_report"]).strip().lower() == "yes",
                 offer_target=str(row["offer_target"]).strip().lower() == "yes",
-                target_type=target_type,
                 decimals=int(row["decimals"]),
                 notes=str(row["notes"]).strip(),
             )

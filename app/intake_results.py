@@ -15,8 +15,8 @@ from src.report import (
     generate_clinical_screen,
     generate_source_breakdown,
     generate_water_ledger,
-    color_status,
     stripe_rows,
+    DIFFERENCE_COLUMN,
 )
 from src.intake import (
     sorted_intake_log,
@@ -67,7 +67,7 @@ def render_intake_results(intake_totals, targets, patient_weight_kg, recipe_name
                 column_config=_left_aligned(_water_ledger),
             )
 
-        st.subheader("Daily Totals & Adequacy")
+        st.subheader("Daily Totals")
         st.caption("The total fluid from everything entered in the Daily Intake Record above.")
 
         adequacy_df, hidden_main_names = generate_adequacy_report(
@@ -98,13 +98,13 @@ def render_intake_results(intake_totals, targets, patient_weight_kg, recipe_name
         # hidden column costs more here than anywhere else.
         with st.container(key="fullbleed_adequacy"):
             st.dataframe(
-                stripe_rows(adequacy_display[_main_cols])
-                # Daily Total / Target / % Target arrive from report.py
-                # already formatted as text at each nutrient's own registry
-                # precision (see _fmt there), which is what stops Energy's
-                # 0 dp being dragged to "2204.0" by Protein's 1 dp sharing
-                # the column. The Styler only colours Status now.
-                .map(color_status, subset=["Status"]),
+                # Daily Total / Target / % Target / Difference arrive from
+                # report.py already formatted as text at each nutrient's own
+                # registry precision (see _fmt there), which is what stops
+                # Energy's 0 dp being dragged to "2204.0" by Protein's 1 dp
+                # sharing the column. No cell colouring: there is no verdict
+                # to colour, only the signed difference (2026-09-28).
+                stripe_rows(adequacy_display[_main_cols]),
                 # stretch + explicit pixel widths is the only combination
                 # that both guarantees the long cells fit and still scrolls.
                 # width="content" was tried and is wrong here: it leaves the
@@ -114,9 +114,10 @@ def render_intake_results(intake_totals, targets, patient_weight_kg, recipe_name
                 # help either -- small/medium/large are the raw pixel
                 # constants 75/200/400, and medium clipped both columns.
                 #
-                # Sized for the longest value each column carries, both on
-                # the free-water row: "Free water from foods and feeds" (31
-                # chars) and "Informational — see Fluids provided" (35).
+                # Nutrient is sized for its longest value, "Free water from
+                # foods and feeds" (31 chars); Difference for its header,
+                # "Difference (total − target)" (27), since its values are
+                # short numbers.
                 # These are PIXELS and the cell font is rem-based, so if the
                 # root font-size knob at the top of the style block ever
                 # changes, bump these to match.
@@ -125,7 +126,7 @@ def render_intake_results(intake_totals, targets, patient_weight_kg, recipe_name
                 column_config=_left_aligned(
                     adequacy_display[_main_cols],
                     Nutrient=st.column_config.TextColumn(width=320, alignment="left"),
-                    Status=st.column_config.TextColumn(width=360, alignment="left"),
+                    **{DIFFERENCE_COLUMN: st.column_config.TextColumn(width=230, alignment="left")},
                 ),
             )
         st.caption(
@@ -162,8 +163,8 @@ def render_intake_results(intake_totals, targets, patient_weight_kg, recipe_name
                 feed_names=_feeds_in_record(),
             )
             if len(clinical_df) > 0:
-                # No Target / % Target / Status here, and so no status
-                # colouring: none of these nutrients takes a target, so
+                # No Target / % Target / Difference here: none of these
+                # nutrients takes a target, so
                 # generate_clinical_screen() drops those columns rather
                 # than repeat an empty one 21 times (2026-08-21).
                 st.dataframe(
@@ -247,7 +248,7 @@ def render_intake_results(intake_totals, targets, patient_weight_kg, recipe_name
     # their work because one number is missing (2026-08-17).
     _report_sheets: dict[str, pd.DataFrame] = {}
     if intake_totals is not None and st.session_state.intake_log:
-        _report_sheets["Adequacy"] = generate_adequacy_report(
+        _report_sheets["Daily Totals"] = generate_adequacy_report(
             intake_totals.nutrient_totals,
             targets,
             fluid_provided_mL=intake_totals.fluid_provided_mL,
@@ -304,7 +305,7 @@ def render_intake_results(intake_totals, targets, patient_weight_kg, recipe_name
         "later with “Open a saved record” at the top of the page, or file it "
         "as it is. The first worksheets hold what you entered (Record, "
         "Targets, Blends, Ingredients, Intake, Custom foods) and the rest hold "
-        "the calculated reports: Adequacy, Vitamins and Minerals, Per-Source "
+        "the calculated reports: Daily Totals, Vitamins and Minerals, Per-Source "
         "Breakdown, Water Sources and Chart Note. This record is not stored "
         "anywhere else; the file you download is the only copy."
     )

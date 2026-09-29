@@ -16,7 +16,7 @@ be lost by a well-meaning "just skip the bad rows" fix:
    matters: the RD has to know where to go, and the exception's own message
    is written for a developer.
 
-2. The download still works. The report sheets (Adequacy, Chart Note,
+2. The download still works. The report sheets (Daily Totals, Chart Note,
    Per-Source Breakdown, Water Sources) need totals and are omitted, but the
    RELOADABLE half never needed them -- so an RD is never unable to save
    their work because one number is missing.
@@ -130,7 +130,7 @@ def main() -> None:
         assert (
             required in sheets
         ), f"the reloadable half lost its {required!r} sheet: {list(sheets)}"
-    for computed in ("Adequacy", "Chart Note", "Per-Source Breakdown"):
+    for computed in ("Daily Totals", "Chart Note", "Per-Source Breakdown"):
         assert computed not in sheets, f"{computed!r} was written without totals to build it from"
     parsed = workbook_bytes_to_day(_captured[-1])
     assert parsed.blends and parsed.intake_log, "the saved file does not reload"

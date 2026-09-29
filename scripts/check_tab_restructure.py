@@ -52,7 +52,7 @@ def main() -> None:
         # RD's own blends became the leading rows of that table.
         "Compare Blends and Formulas",
         "Intake Record",
-        "Daily Totals & Adequacy",
+        "Daily Totals",
         "Per-Source Breakdown",
         "Chart Note",
         # One download since 2026-08-01 (was "Export" + a separate save).

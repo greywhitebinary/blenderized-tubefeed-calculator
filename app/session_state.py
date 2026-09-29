@@ -207,12 +207,14 @@ def _apply_saved_day(parsed) -> None:
 
     st.session_state["recipe_name_input"] = parsed.label
     st.session_state["delivery_method_input"] = parsed.delivery_method
-    st.session_state["patient_weight_input"] = float(parsed.patient_weight or 0.0)
+    # A saved 0 means "not provided" (the file format is unchanged), so it
+    # reopens as a blank box rather than a typed zero.
+    st.session_state["patient_weight_input"] = float(parsed.patient_weight) or None
     st.session_state["weight_unit"] = (
         parsed.weight_unit if parsed.weight_unit in ("kg", "lbs") else "kg"
     )
     for _name in empty_targets():
-        st.session_state[f"target_{_name}"] = float(parsed.targets.get(_name, 0.0))
+        st.session_state[f"target_{_name}"] = float(parsed.targets.get(_name, 0.0)) or None
 
 
 def add_intake_row(row: dict) -> int:

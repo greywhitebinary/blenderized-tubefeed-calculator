@@ -238,8 +238,8 @@ def day_to_workbook_bytes(
     )
 
     # Only targets that were actually set. 0 means "no target" in this app
-    # (the number_input can't be blank), so writing zeros would turn "not
-    # set" into a row that looks deliberate.
+    # (a blank target field reaches here as 0), so writing zeros would turn
+    # "not set" into a row that looks deliberate.
     targets_df = pd.DataFrame(
         [
             {"Nutrient": name, "Target per day": float(value)}

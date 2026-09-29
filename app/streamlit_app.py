@@ -86,7 +86,9 @@ def get_food_group():
 
 st.set_page_config(
     page_title="BTF Calculator",
-    page_icon="🥕",
+    # The Feed. Form. Flow. mark with claret in front, shared with ENCalc
+    # (2026-09-28). An SVG path keeps its own dark-mode colours.
+    page_icon=PROJECT_ROOT / "assets" / "feedformflow-tool-icon.svg",
     layout="wide",
 )
 

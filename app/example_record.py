@@ -407,12 +407,12 @@ def load_example_record(fn, lookup):
         # is legal).
         #
         # These figures are spoken in the demo video -- keep them in step
-        # with it. Other targets are zeroed because "Load example record"
+        # with it. Other targets are cleared because "Load example record"
         # warns that it replaces the targets on screen.
         st.session_state["patient_weight_input"] = 165.0
         st.session_state["weight_unit"] = "lbs"
         for _tname in empty_targets():
-            st.session_state[f"target_{_tname}"] = 0.0
+            st.session_state[f"target_{_tname}"] = None
         st.session_state["target_energy_kcal"] = 2250.0
         st.session_state["target_protein_g"] = 100.0
         st.session_state["target_fluid_mL"] = 2250.0

@@ -23,10 +23,7 @@ None of these tests hardcode "the Canadian nutrient list" as a
 correctness assertion -- they read the registry (src/nutrients.py) at
 test time and check that report.py's tier-filtering honours whatever
 the registry says, so they keep passing if an RD edits nutrients.csv to
-add/remove a nutrient. The one deliberate exception is called out where
-it happens: sodium's target_type="UL" is a real, documented Canada-pack
-fact (the only UL nutrient today) and is exactly the case the brief asks
-to test directly.
+add/remove a nutrient.
 """
 
 from dataclasses import replace
@@ -39,10 +36,10 @@ from src.intake import InvalidBlendError, resolve_blend_profile
 from src.models import Ingredient, Recipe
 from src.nutrients import DEFAULT_PACK, defs_for_tier, registry_by_name
 from src.report import (
+    DIFFERENCE_COLUMN,
     EDITING_MARKER,
-    _adequacy_status,
     _formula_daily,
-    color_status,
+    _signed_difference,
     _coverage_text,
     _ordered_label_defs,
     _zero_coverage,
@@ -184,86 +181,80 @@ def test_engine_tier_nutrient_never_rendered_in_either_table(
 
 
 # ---------------------------------------------------------------------------
-# _adequacy_status(): UL wording vs ordinary target wording
+# The signed difference from the RD's own target (no verdict column)
 # ---------------------------------------------------------------------------
 
 
-def test_adequacy_status_ul_wording_is_above_below_ul_not_target():
-    """A target_type="UL" (a ceiling, e.g. sodium) must never say "Above
-    target"/"Meeting target"/"Below target" -- those phrases imply 90-110%
-    is the goal, which is wrong for a ceiling nutrient where the goal is
-    simply staying under it. Getting this wrong would mislead an RD about
-    whether a number is a limit or something to aim for.
-    """
-    # 50% of the UL -> under the ceiling.
-    assert _adequacy_status(daily_total=50, target=100, target_type="UL") == "Below UL"
-    # Exactly at the ceiling (100%) is still "Below UL" -- only strictly
-    # OVER the ceiling counts as "Above UL" (src/report.py: `pct > 1.0`).
-    assert _adequacy_status(daily_total=100, target=100, target_type="UL") == "Below UL"
-    # Over the ceiling -> "Above UL".
-    assert _adequacy_status(daily_total=150, target=100, target_type="UL") == "Above UL"
-
-    # And never the ordinary-target vocabulary for a UL nutrient:
-    ul_status = _adequacy_status(daily_total=150, target=100, target_type="UL")
-    assert "target" not in ul_status.lower()
+def test_signed_difference_is_written_the_way_encalc_writes_it():
+    """ "+120", "−35" with a true minus sign (U+2212), and "0" -- the same
+    form as ENCalc's "Difference (planned − goal)" column."""
+    assert _signed_difference(daily_total=2370, target=2250, decimals=0) == "+120"
+    assert _signed_difference(daily_total=2215, target=2250, decimals=0) == "−35"
+    assert _signed_difference(daily_total=2250, target=2250, decimals=0) == "0"
+    assert "\u2212" in _signed_difference(daily_total=1, target=2, decimals=0)
 
 
-def test_adequacy_status_ordinary_target_wording_for_non_ul_types():
-    """RDA/AI/estimate (i.e. anything that isn't a ceiling) use the
-    below/meeting/above TARGET vocabulary, with the documented 90%/110%
-    thresholds.
-    """
-    assert _adequacy_status(daily_total=50, target=100, target_type="RDA") == "Below target"
-    assert _adequacy_status(daily_total=95, target=100, target_type="AI") == "Meeting target"
-    assert _adequacy_status(daily_total=150, target=100, target_type="estimate") == "Above target"
-    # An empty target_type ("" -- every nutrient except sodium in the
-    # Canada pack) should behave the same as "estimate" once _tier_rows()
-    # has substituted the default; _adequacy_status() itself just takes
-    # whatever string it's handed, so we call it with "estimate" directly
-    # here (the "" -> "estimate" substitution is _tier_rows()'s job,
-    # exercised by the sodium test below and the full-report test after
-    # it).
+def test_signed_difference_keeps_the_nutrients_own_precision():
+    assert _signed_difference(daily_total=96.25, target=100, decimals=1) == "−3.8"
+    assert _signed_difference(daily_total=104.0, target=100, decimals=1) == "+4.0"
 
 
-def test_adequacy_status_no_target_entered_returns_no_target_regardless_of_type():
-    """Targets always start blank in this app (no defaults anywhere --
-    see src/targets.py's module docstring). A target of 0 (not entered)
-    must render "No target", for EVERY target_type, including UL -- a
-    dietitian who hasn't set a sodium ceiling yet should see "No target",
-    not a false "Below UL" implying 0% of an unset ceiling.
-    """
-    assert _adequacy_status(daily_total=50, target=0, target_type="UL") == "No target"
-    assert _adequacy_status(daily_total=50, target=0, target_type="RDA") == "No target"
-    assert _adequacy_status(daily_total=50, target=0, target_type="") == "No target"
+def test_signed_difference_rounds_before_choosing_the_sign():
+    """A difference that rounds to nothing is "0.0", never "−0.0"."""
+    assert _signed_difference(daily_total=99.96, target=100, decimals=1) == "0.0"
+    assert _signed_difference(daily_total=100.04, target=100, decimals=1) == "0.0"
 
 
-def test_sodium_reports_ul_wording_through_the_full_adequacy_report():
-    """End-to-end version of the UL check, through the real
-    generate_adequacy_report() path rather than calling _adequacy_status()
-    directly -- this is what an RD actually sees on screen.
+def test_signed_difference_without_a_target_is_a_dash():
+    """Targets start blank; a blank target stores as 0 and has nothing to
+    subtract from."""
+    assert _signed_difference(daily_total=50, target=0, decimals=0) == "—"
 
-    NOTE: this pins a real Canada-pack fact -- sodium_mg is the only
-    nutrient with target_type="UL" in data/packs/canada/nutrients.csv
-    today. That's intentional per the test brief ("a test asserting this
-    is well worth having"): sodium's UL-ness is a clinical fact (a
-    ceiling, not a goal) independent of which OTHER nutrients the
-    registry happens to track, so pinning it doesn't freeze the
-    tracked-nutrient set the way asserting "there are exactly 10 rows in
-    the main table" would.
-    """
-    sodium_def = registry_by_name("canada")["sodium_mg"]
-    assert sodium_def.target_type == "UL"  # the documented Canada-pack fact
 
-    totals = {"sodium_mg": 3000.0}
-    targets = {"sodium_mg": 2300.0}
-    coverage = {"sodium_mg": (1, 1)}
+def test_report_has_no_verdict_column_and_no_upper_limit_wording(label_defs):
+    """Neither the CNF nor a product label carries an upper or lower limit,
+    and every target is one the RD typed in, so the report states the
+    difference and leaves the judgement to the RD (author, 2026-09-28).
+    Sodium in particular is compared like every other nutrient."""
+    totals = _totals(label_defs, value=3000.0)
+    targets = {d.name: 2300.0 for d in label_defs}
+    targets["fluid_mL"] = 2000.0
+    df, _ = generate_adequacy_report(
+        totals, targets=targets, nutrient_coverage=_full_coverage(label_defs)
+    )
 
-    df, hidden = generate_adequacy_report(totals, targets=targets, nutrient_coverage=coverage)
-    row = df[df["Nutrient"] == sodium_def.label].iloc[0]
+    assert "Status" not in df.columns
+    assert DIFFERENCE_COLUMN in df.columns
+    cells = df.astype(str).to_numpy().ravel()
+    for word in ("UL", "Meeting target", "Below target", "Above target", "No target"):
+        assert not any(word in c for c in cells), word
 
-    assert row["Status"] == "Above UL"
-    assert "target" not in row["Status"].lower()
-    assert sodium_def.label not in hidden
+    sodium = df[df["Nutrient"] == registry_by_name("canada")["sodium_mg"].label].iloc[0]
+    assert sodium[DIFFERENCE_COLUMN] == "+700"
+
+
+def test_difference_sits_where_status_was(label_defs):
+    """Column order is set for clinical reading; the difference takes the
+    old Status column's place, straight after % Target."""
+    df, _ = generate_adequacy_report(
+        _totals(label_defs, value=10.0), targets={}, nutrient_coverage=_full_coverage(label_defs)
+    )
+    columns = list(df.columns)
+    assert columns.index(DIFFERENCE_COLUMN) == columns.index("% Target") + 1
+
+
+def test_fluid_rows_difference(label_defs):
+    """Fluids provided is compared with the fluid target; free water is an
+    estimate and is never compared with anything."""
+    df, _ = generate_adequacy_report(
+        _totals(label_defs, value=10.0),
+        targets={"fluid_mL": 2000.0},
+        fluid_provided_mL=1850.0,
+        nutrient_coverage=_full_coverage(label_defs),
+    )
+    by_name = df.set_index("Nutrient")
+    assert by_name.loc["Fluids provided", DIFFERENCE_COLUMN] == "−150"
+    assert by_name.loc["Free water from foods and feeds", DIFFERENCE_COLUMN] == "—"
 
 
 # ---------------------------------------------------------------------------
@@ -361,12 +352,12 @@ def test_partial_coverage_shows_n_of_m_sources_note_in_the_real_table(label_defs
 # ---------------------------------------------------------------------------
 
 
-def test_nutrient_with_no_target_set_shows_no_target_status_and_blank_dashes(label_defs):
+def test_nutrient_with_no_target_set_shows_blank_dashes(label_defs):
     """Targets always start blank (no default targets anywhere -- see
     src/targets.py's module docstring). With an empty targets dict, every
-    ordinary nutrient row should show Status="No target" and both Target
-    and % Target as "—", never a fabricated percentage against a target
-    of zero.
+    ordinary nutrient row should show Target, % Target and Difference as
+    "—", never a fabricated percentage or difference against a target of
+    zero.
     """
     totals = _totals(label_defs, value=50.0)
     coverage = _full_coverage(label_defs)
@@ -375,9 +366,9 @@ def test_nutrient_with_no_target_set_shows_no_target_status_and_blank_dashes(lab
 
     for d in label_defs:
         row = df[df["Nutrient"] == d.label].iloc[0]
-        assert row["Status"] == "No target"
         assert row["Target"] == "—"
         assert row["% Target"] == "—"
+        assert row[DIFFERENCE_COLUMN] == "—"
 
 
 # ---------------------------------------------------------------------------
@@ -672,55 +663,6 @@ def test_blend_with_no_measured_volume_is_skipped_not_raised(nutrient_amount_df)
     df = generate_comparator_table(comparator_blends, daily_volume_mL=1000.0, formula_names=[])
 
     assert list(df["Name"]) == [f"{EDITING_MARKER} Whole-food blend"]
-
-
-class TestColorStatus:
-    """The Styler CSS for an adequacy Status cell. Moved out of the app on
-    2026-08-17 to sit beside _adequacy_status(), which produces the exact
-    strings it matches on -- these tests are what stops the two drifting
-    apart, since a status string with no colour rule fails silently as a
-    blank cell.
-    """
-
-    def test_every_status_adequacy_can_produce_has_a_colour(self):
-        """The real coupling: iterate the statuses _adequacy_status()
-        actually returns and require a rule for each. Add a status there
-        without a colour here and this fails."""
-        produced = {
-            _adequacy_status(50.0, 100.0),  # Below target
-            _adequacy_status(100.0, 100.0),  # Meeting target
-            _adequacy_status(200.0, 100.0),  # Above target
-            _adequacy_status(50.0, 100.0, "UL"),  # Below UL
-            _adequacy_status(200.0, 100.0, "UL"),  # Above UL
-        }
-        assert len(produced) == 5, produced
-        for status in produced:
-            assert color_status(status), f"{status!r} has no colour rule"
-
-    def test_concerning_statuses_are_red(self):
-        red = "background-color: #ffcccc; color: #1a1a1a"
-        assert color_status("Below target") == red
-        assert color_status("Above UL") == red
-
-    def test_fine_statuses_are_green(self):
-        """A UL is a ceiling, not an aim, so "Below UL" reads as fine the
-        same way "Meeting target" does for an RDA/AI nutrient."""
-        green = "background-color: #c8e6c9; color: #1a1a1a"
-        assert color_status("Meeting target") == green
-        assert color_status("Below UL") == green
-
-    def test_above_target_is_amber_not_red(self):
-        assert color_status("Above target") == "background-color: #ffe0b2; color: #1a1a1a"
-
-    def test_no_target_gets_no_colour(self):
-        assert color_status(_adequacy_status(100.0, 0.0)) == ""
-
-    def test_every_rule_sets_text_colour_with_its_background(self):
-        """Without an explicit text colour a dark theme renders near-white
-        text on pale pink and the status becomes unreadable."""
-        for status in ("Below target", "Above target", "Meeting target", "Below UL", "Above UL"):
-            css = color_status(status)
-            assert "background-color:" in css and "color: #1a1a1a" in css, (status, css)
 
 
 class TestBreakdownTotalRowTolerance:
