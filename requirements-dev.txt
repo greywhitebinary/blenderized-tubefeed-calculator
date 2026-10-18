@@ -3,7 +3,7 @@
 -r requirements.txt
 
 pytest>=8.0
-black>=24.0
+black>=26.5.1
 ruff>=0.4
 jupyter>=1.0
 
