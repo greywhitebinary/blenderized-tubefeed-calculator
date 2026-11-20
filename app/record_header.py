@@ -123,9 +123,17 @@ def render_record_header(fn, lookup):
         (PROJECT_ROOT / "assets" / "enteral-enfit-tubing.svg").read_bytes()
     ).decode("ascii")
     _record_title = escape(recipe_name or "BTF record")
+    # width/height (2026-11-19, same fix as ENCalc): the SVG states only a
+    # viewBox, so until app/styles.css took effect the browser drew the icon
+    # at the full width of the page for a moment while the page loaded. The
+    # attributes give it a size from the first paint. They are attributes, not
+    # an inline style, so the `.record-title img` rules in app/styles.css
+    # still set the final size, including the smaller phone size. 60 by 29 is
+    # that rule's desktop size in pixels (2em by 0.95em of the 30 px title).
     st.markdown(
         f'<h1 class="record-title"><span>🥕🥦🥤</span><span>{_record_title}</span><img '
-        f'src="data:image/svg+xml;base64,{_tubing_icon}" alt="Enteral tubing with purple ENFit connectors">'
+        f'src="data:image/svg+xml;base64,{_tubing_icon}" width="60" height="29" '
+        'alt="Enteral tubing with purple ENFit connectors">'
         # 🫙 sits immediately after the tubing, the same order as the Intake
         # Record's sections: the tube feed, then the modulars beside it.
         "<span>🫙💧🍌</span></h1>",
